@@ -7,3 +7,5 @@ qa/*.json
 .gh-config/
 .npm-cache/
 .vercel/
+.vercel-home/
+.vercel

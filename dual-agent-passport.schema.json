@@ -1,0 +1,42 @@
+{
+  "name": "io.dual.kraken.agent_trading_passport",
+  "description": "Policy-bound agent passport for Kraken paper/live trading governance.",
+  "properties": {
+    "passport_id": "string",
+    "agent_name": "string",
+    "mode": "string",
+    "state": "string",
+    "allowed_pairs": "array",
+    "max_notional_usd": "string",
+    "max_daily_notional_usd": "string",
+    "daily_notional_used": "string",
+    "leverage_allowed": "string",
+    "human_approval_required_above": "string",
+    "blocked_actions": "array",
+    "approval_policy": "string",
+    "owner_wallet": "string",
+    "last_event_id": "string",
+    "last_event_type": "string",
+    "last_event_status": "string",
+    "last_event_hash": "string",
+    "last_event_at": "string"
+  },
+  "states": [
+    "draft",
+    "active",
+    "awaiting_approval",
+    "approved",
+    "executed",
+    "blocked",
+    "suspended"
+  ],
+  "actions": [
+    "market_snapshot",
+    "trade_proposed",
+    "human_approved",
+    "paper_executed",
+    "execution_blocked",
+    "red_team_check",
+    "update"
+  ]
+}

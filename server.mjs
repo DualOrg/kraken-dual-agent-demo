@@ -6,12 +6,15 @@ import { dirname } from "node:path";
 import { loadState, resetState, saveState, createAuditEvent, createProposal } from "./src/dualStore.mjs";
 import { evaluateTrade, redTeamTrade, roundQty } from "./src/policy.mjs";
 import { executePaperTrade, getAdapterStatus, getMarket } from "./src/krakenAdapter.mjs";
+import { createDualPersistence } from "./src/dualPersistence.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = __dirname;
 const publicDir = join(root, "public");
+await loadDotEnv();
 const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "127.0.0.1";
+const dualPersistence = await createDualPersistence();
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -35,7 +38,25 @@ server.listen(port, host, () => {
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/health") {
     const adapter = await getAdapterStatus();
-    sendJson(res, 200, { ok: true, adapter });
+    sendJson(res, 200, { ok: true, adapter, dual: dualPersistence.status() });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/dual/status") {
+    sendJson(res, 200, dualPersistence.status());
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/dual/template") {
+    const result = await dualPersistence.createTemplate();
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/dual/sync-passport") {
+    const state = await loadState();
+    const result = await dualPersistence.syncPassport(state.passport, { source: "manual_sync" });
+    sendJson(res, 200, result);
     return;
   }
 
@@ -61,13 +82,13 @@ async function handleApi(req, res, url) {
       volume: market.volume,
       source: market.source
     };
-    state.audit.unshift(createAuditEvent(
+    await addAudit(state,
       "market_snapshot",
       "ok",
       `${pair} market snapshot`,
       `${market.source === "kraken-cli" ? "Kraken CLI" : "Simulator"} returned ${pair} at $${market.price}.`,
       { pair, source: market.source, price: market.price }
-    ));
+    );
     await saveState(state);
     sendJson(res, 200, market);
     return;
@@ -82,13 +103,13 @@ async function handleApi(req, res, url) {
     const proposal = createProposal(trade, policy);
     state.proposals.unshift(proposal);
     state.passport.dualObjectState = proposal.state;
-    state.audit.unshift(createAuditEvent(
+    await addAudit(state,
       "trade_proposed",
       policy.decision === "block" ? "blocked" : "pending",
       policy.decision === "block" ? "Proposal blocked" : "Trade proposal created",
       describePolicy(trade, policy),
       { proposalId: proposal.id, trade, policy }
-    ));
+    );
     await saveState(state);
     sendJson(res, 200, { state, proposal });
     return;
@@ -105,13 +126,13 @@ async function handleApi(req, res, url) {
     proposal.trade.approved = true;
     proposal.policy = evaluateTrade(state.passport, proposal.trade);
     state.passport.dualObjectState = "approved";
-    state.audit.unshift(createAuditEvent(
+    await addAudit(state,
       "human_approved",
       "ok",
       "Human approval recorded",
       `${proposal.trade.side.toUpperCase()} ${proposal.trade.quantity} ${proposal.trade.pair} approved under DUAL mandate.`,
       { proposalId: proposal.id }
-    ));
+    );
     await saveState(state);
     sendJson(res, 200, { state, proposal });
     return;
@@ -129,13 +150,13 @@ async function handleApi(req, res, url) {
     if (policy.decision !== "allow") {
       proposal.state = policy.decision;
       state.passport.dualObjectState = "blocked";
-      state.audit.unshift(createAuditEvent(
+      await addAudit(state,
         "execution_blocked",
         "blocked",
         "Execution blocked by DUAL",
         describePolicy(proposal.trade, policy),
         { proposalId: proposal.id, policy }
-      ));
+      );
       await saveState(state);
       sendJson(res, 409, { state, proposal, policy });
       return;
@@ -147,13 +168,13 @@ async function handleApi(req, res, url) {
     proposal.executedAt = new Date().toISOString();
     state.passport.dailyNotionalUsed = Math.round((state.passport.dailyNotionalUsed + policy.notional) * 100) / 100;
     state.passport.dualObjectState = "executed";
-    state.audit.unshift(createAuditEvent(
+    await addAudit(state,
       "paper_executed",
       "ok",
       "Kraken paper trade executed",
       `${proposal.trade.side.toUpperCase()} ${proposal.trade.quantity} ${proposal.trade.pair} via ${result.source}.`,
       { proposalId: proposal.id, resultDigest: result.digest, source: result.source }
-    ));
+    );
     await saveState(state);
     sendJson(res, 200, { state, proposal, result });
     return;
@@ -164,14 +185,13 @@ async function handleApi(req, res, url) {
     const state = await loadState();
     const trade = redTeamTrade(body.scenario, state.passport, state.market);
     const policy = evaluateTrade(state.passport, trade);
-    const event = createAuditEvent(
+    const event = await addAudit(state,
       "red_team_check",
       policy.decision === "block" ? "blocked" : "warning",
       `${trade.label} tested`,
       describePolicy(trade, policy),
       { scenario: body.scenario, trade, policy }
     );
-    state.audit.unshift(event);
     state.passport.dualObjectState = policy.decision === "block" ? "blocked" : state.passport.dualObjectState;
     await saveState(state);
     sendJson(res, 200, { state, trade, policy, event });
@@ -249,4 +269,35 @@ function describePolicy(trade, policy) {
     return `DUAL requires approval: ${policy.warnings.join(" ")}`;
   }
   return `DUAL blocked action: ${policy.violations.join(" ")}`;
+}
+
+async function addAudit(state, type, status, title, detail, payload = {}) {
+  const event = createAuditEvent(type, status, title, detail, payload);
+  try {
+    const dualResult = await dualPersistence.recordEvent(state.passport, event);
+    event.dualSync = dualResult?.skipped
+      ? { synced: false, reason: dualResult.reason }
+      : { synced: true };
+  } catch (error) {
+    event.dualSync = { synced: false, error: error.message };
+  }
+  state.audit.unshift(event);
+  return event;
+}
+
+async function loadDotEnv() {
+  try {
+    const envText = await readFile(join(root, ".env"), "utf8");
+    for (const line of envText.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const equals = trimmed.indexOf("=");
+      if (equals === -1) continue;
+      const key = trimmed.slice(0, equals).trim();
+      const value = trimmed.slice(equals + 1).trim();
+      if (!process.env[key]) process.env[key] = value;
+    }
+  } catch {
+    // .env is optional.
+  }
 }

@@ -2,6 +2,10 @@ const base = process.env.DEMO_BASE_URL || "http://localhost:4173";
 
 const health = await get("/api/health");
 assert(health.ok, "health endpoint returns ok");
+assert(health.dual.mode === "local", "DUAL persistence defaults to local mode");
+
+const dualStatus = await get("/api/dual/status");
+assert(dualStatus.available, "DUAL local persistence adapter is available");
 
 let state = await get("/api/state");
 assert(state.passport.mode === "paper", "passport is paper mode");

@@ -9,6 +9,7 @@ The public MVP runs in paper/simulator mode by default:
 - Kraken spot paper trade command path when available.
 - DUAL `agent_trading_passport` lifecycle simulated locally with the same object model expected for a DUAL-backed integration.
 - Red-team scenarios that prove unsafe requests are blocked before execution.
+- Optional DUAL persistence adapter for syncing passport/audit lifecycle to DUAL when credentials are configured.
 
 ## Run
 
@@ -50,9 +51,34 @@ kraken paper buy BTCUSD 0.01 -o json
 
 If the binary is missing or returns an error, the app falls back to deterministic simulated data and labels the adapter as `Simulator fallback`.
 
+## DUAL Persistence
+
+By default the demo uses local persistence. To sync lifecycle events to real DUAL objects, configure:
+
+```bash
+DUAL_PERSISTENCE_MODE=dual
+DUAL_API_URL=https://gateway-48587430648.europe-west6.run.app
+DUAL_API_KEY=...
+DUAL_ORG_ID=...
+DUAL_AGENT_PASSPORT_TEMPLATE_ID=...
+DUAL_AGENT_PASSPORT_OBJECT_ID=...
+```
+
+The adapter is intentionally optional. If the DUAL SDK or credentials are unavailable, the app keeps running in local simulator mode.
+
+Useful endpoints:
+
+```text
+GET  /api/dual/status
+POST /api/dual/template
+POST /api/dual/sync-passport
+```
+
+Template schema: `dual-agent-passport.schema.json`.
+
 ## DUAL Object Model
 
-The MVP simulates a DUAL object named `agent_trading_passport`:
+The MVP uses a DUAL-shaped object named `agent_trading_passport`:
 
 - `mode`: paper
 - `allowedPairs`: BTCUSD, ETHUSD, SOLUSD

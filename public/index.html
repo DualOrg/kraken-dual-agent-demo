@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DUAL x Kraken Agent Passport</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="rail">
+        <div class="brand">
+          <div class="brand-mark">D/K</div>
+          <div>
+            <strong>DUAL x Kraken</strong>
+            <span>Agent Passport</span>
+          </div>
+        </div>
+        <nav>
+          <button class="nav-item active" data-view="command">Command</button>
+          <button class="nav-item" data-view="mandate">Mandate</button>
+          <button class="nav-item" data-view="audit">Audit</button>
+          <button class="nav-item" data-view="redteam">Red Team</button>
+        </nav>
+        <div class="rail-card">
+          <span>Mode</span>
+          <strong id="modeLabel">PAPER</strong>
+          <small>No credentials. No real funds.</small>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <h1>Agent Trading Passport</h1>
+            <p>Kraken executes. DUAL governs, approves, and records.</p>
+          </div>
+          <div class="top-actions">
+            <span class="status-pill" id="adapterStatus">Checking adapter</span>
+            <button id="resetButton" class="ghost-button">Reset demo</button>
+          </div>
+        </header>
+
+        <section class="market-strip" id="marketStrip"></section>
+
+        <section class="grid">
+          <article class="panel trade-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Propose Paper Trade</h2>
+                <p>Policy checked before Kraken paper execution.</p>
+              </div>
+              <span class="mini-label">DUAL gate</span>
+            </div>
+
+            <form id="tradeForm" class="trade-form">
+              <label>
+                Pair
+                <select name="pair">
+                  <option>BTCUSD</option>
+                  <option>ETHUSD</option>
+                  <option>SOLUSD</option>
+                </select>
+              </label>
+              <label>
+                Side
+                <select name="side">
+                  <option>buy</option>
+                  <option>sell</option>
+                </select>
+              </label>
+              <label>
+                Notional USD
+                <input name="notional" type="number" min="1" value="75">
+              </label>
+              <button class="primary-button" type="submit">Check policy</button>
+            </form>
+
+            <div class="proposal-card" id="proposalCard">
+              <span>No active proposal</span>
+              <strong>Create a trade intent to see DUAL policy output.</strong>
+            </div>
+
+            <div class="button-row">
+              <button id="approveButton" class="secondary-button" disabled>Approve</button>
+              <button id="executeButton" class="primary-button" disabled>Execute paper trade</button>
+            </div>
+          </article>
+
+          <article class="panel passport-panel">
+            <div class="panel-header">
+              <div>
+                <h2>DUAL Mandate</h2>
+                <p id="passportState">Loading passport</p>
+              </div>
+              <span class="state-chip" id="stateChip">active</span>
+            </div>
+            <div class="mandate-list" id="mandateList"></div>
+          </article>
+
+          <article class="panel red-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Compliance Red Team</h2>
+                <p>Unsafe requests should fail before execution.</p>
+              </div>
+            </div>
+            <div class="red-grid">
+              <button data-scenario="oversized">Oversized order</button>
+              <button data-scenario="blocked_pair">Blocked pair</button>
+              <button data-scenario="leverage">Leverage attempt</button>
+              <button data-scenario="missing_approval">Missing approval</button>
+            </div>
+          </article>
+
+          <article class="panel audit-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Provenance Timeline</h2>
+                <p>Every market snapshot, policy decision, approval, and execution.</p>
+              </div>
+              <span class="mini-label" id="eventCount">0 events</span>
+            </div>
+            <ol class="timeline" id="timeline"></ol>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

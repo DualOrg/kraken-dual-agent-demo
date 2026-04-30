@@ -1,0 +1,80 @@
+# DUAL x Kraken Agent Trading Passport
+
+A safe partner-demo repo that shows Kraken as the agent execution venue and DUAL as the policy, approval, and audit layer.
+
+The public MVP runs in paper/simulator mode by default:
+
+- Kraken CLI market data if `kraken` is installed.
+- Simulator fallback when Kraken CLI is unavailable.
+- Kraken spot paper trade command path when available.
+- DUAL `agent_trading_passport` lifecycle simulated locally with the same object model expected for a DUAL-backed integration.
+- Red-team scenarios that prove unsafe requests are blocked before execution.
+
+## Run
+
+```bash
+npm start
+```
+
+Open <http://localhost:4173>.
+
+## Test
+
+In one terminal:
+
+```bash
+npm start
+```
+
+In another:
+
+```bash
+npm test
+```
+
+## Kraken CLI Integration
+
+Install Kraken CLI separately when ready:
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/krakenfx/kraken-cli/releases/latest/download/kraken-cli-installer.sh | sh
+```
+
+The adapter targets the documented safe commands:
+
+```bash
+kraken ticker BTCUSD -o json
+kraken paper init --balance 10000 -o json
+kraken paper buy BTCUSD 0.01 -o json
+```
+
+If the binary is missing or returns an error, the app falls back to deterministic simulated data and labels the adapter as `Simulator fallback`.
+
+## DUAL Object Model
+
+The MVP simulates a DUAL object named `agent_trading_passport`:
+
+- `mode`: paper
+- `allowedPairs`: BTCUSD, ETHUSD, SOLUSD
+- `maxNotionalUsd`: 250
+- `maxDailyNotionalUsd`: 1000
+- `leverageAllowed`: false
+- `humanApprovalRequiredAbove`: 100
+- `dualObjectState`: active, awaiting approval, approved, executed, blocked
+
+Every important action creates an audit event with a provenance hash.
+
+## Safety Rules
+
+- Public demo is paper-only.
+- No Kraken API keys are required.
+- No keys should be placed in browser code, DUAL objects, screenshots, logs, or commits.
+- Live trading is intentionally out of scope for this repo until a separate private safety review.
+
+## Build Roadmap
+
+1. Replace the local DUAL simulator with real DUAL template/object/action calls.
+2. Add tournament mode with multiple agent passports.
+3. Add exportable audit bundle.
+4. Add read-only Kraken account view for private demos.
+5. Add live-trading controls only after explicit approval, least-privilege keys, validation mode, and emergency cancellation flow.

@@ -1,0 +1,16 @@
+{
+  "name": "kraken-dual-agent-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DUAL x Kraken Agent Trading Passport demo with policy checks, paper execution, red-team scenarios, and audit trail.",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs",
+    "test": "node scripts/smoke-test.mjs",
+    "check": "node --check server.mjs && node --check src/krakenAdapter.mjs && node --check src/dualStore.mjs && node --check src/policy.mjs && node --check scripts/smoke-test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

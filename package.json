@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "DUAL x Kraken Agent Trading Passport demo with policy checks, paper execution, red-team scenarios, and audit trail.",
+  "dependencies": {
+    "dual-sdk": "git+https://github.com/DualOrg/dual-sdk-ts.git"
+  },
   "scripts": {
     "start": "node server.mjs",
     "dev": "node server.mjs",

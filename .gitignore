@@ -4,3 +4,6 @@ data/state.json
 qa/*.png
 qa/*.json
 .env
+.gh-config/
+.npm-cache/
+.vercel/

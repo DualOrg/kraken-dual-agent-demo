@@ -37,13 +37,18 @@ DUAL_API_KEY=...
 DUAL_ORG_ID=...
 DUAL_AGENT_PASSPORT_TEMPLATE_ID=...
 DUAL_AGENT_PASSPORT_OBJECT_ID=...
+DUAL_AUTH_MODE=api_key
+DUAL_WRITE_MODE=read_only
 ```
 
 The runtime also needs `dual-sdk` available. If the package is not installed in the deployment, `/api/dual/status` will report the SDK as unavailable and the app should remain in local mode.
+
+API-key auth is suitable for linking the Vercel deployment to a real DUAL passport object for read verification. DUAL event-bus writes currently require bearer/session auth, so do not set `DUAL_WRITE_MODE=event_bus` unless that token path has been deliberately provisioned.
 
 Recommended rollout:
 
 1. Create the DUAL template from `dual-agent-passport.schema.json`.
 2. Mint one passport object for the Kraken Market Agent.
 3. Set `DUAL_AGENT_PASSPORT_OBJECT_ID` in Vercel.
-4. Redeploy and verify `/api/dual/status`.
+4. Keep `DUAL_WRITE_MODE=read_only` for API-key deployments.
+5. Redeploy and verify `/api/dual/status`.

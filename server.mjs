@@ -27,7 +27,7 @@ const server = http.createServer(async (req, res) => {
 
     await serveStatic(req, res, url);
   } catch (error) {
-    sendJson(res, 500, { error: "server_error", message: error.message });
+    sendJson(res, error.status || 500, { error: "server_error", message: error.message });
   }
 });
 

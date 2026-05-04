@@ -62,9 +62,13 @@ DUAL_API_KEY=...
 DUAL_ORG_ID=...
 DUAL_AGENT_PASSPORT_TEMPLATE_ID=...
 DUAL_AGENT_PASSPORT_OBJECT_ID=...
+DUAL_AUTH_MODE=api_key
+DUAL_WRITE_MODE=read_only
 ```
 
 The adapter is intentionally optional. If the DUAL SDK or credentials are unavailable, the app keeps running in local simulator mode.
+
+With API-key auth, the app can link to and verify a real DUAL passport object. Event-bus writes require bearer/session auth, so production should stay in `DUAL_WRITE_MODE=read_only` unless a suitable session token is explicitly provided.
 
 Useful endpoints:
 
@@ -99,7 +103,7 @@ Every important action creates an audit event with a provenance hash.
 
 ## Build Roadmap
 
-1. Replace the local DUAL simulator with real DUAL template/object/action calls.
+1. Replace read-linked DUAL mode with bearer-authenticated event-bus write sync.
 2. Add tournament mode with multiple agent passports.
 3. Add exportable audit bundle.
 4. Add read-only Kraken account view for private demos.

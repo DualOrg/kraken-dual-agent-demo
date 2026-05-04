@@ -5,6 +5,8 @@ export async function createDualPersistence() {
   const objectId = process.env.DUAL_AGENT_PASSPORT_OBJECT_ID || "";
   const apiKey = process.env.DUAL_API_KEY || "";
   const baseUrl = process.env.DUAL_API_URL || "https://gateway-48587430648.europe-west6.run.app";
+  const authMode = process.env.DUAL_AUTH_MODE || "api_key";
+  const writeMode = process.env.DUAL_WRITE_MODE || (authMode === "api_key" ? "read_only" : "event_bus");
 
   const config = {
     mode,
@@ -12,6 +14,8 @@ export async function createDualPersistence() {
     templateId,
     objectId,
     baseUrl,
+    authMode,
+    writeMode,
     configured: Boolean(apiKey && orgId && templateId)
   };
 
@@ -21,7 +25,7 @@ export async function createDualPersistence() {
   if (mode === "dual" && config.configured) {
     try {
       const { DualClient } = await import("dual-sdk");
-      client = new DualClient({ baseUrl, apiKey, timeout: 30000 });
+      client = new DualClient({ baseUrl, token: apiKey, authMode, timeout: 30000 });
     } catch (error) {
       sdkError = error;
     }
@@ -42,11 +46,16 @@ export async function createDualPersistence() {
         mode: "dual",
         configured: config.configured,
         available: Boolean(client),
+        writable: Boolean(client && writeMode === "event_bus"),
         orgId: orgId || null,
         templateId: templateId || null,
         objectId: objectId || null,
+        authMode,
+        writeMode,
         detail: client
-          ? "DUAL persistence adapter is ready."
+          ? writeMode === "event_bus"
+            ? "DUAL persistence adapter is ready for event-bus writes."
+            : "DUAL passport is linked for read verification. Event-bus writes need bearer/session auth."
           : sdkError
             ? `DUAL SDK unavailable: ${sdkError.message}`
             : "Set DUAL_API_KEY, DUAL_ORG_ID, and DUAL_AGENT_PASSPORT_TEMPLATE_ID."
@@ -55,8 +64,8 @@ export async function createDualPersistence() {
 
     async createTemplate() {
       requireClient(client, config);
+      requireWritable(config);
       return client.templates.create({
-        organizationId: orgId,
         name: "io.dual.kraken.agent_trading_passport",
         description: "Policy-bound agent passport for Kraken paper/live trading governance.",
         properties: agentTradingPassportProperties()
@@ -65,29 +74,37 @@ export async function createDualPersistence() {
 
     async syncPassport(passport, metadata = {}) {
       requireClient(client, config);
+      requireWritable(config);
       const properties = passportProperties(passport, metadata);
 
       if (objectId) {
         return client.eventBus.execute({
-          action: "update",
-          organizationId: orgId,
-          objectId,
-          properties,
+          action: {
+            update: {
+              id: objectId,
+              custom: properties
+            }
+          },
           metadata
         });
       }
 
       return client.eventBus.execute({
-        action: "mint",
-        organizationId: orgId,
-        templateId,
-        properties,
+        action: {
+          mint: {
+            template_id: templateId,
+            custom: properties
+          }
+        },
         metadata
       });
     },
 
     async recordEvent(passport, event) {
       if (!client) return { skipped: true, reason: this.status().detail };
+      if (writeMode !== "event_bus") {
+        return { skipped: true, reason: "DUAL event-bus writes require bearer/session auth; current deployment is read-linked." };
+      }
 
       const properties = {
         ...passportProperties(passport, { lastEventId: event.id }),
@@ -108,19 +125,23 @@ export async function createDualPersistence() {
 
       if (objectId) {
         return client.eventBus.execute({
-          action: event.type || "update",
-          organizationId: orgId,
-          objectId,
-          properties,
+          action: {
+            update: {
+              id: objectId,
+              custom: properties
+            }
+          },
           metadata
         });
       }
 
       return client.eventBus.execute({
-        action: "mint",
-        organizationId: orgId,
-        templateId,
-        properties,
+        action: {
+          mint: {
+            template_id: templateId,
+            custom: properties
+          }
+        },
         metadata
       });
     }
@@ -132,6 +153,13 @@ function requireClient(client, config) {
   const error = new Error(config.configured
     ? "DUAL SDK is unavailable. Install/configure dual-sdk in this runtime."
     : "DUAL persistence requires DUAL_API_KEY, DUAL_ORG_ID, and DUAL_AGENT_PASSPORT_TEMPLATE_ID.");
+  error.status = 400;
+  throw error;
+}
+
+function requireWritable(config) {
+  if (config.writeMode === "event_bus") return;
+  const error = new Error("This deployment is linked to a real DUAL passport, but write-sync requires bearer/session auth. Set DUAL_AUTH_MODE=bearer and DUAL_WRITE_MODE=event_bus with a suitable token to enable writes.");
   error.status = 400;
   throw error;
 }

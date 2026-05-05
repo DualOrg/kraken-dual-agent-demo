@@ -210,30 +210,26 @@ export async function createDualPersistence() {
 
       if (objectId) {
         return writeClient.eventBus.execute({
-          action: {
-            update: {
-              id: objectId,
-              custom: properties
-            }
-          },
+          action: "update",
+          organizationId: orgId,
+          objectId,
+          properties,
           metadata
         });
       }
 
       return writeClient.eventBus.execute({
-        action: {
-          mint: {
-            template_id: templateId,
-            custom: properties
-          }
-        },
+        action: "mint",
+        organizationId: orgId,
+        templateId,
+        properties,
         metadata
       });
     },
 
     buildReplayQueue(passport, audit = []) {
       const events = audit.map((event) => {
-        const envelope = eventBusEnvelope(objectId, templateId, passport, event);
+        const envelope = eventBusEnvelope(objectId, templateId, orgId, passport, event);
         return {
           eventId: event.id,
           eventType: event.type,
@@ -340,7 +336,7 @@ export async function createDualPersistence() {
     async recordEvent(passport, event) {
       const writeClient = activeWriteClient();
       if (!activeReadClient()) return { skipped: true, reason: this.status().detail };
-      const envelope = eventBusEnvelope(objectId, templateId, passport, event);
+      const envelope = eventBusEnvelope(objectId, templateId, orgId, passport, event);
       if (!writeClient) {
         return {
           skipped: true,
@@ -455,7 +451,7 @@ function agentTradingPassportProperties() {
   };
 }
 
-function eventBusEnvelope(objectId, templateId, passport, event) {
+function eventBusEnvelope(objectId, templateId, orgId, passport, event) {
   const properties = {
     ...passportProperties(passport, { lastEventId: event.id }),
     last_event_id: event.id,
@@ -475,23 +471,19 @@ function eventBusEnvelope(objectId, templateId, passport, event) {
 
   if (objectId) {
     return {
-      action: {
-        update: {
-          id: objectId,
-          custom: properties
-        }
-      },
+      action: "update",
+      organizationId: orgId,
+      objectId,
+      properties,
       metadata
     };
   }
 
   return {
-    action: {
-      mint: {
-        template_id: templateId,
-        custom: properties
-      }
-    },
+    action: "mint",
+    organizationId: orgId,
+    templateId,
+    properties,
     metadata
   };
 }

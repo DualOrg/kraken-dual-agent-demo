@@ -302,7 +302,8 @@ export async function createDualPersistence() {
 
     async executeReplayQueue(passport, audit = []) {
       const writeClient = requireWritableClient();
-      const replayQueue = this.buildReplayQueue(passport, audit);
+      const replayPassport = await hydratePassportFromDual(passport, activeReadClient(), objectId);
+      const replayQueue = this.buildReplayQueue(replayPassport, audit);
       if (!replayQueue.ready) {
         const error = new Error("Replay queue is not ready; configure a DUAL object or template target.");
         error.status = 400;
@@ -571,6 +572,46 @@ function policyHashFromPassport(passport) {
     approvalPolicy: passport.approvalPolicy,
     policyVersion: passport.policyVersion || 1
   });
+}
+
+async function hydratePassportFromDual(passport, readClient, objectId) {
+  if (!readClient || !objectId) return passport;
+  try {
+    const object = await readClient.objects.get(objectId);
+    const custom = object.custom || object.properties || {};
+    if (!custom.passport_id) return passport;
+    return {
+      ...passport,
+      id: custom.passport_id || passport.id,
+      agentName: custom.agent_name || passport.agentName,
+      mode: custom.mode || passport.mode,
+      dualObjectState: custom.state || passport.dualObjectState || passport.state,
+      allowedPairs: Array.isArray(custom.allowed_pairs) ? custom.allowed_pairs : passport.allowedPairs,
+      maxNotionalUsd: numberFromCustom(custom.max_notional_usd, passport.maxNotionalUsd),
+      maxDailyNotionalUsd: numberFromCustom(custom.max_daily_notional_usd, passport.maxDailyNotionalUsd),
+      dailyNotionalUsed: numberFromCustom(custom.daily_notional_used, passport.dailyNotionalUsed),
+      leverageAllowed: booleanFromCustom(custom.leverage_allowed, passport.leverageAllowed),
+      humanApprovalRequiredAbove: numberFromCustom(custom.human_approval_required_above, passport.humanApprovalRequiredAbove),
+      blockedActions: Array.isArray(custom.blocked_actions) ? custom.blocked_actions : passport.blockedActions,
+      approvalPolicy: custom.approval_policy || passport.approvalPolicy,
+      policyVersion: numberFromCustom(custom.policy_version, passport.policyVersion || 1),
+      policyHash: custom.policy_hash || passport.policyHash,
+      ownerWallet: custom.owner_wallet || passport.ownerWallet
+    };
+  } catch {
+    return passport;
+  }
+}
+
+function numberFromCustom(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function booleanFromCustom(value, fallback) {
+  if (value === true || value === "true") return true;
+  if (value === false || value === "false") return false;
+  return fallback;
 }
 
 function agentTradingPassportProperties() {

@@ -2,7 +2,8 @@ const state = {
   data: null,
   activeProposalId: null,
   health: null,
-  proof: null
+  proof: null,
+  proofVerification: null
 };
 
 const pairs = ["BTCUSD", "ETHUSD", "SOLUSD"];
@@ -215,13 +216,19 @@ function renderTimeline() {
 }
 
 async function loadProof() {
-  state.proof = await getJson("/api/proof");
+  const [proof, proofVerification] = await Promise.all([
+    getJson("/api/proof"),
+    getJson("/api/proof/verify")
+  ]);
+  state.proof = proof;
+  state.proofVerification = proofVerification;
   renderProof();
   return state.proof;
 }
 
 function renderProof() {
   const proof = state.proof;
+  const verifier = state.proofVerification;
   const dual = proof?.status?.dualMode || state.health?.dual;
   const adapter = proof?.status?.krakenMarketData || state.health?.adapter?.source || "checking";
   const dualObject = proof?.dualObject;
@@ -237,7 +244,8 @@ function renderProof() {
     ["Replay queue", replayQueue?.eventCount != null ? `${replayQueue.eventCount} events` : "pending"],
     ["Replay root", replayQueue?.rootHash ? shortId(replayQueue.rootHash) : "pending"],
     ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],
-    ["Proof hash", proof?.proofHash ? shortId(proof.proofHash) : "pending"]
+    ["Proof hash", proof?.proofHash ? shortId(proof.proofHash) : "pending"],
+    ["Verifier", verifier ? verifier.ok ? "all checks pass" : "checks pending" : "pending"]
   ];
 
   els.proofGrid.innerHTML = rows.map(([label, value]) => `

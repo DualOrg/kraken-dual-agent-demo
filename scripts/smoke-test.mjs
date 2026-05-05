@@ -19,6 +19,15 @@ assert(proof.proofHash, "proof endpoint returns a proof hash");
 assert(proof.audit.rootHash, "proof endpoint returns an audit root");
 assert(typeof proof.status.writeReadiness.ready === "boolean", "proof includes write readiness");
 assert(proof.replayQueue.rootHash, "proof includes replay queue root");
+assert(Array.isArray(proof.verification), "proof includes verification checks");
+
+const proofVerify = await get("/api/proof/verify");
+assert(typeof proofVerify.ok === "boolean", "proof verifier returns an ok flag");
+assert(proofVerify.proofHash === proof.proofHash, "proof verifier checks the same proof hash");
+assert(Array.isArray(proofVerify.checks), "proof verifier returns checks");
+
+const proofAgain = await get("/api/proof");
+assert(proofAgain.proofHash === proof.proofHash, "proof hash is stable across generatedAt changes");
 
 let state = await get("/api/state");
 assert(state.passport.mode === "paper", "passport is paper mode");

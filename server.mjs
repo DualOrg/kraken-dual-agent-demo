@@ -77,6 +77,18 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/proof/verify") {
+    const proof = await buildProofBundle();
+    sendJson(res, 200, {
+      ok: proof.verification.every((check) => check.ok),
+      proofHash: proof.proofHash,
+      auditRoot: proof.audit.rootHash,
+      replayRoot: proof.replayQueue.rootHash,
+      checks: proof.verification
+    });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/dual/template") {
     const result = await dualPersistence.createTemplate();
     sendJson(res, 200, result);
@@ -326,8 +338,31 @@ async function buildProofBundle() {
     dualSync: event.dualSync || null
   })));
 
+  const verification = [
+    {
+      id: "kraken-market-source",
+      ok: adapter.source === "kraken-cli" || adapter.source === "kraken-public-api",
+      detail: `Market source is ${adapter.source}.`
+    },
+    {
+      id: "dual-read-link",
+      ok: Boolean(dualObject?.available && dualObject.id === dualPersistence.status().objectId),
+      detail: dualObject?.available ? `DUAL object ${dualObject.id} is readable.` : "DUAL object is not readable."
+    },
+    {
+      id: "dual-mandate-template",
+      ok: Boolean(dualTemplate?.available && dualTemplate.custom?.agent_name === state.passport.agentName),
+      detail: dualTemplate?.available ? "DUAL template mandate matches the local passport agent." : "DUAL template is not readable."
+    },
+    {
+      id: "replay-queue",
+      ok: Boolean(replayQueue.ready && replayQueue.rootHash),
+      detail: `${replayQueue.eventCount} event-bus envelopes are replayable once write auth is available.`
+    }
+  ];
+
   const payload = {
-    generatedAt: new Date().toISOString(),
+    schemaVersion: "dual-kraken-proof.v2",
     demo: "DUAL x Kraken Agent Trading Passport",
     status: {
       krakenMarketData: adapter.source,
@@ -367,10 +402,12 @@ async function buildProofBundle() {
     caveats: [
       adapter.krakenCliAvailable ? "Kraken paper execution is CLI-backed." : "Kraken paper execution is simulated because Kraken CLI is unavailable in this runtime.",
       dualPersistence.status().writable ? "DUAL event-bus writes are enabled." : "DUAL is read-linked; event-bus writes require bearer/session/service-account auth."
-    ]
+    ],
+    verification
   };
 
   return {
+    generatedAt: new Date().toISOString(),
     ...payload,
     proofHash: hashJson(payload)
   };
@@ -397,7 +434,15 @@ async function addAudit(state, type, status, title, detail, payload = {}) {
 }
 
 function hashJson(value) {
-  return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 async function loadDotEnv() {

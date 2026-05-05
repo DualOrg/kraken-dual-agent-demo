@@ -82,11 +82,12 @@ GET  /api/dual/template-readback
 POST /api/dual/template
 POST /api/dual/sync-passport
 GET  /api/proof
+GET  /api/proof/verify
 ```
 
 Template schema: `dual-agent-passport.schema.json`.
 
-`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, write-readiness, local audit root hash, replay queue root, latest event hashes, caveats, and a bundle hash. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes that become executable once bearer/session auth is provisioned.
+`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, write-readiness, local audit root hash, replay queue root, latest event hashes, caveats, verification checks, and a stable bundle hash. `generatedAt` is outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes that become executable once bearer/session auth is provisioned.
 
 ## DUAL Object Model
 

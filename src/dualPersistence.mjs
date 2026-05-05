@@ -619,7 +619,7 @@ function eventBusEnvelope(objectId, templateId, orgId, passport, event) {
       properties,
       metadata,
       actionName: "update",
-      payload: updateEventBusEnvelope("flat", objectId, templateId, orgId, properties, metadata)
+      payload: updateEventBusEnvelope("nested_data_custom", objectId, templateId, orgId, properties, metadata)
     };
   }
 
@@ -1230,7 +1230,8 @@ function summarizeDualResult(result) {
     id: result.id || result.object_id || result.objectId || result.event_id || result.eventId || null,
     status: result.status || result.state || null,
     hash: result.hash || result.integrity_hash || result.integrityHash || result.state_hash || result.stateHash || null,
-    actionId: result.action_id || result.actionId || null
+    actionId: result.action_id || result.actionId || null,
+    payloadStyle: result.payloadStyle || null
   };
 }
 

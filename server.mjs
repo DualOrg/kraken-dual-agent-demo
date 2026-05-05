@@ -429,6 +429,32 @@ async function buildProofBundle() {
 
   const audit = state.audit || [];
   const replayQueue = dualPersistence.buildReplayQueue(state.passport, audit);
+  const templateFields = dualTemplate?.custom || {};
+  const objectCustom = dualObject?.custom || {};
+  const requiredMandateFields = [
+    "passport_id",
+    "agent_name",
+    "mode",
+    "state",
+    "allowed_pairs",
+    "max_notional_usd",
+    "max_daily_notional_usd",
+    "leverage_allowed",
+    "approval_policy",
+    "last_event_id"
+  ];
+  const templateHasMandateSchema = Boolean(
+    dualTemplate?.available && requiredMandateFields.every((field) => Object.hasOwn(templateFields, field))
+  );
+  const objectMatchesPassport = Boolean(
+    dualObject?.available
+      && objectCustom.agent_name === state.passport.agentName
+      && objectCustom.passport_id === state.passport.id
+      && objectCustom.mode === state.passport.mode
+  );
+  const syncedAuditEvents = audit.filter((event) => (
+    event.dualSync?.synced && event.dualSync?.result?.actionId
+  )).length;
   const auditRoot = hashJson(audit.map((event) => ({
     id: event.id,
     type: event.type,
@@ -450,13 +476,25 @@ async function buildProofBundle() {
     },
     {
       id: "dual-mandate-template",
-      ok: Boolean(dualTemplate?.available && dualTemplate.custom?.agent_name === state.passport.agentName),
-      detail: dualTemplate?.available ? "DUAL template mandate matches the local passport agent." : "DUAL template is not readable."
+      ok: templateHasMandateSchema,
+      detail: dualTemplate?.available ? "DUAL template exposes the Kraken agent mandate schema." : "DUAL template is not readable."
+    },
+    {
+      id: "dual-object-readback",
+      ok: objectMatchesPassport,
+      detail: dualObject?.available ? "DUAL object custom data matches the local passport mandate." : "DUAL object is not readable."
+    },
+    {
+      id: "dual-event-bus-sync",
+      ok: Boolean(audit.length && syncedAuditEvents === audit.length),
+      detail: `${syncedAuditEvents}/${audit.length} audit events have DUAL event-bus action ids.`
     },
     {
       id: "replay-queue",
       ok: Boolean(replayQueue.ready && replayQueue.rootHash),
-      detail: `${replayQueue.eventCount} event-bus envelopes are replayable once write auth is available.`
+      detail: replayQueue.writable
+        ? `${replayQueue.eventCount} event-bus envelopes are replay-ready with write auth active.`
+        : `${replayQueue.eventCount} event-bus envelopes are replayable once write auth is available.`
     }
   ];
 

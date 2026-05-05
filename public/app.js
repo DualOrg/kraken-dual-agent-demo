@@ -140,20 +140,6 @@ function bindEvents() {
     }
   });
 
-  els.setupActionPassportButton.addEventListener("click", async () => {
-    try {
-      els.dualAuthMessage.textContent = "Creating action-enabled DUAL passport...";
-      const result = await postJson("/api/dual/action-passport/setup", {
-        confirm: "create-action-enabled-kraken-passport"
-      });
-      state.actionPassportSetup = result;
-      els.dualAuthMessage.textContent = `Created template ${shortId(result.vercelEnv.DUAL_AGENT_PASSPORT_TEMPLATE_ID)} and object ${shortId(result.vercelEnv.DUAL_AGENT_PASSPORT_OBJECT_ID)}.`;
-      renderProof();
-    } catch (error) {
-      els.dualAuthMessage.textContent = error.message;
-    }
-  });
-
   document.querySelectorAll("[data-scenario]").forEach((button) => {
     button.addEventListener("click", async () => {
       const result = await postJson("/api/red-team", { scenario: button.dataset.scenario });

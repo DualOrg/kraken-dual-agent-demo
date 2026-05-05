@@ -346,7 +346,12 @@ async function serveStatic(req, res, url) {
 async function readBody(req) {
   let body = "";
   for await (const chunk of req) body += chunk.toString();
-  return body ? JSON.parse(body) : {};
+  if (!body) return {};
+  const contentType = req.headers["content-type"] || "";
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    return Object.fromEntries(new URLSearchParams(body));
+  }
+  return JSON.parse(body);
 }
 
 function sendJson(res, status, payload, headers = {}) {

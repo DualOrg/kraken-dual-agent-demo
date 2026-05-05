@@ -122,7 +122,10 @@
                 <p>Readback from DUAL, Kraken source, and local audit root.</p>
               </div>
               <button id="exportProofButton" class="ghost-button" type="button">Export proof</button>
-              <button id="setupActionPassportButton" class="ghost-button" type="button" disabled>Setup action passport</button>
+              <form class="inline-form" action="/api/dual/action-passport/setup" method="post">
+                <input type="hidden" name="confirm" value="create-action-enabled-kraken-passport">
+                <button id="setupActionPassportButton" class="ghost-button" type="submit" disabled>Setup action passport</button>
+              </form>
               <button id="executeReplayButton" class="secondary-button" type="button" disabled>Execute DUAL replay</button>
             </div>
             <div class="auth-grid">

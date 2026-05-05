@@ -16,6 +16,7 @@ await loadDotEnv();
 const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "127.0.0.1";
 const dualPersistence = await createDualPersistence();
+const dualSessionCookieName = "__Host-dual_kraken_session";
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -37,6 +38,8 @@ server.listen(port, host, () => {
 });
 
 async function handleApi(req, res, url) {
+  restoreDualSession(req);
+
   if (req.method === "GET" && url.pathname === "/api/health") {
     const adapter = await getAdapterStatus();
     sendJson(res, 200, { ok: true, adapter, dual: dualPersistence.status() });
@@ -67,8 +70,13 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/dual/auth/verify-code") {
     const body = await readBody(req);
-    const result = await dualPersistence.verifyEmailCode(body.email, body.code);
-    sendJson(res, 200, result);
+    let sessionCookie = null;
+    const result = await dualPersistence.verifyEmailCode(body.email, body.code, {
+      onSession(session) {
+        sessionCookie = createDualSessionCookie(session);
+      }
+    });
+    sendJson(res, 200, result, sessionCookie ? { "set-cookie": sessionCookie } : {});
     return;
   }
 
@@ -322,8 +330,8 @@ async function readBody(req) {
   return body ? JSON.parse(body) : {};
 }
 
-function sendJson(res, status, payload) {
-  res.writeHead(status, { "content-type": "application/json" });
+function sendJson(res, status, payload, headers = {}) {
+  res.writeHead(status, { "content-type": "application/json", ...headers });
   res.end(JSON.stringify(payload));
 }
 
@@ -495,6 +503,65 @@ function stableStringify(value) {
     return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function restoreDualSession(req) {
+  const sealed = readCookie(req.headers.cookie || "", dualSessionCookieName);
+  if (!sealed) return;
+  const session = unsealDualSession(sealed);
+  if (session) dualPersistence.restoreEmailSession(session);
+}
+
+function createDualSessionCookie(session) {
+  const sealed = sealDualSession({
+    ...session,
+    expiresAt: Date.now() + 60 * 60 * 1000
+  });
+  return `${dualSessionCookieName}=${sealed}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600`;
+}
+
+function sealDualSession(session) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", dualSessionKey(), iv);
+  const encrypted = Buffer.concat([
+    cipher.update(JSON.stringify(session), "utf8"),
+    cipher.final()
+  ]);
+  const tag = cipher.getAuthTag();
+  return [iv, tag, encrypted].map((part) => part.toString("base64url")).join(".");
+}
+
+function unsealDualSession(sealed) {
+  try {
+    const [ivText, tagText, encryptedText] = String(sealed).split(".");
+    if (!ivText || !tagText || !encryptedText) return null;
+    const decipher = crypto.createDecipheriv("aes-256-gcm", dualSessionKey(), Buffer.from(ivText, "base64url"));
+    decipher.setAuthTag(Buffer.from(tagText, "base64url"));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(encryptedText, "base64url")),
+      decipher.final()
+    ]);
+    const session = JSON.parse(decrypted.toString("utf8"));
+    if (!session.expiresAt || Date.now() > Number(session.expiresAt)) return null;
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function dualSessionKey() {
+  return crypto
+    .createHash("sha256")
+    .update(process.env.DUAL_SESSION_SECRET || process.env.DUAL_API_KEY || "kraken-dual-agent-demo-dev-session")
+    .digest();
+}
+
+function readCookie(cookieHeader, name) {
+  return cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1) || null;
 }
 
 async function loadDotEnv() {

@@ -132,7 +132,7 @@ export async function createDualPersistence() {
       };
     },
 
-    async verifyEmailCode(email, code) {
+    async verifyEmailCode(email, code, options = {}) {
       const normalizedEmail = normalizeEmail(email || pendingEmail);
       const otp = String(code || "").trim();
       if (!otp) {
@@ -152,13 +152,23 @@ export async function createDualPersistence() {
       }
 
       sessionClient = loginClient;
+      const activeTokens = orgTokens || tokens;
       session = {
         email: normalizedEmail,
         orgId: orgId || null,
         authenticatedAt: new Date().toISOString(),
-        refreshTokenPresent: Boolean((orgTokens || tokens).refresh_token)
+        refreshTokenPresent: Boolean(activeTokens.refresh_token)
       };
       pendingEmail = null;
+      if (typeof options.onSession === "function") {
+        options.onSession({
+          token: activeTokens.access_token,
+          email: normalizedEmail,
+          orgId: session.orgId,
+          authenticatedAt: session.authenticatedAt,
+          refreshTokenPresent: session.refreshTokenPresent
+        });
+      }
 
       return {
         authenticated: true,
@@ -169,6 +179,20 @@ export async function createDualPersistence() {
         writeMode: effectiveWriteMode(),
         detail: "Bearer session authenticated. DUAL event-bus replay is ready if this wallet has /ebus/execute permission."
       };
+    },
+
+    restoreEmailSession(restoredSession) {
+      if (!restoredSession?.token || !restoredSession.email) return false;
+      const restoredClient = createBearerClient();
+      restoredClient.setToken(restoredSession.token);
+      sessionClient = restoredClient;
+      session = {
+        email: restoredSession.email,
+        orgId: restoredSession.orgId || orgId || null,
+        authenticatedAt: restoredSession.authenticatedAt || new Date().toISOString(),
+        refreshTokenPresent: Boolean(restoredSession.refreshTokenPresent)
+      };
+      return true;
     },
 
     async createTemplate() {

@@ -36,6 +36,9 @@ export async function createDualPersistence() {
   let DualClientClass = null;
   let resolvedEventBusPayloadStyle = process.env.DUAL_EVENTBUS_PAYLOAD_STYLE || "auto";
   let sdkError = null;
+  const serviceAccountEventBusWritable = Boolean(
+    serviceAccountToken && serviceAccountAuthMode === "bearer" && writeMode === "event_bus"
+  );
 
   if (mode === "dual") {
     try {
@@ -78,7 +81,7 @@ export async function createDualPersistence() {
         serviceAccount: {
           configured: config.serviceAccountConfigured,
           authMode: serviceAccountAuthMode,
-          writable: Boolean(serviceAccountClient && writeMode === "event_bus")
+          writable: Boolean(serviceAccountClient && serviceAccountEventBusWritable)
         },
         emailSession: session ? {
           authenticated: true,
@@ -127,7 +130,7 @@ export async function createDualPersistence() {
     },
 
     authStatus() {
-      const serviceWritable = Boolean(serviceAccountClient && writeMode === "event_bus");
+      const serviceWritable = Boolean(serviceAccountClient && serviceAccountEventBusWritable);
       const envBearerWritable = Boolean(client && authMode === "bearer" && writeMode === "event_bus");
       return {
         enabled: mode === "dual" && Boolean(DualClientClass),
@@ -525,7 +528,7 @@ export async function createDualPersistence() {
 
   function activeWriteClient() {
     if (sessionClient) return sessionClient;
-    if (serviceAccountClient && writeMode === "event_bus") return serviceAccountClient;
+    if (serviceAccountClient && serviceAccountEventBusWritable) return serviceAccountClient;
     if (client && authMode === "bearer" && writeMode === "event_bus") return client;
     return null;
   }

@@ -16,6 +16,8 @@ assert(typeof dualAuthStatus.authenticated === "boolean", "DUAL auth status repo
 const replayQueue = await get("/api/dual/replay-queue");
 assert(replayQueue.rootHash, "replay queue returns a root hash");
 assert(Array.isArray(replayQueue.events), "replay queue returns event payloads");
+assert(typeof replayQueue.pendingCount === "number", "replay queue reports pending event count");
+assert(typeof replayQueue.syncedCount === "number", "replay queue reports synced event count");
 
 const replayExecution = await post("/api/dual/replay-queue/execute", {});
 assert(typeof replayExecution.executed === "boolean", "replay execution reports whether writes ran");
@@ -25,6 +27,8 @@ assert(proof.proofHash, "proof endpoint returns a proof hash");
 assert(proof.audit.rootHash, "proof endpoint returns an audit root");
 assert(typeof proof.status.writeReadiness.ready === "boolean", "proof includes write readiness");
 assert(proof.replayQueue.rootHash, "proof includes replay queue root");
+assert(typeof proof.replayQueue.pendingCount === "number", "proof includes pending replay count");
+assert(proof.policy.hash, "proof includes policy hash");
 assert(Array.isArray(proof.verification), "proof includes verification checks");
 
 const proofVerify = await get("/api/proof/verify");

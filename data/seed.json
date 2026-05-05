@@ -12,6 +12,7 @@
     "humanApprovalRequiredAbove": 100,
     "blockedActions": ["live_order", "leverage", "unsupported_pair", "over_limit", "missing_approval"],
     "approvalPolicy": "human_required_above_threshold",
+    "policyVersion": 1,
     "ownerWallet": "DUAL demo wallet",
     "dualObjectState": "active"
   },

@@ -207,12 +207,15 @@ async function handleApi(req, res, url) {
     const state = await loadState();
     const previousPolicy = policySnapshot(state.passport);
     const policy = normalizePolicy(body, state.passport);
+    const policyVersion = Number(state.passport.policyVersion || 1) + 1;
 
     state.passport = {
       ...state.passport,
       ...policy,
+      policyVersion,
       dualObjectState: "active"
     };
+    state.passport.policyHash = hashJson(policySnapshot(state.passport));
 
     state.proposals = (state.proposals || []).map((proposal) => {
       if (proposal.state === "executed") return proposal;
@@ -530,7 +533,8 @@ function policySnapshot(passport) {
     leverageAllowed: passport.leverageAllowed,
     humanApprovalRequiredAbove: passport.humanApprovalRequiredAbove,
     blockedActions: passport.blockedActions,
-    approvalPolicy: passport.approvalPolicy
+    approvalPolicy: passport.approvalPolicy,
+    policyVersion: passport.policyVersion || 1
   };
 }
 
@@ -593,6 +597,8 @@ async function buildProofBundle() {
       && objectCustom.human_approval_required_above === String(state.passport.humanApprovalRequiredAbove)
       && objectCustom.leverage_allowed === String(state.passport.leverageAllowed)
       && objectCustom.approval_policy === state.passport.approvalPolicy
+      && objectCustom.policy_version === String(state.passport.policyVersion || 1)
+      && objectCustom.policy_hash === (state.passport.policyHash || hashJson(policySnapshot(state.passport)))
   );
   const syncedAuditEvents = audit.filter((event) => (
     event.dualSync?.synced && event.dualSync?.result?.actionId
@@ -635,8 +641,8 @@ async function buildProofBundle() {
       id: "replay-queue",
       ok: Boolean(replayQueue.ready && replayQueue.rootHash),
       detail: replayQueue.writable
-        ? `${replayQueue.eventCount} event-bus envelopes are replay-ready with write auth active.`
-        : `${replayQueue.eventCount} event-bus envelopes are replayable once write auth is available.`
+        ? `${replayQueue.pendingCount}/${replayQueue.eventCount} event-bus envelopes are pending with write auth active.`
+        : `${replayQueue.pendingCount}/${replayQueue.eventCount} event-bus envelopes are pending until write auth is available.`
     }
   ];
 
@@ -655,9 +661,13 @@ async function buildProofBundle() {
       ready: replayQueue.ready,
       writable: replayQueue.writable,
       eventCount: replayQueue.eventCount,
+      syncedCount: replayQueue.syncedCount,
+      pendingCount: replayQueue.pendingCount,
       rootHash: replayQueue.rootHash,
+      pendingRootHash: replayQueue.pendingRootHash,
       targetObjectId: replayQueue.targetObjectId,
-      latest: replayQueue.events.slice(0, 8)
+      latest: replayQueue.allEvents.slice(0, 8),
+      pending: replayQueue.events.slice(0, 8)
     },
     passport: {
       id: state.passport.id,
@@ -665,6 +675,15 @@ async function buildProofBundle() {
       mode: state.passport.mode,
       state: state.passport.dualObjectState || state.passport.state,
       allowedPairs: state.passport.allowedPairs
+    },
+    policy: {
+      version: state.passport.policyVersion || 1,
+      hash: state.passport.policyHash || hashJson(policySnapshot(state.passport)),
+      allowedPairs: state.passport.allowedPairs,
+      maxNotionalUsd: state.passport.maxNotionalUsd,
+      maxDailyNotionalUsd: state.passport.maxDailyNotionalUsd,
+      leverageAllowed: state.passport.leverageAllowed,
+      humanApprovalRequiredAbove: state.passport.humanApprovalRequiredAbove
     },
     audit: {
       eventCount: audit.length,

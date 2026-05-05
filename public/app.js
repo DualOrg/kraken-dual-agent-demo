@@ -339,12 +339,16 @@ function renderProof() {
   const dualObject = proof?.dualObject;
   const dualTemplate = proof?.dualTemplate;
   const replayQueue = proof?.replayQueue;
+  const policy = proof?.policy;
   const eventBusSync = verifier?.checks?.find((check) => check.id === "dual-event-bus-sync");
   const replayExecutionLabel = state.replayExecution?.executedCount != null
-    ? `${state.replayExecution.executedCount} writes`
+    ? `${state.replayExecution.executedCount} writes / ${state.replayExecution.skippedCount || 0} skipped`
     : eventBusSync?.ok
       ? eventBusSync.detail.replace(" audit events have DUAL event-bus action ids.", " synced")
       : "not executed";
+  const replayQueueLabel = replayQueue?.eventCount != null
+    ? `${replayQueue.pendingCount ?? replayQueue.eventCount} pending / ${replayQueue.eventCount} total`
+    : "pending";
   const rows = [
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
@@ -353,10 +357,14 @@ function renderProof() {
     ["Bearer auth", auth?.authenticated ? `session ${auth.email}` : auth?.pendingEmail ? `code sent ${auth.pendingEmail}` : "email code needed"],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
+    ["Policy version", policy?.version ? `v${policy.version}` : "pending"],
+    ["Policy hash", policy?.hash ? shortId(policy.hash) : "pending"],
     ["Action setup", state.actionPassportSetup?.vercelEnv ? `${shortId(state.actionPassportSetup.vercelEnv.DUAL_AGENT_PASSPORT_TEMPLATE_ID)} / ${shortId(state.actionPassportSetup.vercelEnv.DUAL_AGENT_PASSPORT_OBJECT_ID)}` : "not run"],
-    ["Replay queue", replayQueue?.eventCount != null ? `${replayQueue.eventCount} events` : "pending"],
+    ["Replay queue", replayQueueLabel],
     ["Replay execution", replayExecutionLabel],
+    ["DUAL actions", replayQueue?.syncedCount != null ? `${replayQueue.syncedCount} action ids` : "pending"],
     ["Replay root", replayQueue?.rootHash ? shortId(replayQueue.rootHash) : "pending"],
+    ["Pending root", replayQueue?.pendingRootHash ? shortId(replayQueue.pendingRootHash) : "pending"],
     ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],
     ["Proof hash", proof?.proofHash ? shortId(proof.proofHash) : "pending"],
     ["Verifier", verifier ? verifier.ok ? "all checks pass" : "checks pending" : "pending"]
@@ -369,7 +377,7 @@ function renderProof() {
     </div>
   `).join("");
 
-  els.executeReplayButton.disabled = !auth?.writable || !replayQueue?.eventCount;
+  els.executeReplayButton.disabled = !auth?.writable || !(replayQueue?.pendingCount ?? replayQueue?.eventCount);
   els.setupActionPassportButton.disabled = !auth?.writable;
   if (auth?.authenticated) {
     els.dualAuthMessage.textContent = auth.detail;

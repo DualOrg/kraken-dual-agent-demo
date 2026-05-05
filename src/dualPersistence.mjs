@@ -259,16 +259,20 @@ export async function createDualPersistence() {
     buildReplayQueue(passport, audit = []) {
       const events = audit.map((event) => {
         const envelope = eventBusEnvelope(objectId, templateId, orgId, passport, event);
+        const actionId = event.dualSync?.result?.actionId || null;
         return {
           eventId: event.id,
           eventType: event.type,
           eventStatus: event.status,
           eventHash: event.provenanceHash || event.id,
+          synced: Boolean(event.dualSync?.synced && actionId),
+          actionId,
           ready: Boolean(objectId || templateId),
           envelope,
           envelopeHash: hashJson(envelope)
         };
       });
+      const pendingEvents = events.filter((event) => !event.synced);
 
       return {
         ready: Boolean(objectId || templateId),
@@ -278,12 +282,21 @@ export async function createDualPersistence() {
         authMode: effectiveAuthMode(),
         writeMode: effectiveWriteMode(),
         eventCount: events.length,
+        syncedCount: events.length - pendingEvents.length,
+        pendingCount: pendingEvents.length,
         rootHash: hashJson(events.map((event) => ({
+          eventId: event.eventId,
+          eventHash: event.eventHash,
+          actionId: event.actionId,
+          envelopeHash: event.envelopeHash
+        }))),
+        pendingRootHash: hashJson(pendingEvents.map((event) => ({
           eventId: event.eventId,
           eventHash: event.eventHash,
           envelopeHash: event.envelopeHash
         }))),
-        events
+        events: pendingEvents,
+        allEvents: events
       };
     },
 
@@ -321,7 +334,9 @@ export async function createDualPersistence() {
       return {
         executed: true,
         executedCount: executed.length,
+        skippedCount: replayQueue.syncedCount,
         replayRoot: replayQueue.rootHash,
+        pendingReplayRoot: replayQueue.pendingRootHash,
         targetObjectId: replayQueue.targetObjectId,
         targetTemplateId: replayQueue.targetTemplateId,
         events: executed
@@ -538,9 +553,24 @@ function passportProperties(passport, metadata = {}) {
     human_approval_required_above: String(passport.humanApprovalRequiredAbove),
     blocked_actions: passport.blockedActions,
     approval_policy: passport.approvalPolicy,
+    policy_version: String(passport.policyVersion || 1),
+    policy_hash: passport.policyHash || policyHashFromPassport(passport),
     owner_wallet: passport.ownerWallet,
     last_event_id: metadata.lastEventId || ""
   };
+}
+
+function policyHashFromPassport(passport) {
+  return hashJson({
+    allowedPairs: passport.allowedPairs,
+    maxNotionalUsd: passport.maxNotionalUsd,
+    maxDailyNotionalUsd: passport.maxDailyNotionalUsd,
+    leverageAllowed: passport.leverageAllowed,
+    humanApprovalRequiredAbove: passport.humanApprovalRequiredAbove,
+    blockedActions: passport.blockedActions,
+    approvalPolicy: passport.approvalPolicy,
+    policyVersion: passport.policyVersion || 1
+  });
 }
 
 function agentTradingPassportProperties() {
@@ -557,6 +587,8 @@ function agentTradingPassportProperties() {
     human_approval_required_above: "string",
     blocked_actions: "array",
     approval_policy: "string",
+    policy_version: "string",
+    policy_hash: "string",
     owner_wallet: "string",
     last_event_id: "string",
     last_event_type: "string",

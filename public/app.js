@@ -225,10 +225,12 @@ function renderProof() {
   const dual = proof?.status?.dualMode || state.health?.dual;
   const adapter = proof?.status?.krakenMarketData || state.health?.adapter?.source || "checking";
   const dualObject = proof?.dualObject;
+  const dualTemplate = proof?.dualTemplate;
   const rows = [
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
     ["DUAL mode", dual?.available ? dual.writable ? "write-sync" : "read-linked" : "not configured"],
+    ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
     ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],
     ["Proof hash", proof?.proofHash ? shortId(proof.proofHash) : "pending"]

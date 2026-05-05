@@ -122,6 +122,25 @@ export async function createDualPersistence() {
       };
     },
 
+    async readPassportTemplate() {
+      if (!client || !templateId) {
+        return {
+          available: false,
+          reason: templateId ? this.status().detail : "Set DUAL_AGENT_PASSPORT_TEMPLATE_ID."
+        };
+      }
+
+      const template = await client.templates.get(templateId);
+      return {
+        available: true,
+        id: template.id,
+        name: template.name,
+        custom: template.object?.custom || template.properties || {},
+        publicAccess: template.public_access || template.publicAccess || null,
+        whenModified: template.when_modified || template.updated_at || template.updatedAt || null
+      };
+    },
+
     async recordEvent(passport, event) {
       if (!client) return { skipped: true, reason: this.status().detail };
       if (writeMode !== "event_bus") {

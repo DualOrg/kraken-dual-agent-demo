@@ -54,6 +54,12 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/dual/template-readback") {
+    const result = await dualPersistence.readPassportTemplate();
+    sendJson(res, result.available ? 200 : 409, result);
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/proof") {
     const proof = await buildProofBundle();
     sendJson(res, 200, proof);
@@ -287,10 +293,16 @@ function describePolicy(trade, policy) {
 async function buildProofBundle() {
   const [state, adapter] = await Promise.all([loadState(), getAdapterStatus()]);
   let dualObject = null;
+  let dualTemplate = null;
   try {
     dualObject = await dualPersistence.readPassportObject();
   } catch (error) {
     dualObject = { available: false, error: error.message };
+  }
+  try {
+    dualTemplate = await dualPersistence.readPassportTemplate();
+  } catch (error) {
+    dualTemplate = { available: false, error: error.message };
   }
 
   const audit = state.audit || [];
@@ -310,6 +322,7 @@ async function buildProofBundle() {
       krakenPaperExecution: adapter.krakenCliAvailable ? "kraken-cli-paper" : "simulated-paper",
       dualMode: dualPersistence.status()
     },
+    dualTemplate,
     dualObject,
     passport: {
       id: state.passport.id,

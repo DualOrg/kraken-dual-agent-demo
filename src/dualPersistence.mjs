@@ -540,8 +540,8 @@ function agentTradingPassportTemplatePayload() {
       custom
     },
     actions: [
-      { name: "mint", alias: "issue_kraken_agent_passport", access: "owner" },
-      { name: "update", alias: "record_kraken_agent_event", access: "owner" }
+      { name: "mint", alias: "issue_kraken_agent_passport" },
+      { name: "update", alias: "record_kraken_agent_event" }
     ],
     public_access: {
       custom: publicFields

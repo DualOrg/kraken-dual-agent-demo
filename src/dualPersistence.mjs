@@ -464,7 +464,7 @@ export async function createDualPersistence() {
 
   function eventBusPayloadAttempts(actionName, objectId, templateId, orgId, properties, metadata, preferredPayload) {
     const styles = resolvedEventBusPayloadStyle === "auto"
-      ? ["flat", "nested", "nested_object_custom", "nested_public", "nested_custom_public", "named", "classic_object", "classic_custom"]
+      ? ["flat", "nested", "nested_custom_data", "nested_public_data", "nested_object_custom", "nested_public", "nested_custom_public", "named", "classic_object", "classic_custom"]
       : [resolvedEventBusPayloadStyle];
     return styles.map((style) => ({
       style,
@@ -626,6 +626,28 @@ function updateEventBusEnvelope(style, objectId, templateId, orgId, properties, 
       metadata
     };
   }
+  if (style === "nested_custom_data") {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          custom_data: properties
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_public_data") {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          public_data: properties
+        }
+      },
+      metadata
+    };
+  }
   if (style === "nested_public") {
     return {
       action: {
@@ -709,6 +731,30 @@ function mintEventBusEnvelope(style, templateId, orgId, properties, metadata) {
           object: {
             custom: properties
           }
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_custom_data") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1,
+          custom_data: properties
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_public_data") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1,
+          public_data: properties
         }
       },
       metadata

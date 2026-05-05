@@ -494,7 +494,7 @@ export async function createDualPersistence() {
 
   function eventBusPayloadAttempts(actionName, objectId, templateId, orgId, properties, metadata, preferredPayload) {
     const styles = resolvedEventBusPayloadStyle === "auto"
-      ? ["flat", "nested", "top_level_custom", "top_level_public", "top_level_custom_public", "top_level_payload", "top_level_payload_custom", "top_level_payload_public", "nested_payload", "nested_payload_custom", "nested_payload_public", "nested_customData", "nested_publicData", "top_level_custom_data", "top_level_public_data", "object_id_custom", "object_id_custom_data", "nested_custom_data", "nested_public_data", "nested_object_custom", "nested_public", "nested_custom_public", "named", "classic_object", "classic_custom"]
+      ? ["nested_data_custom", "nested_data_public", "flat", "nested", "top_level_custom", "top_level_public", "top_level_custom_public", "top_level_payload", "top_level_payload_custom", "top_level_payload_public", "nested_payload", "nested_payload_custom", "nested_payload_public", "nested_customData", "nested_publicData", "top_level_custom_data", "top_level_public_data", "object_id_custom", "object_id_custom_data", "nested_custom_data", "nested_public_data", "nested_object_custom", "nested_public", "nested_custom_public", "named", "classic_object", "classic_custom"]
       : [resolvedEventBusPayloadStyle];
     return styles.map((style) => ({
       style,
@@ -632,6 +632,32 @@ function eventBusEnvelope(objectId, templateId, orgId, passport, event) {
 }
 
 function updateEventBusEnvelope(style, objectId, templateId, orgId, properties, metadata) {
+  if (style === "nested_data_custom") {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          data: {
+            custom: properties
+          }
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_data_public") {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          data: {
+            public: properties
+          }
+        }
+      },
+      metadata
+    };
+  }
   if (style === "nested") {
     return {
       action: {

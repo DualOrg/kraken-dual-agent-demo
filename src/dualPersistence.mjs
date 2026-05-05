@@ -413,7 +413,8 @@ export async function createDualPersistence() {
         errors.push(summarizeDualError(attempt.style, error));
       }
     }
-    const error = new Error(errors[0]?.message || "DUAL event-bus execute failed.");
+    const summary = errors.map((item) => `${item.style}: ${item.message}`).join("; ");
+    const error = new Error(`DUAL event-bus execute failed. ${summary}`);
     error.status = errors[0]?.status || 400;
     error.body = { attempts: errors };
     throw error;

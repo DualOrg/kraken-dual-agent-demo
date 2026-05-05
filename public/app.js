@@ -349,7 +349,14 @@ async function postJson(url, payload) {
   });
   const body = await response.json();
   if (!response.ok && response.status !== 409) {
-    throw new Error(body.message || body.error || `POST ${url} failed`);
+    throw new Error(errorMessage(body, `POST ${url} failed`));
   }
   return body;
+}
+
+function errorMessage(body, fallback) {
+  if (body?.detail?.attempts?.length) {
+    return body.detail.attempts.map((attempt) => `${attempt.style}: ${attempt.message}`).join(" | ");
+  }
+  return body?.message || body?.error || fallback;
 }

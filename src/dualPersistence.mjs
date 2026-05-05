@@ -523,8 +523,9 @@ function agentTradingPassportProperties() {
 function agentTradingPassportTemplatePayload() {
   const custom = agentTradingPassportProperties();
   const publicFields = Object.keys(custom);
+  const version = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
   return {
-    name: "io.dual.kraken.agent_trading_passport",
+    name: `io.dual.kraken.agent_trading_passport.action_enabled.${version}`,
     description: "Policy-bound agent passport for Kraken paper/live trading governance.",
     organization_id: process.env.DUAL_ORG_ID || undefined,
     organizationId: process.env.DUAL_ORG_ID || undefined,

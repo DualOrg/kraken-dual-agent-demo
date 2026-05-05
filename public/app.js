@@ -344,7 +344,9 @@ function renderProof() {
   const replayExecutionLabel = state.replayExecution?.executedCount != null
     ? `${state.replayExecution.executedCount} writes / ${state.replayExecution.skippedCount || 0} skipped`
     : eventBusSync?.ok
-      ? eventBusSync.detail.replace(" audit events have DUAL event-bus action ids.", " synced")
+      ? replayQueue?.pendingCount
+        ? `${replayQueue.syncedCount || 0} synced, ${replayQueue.pendingCount} pending`
+        : `${replayQueue?.syncedCount ?? replayQueue?.eventCount ?? 0} synced`
       : "not executed";
   const replayQueueLabel = replayQueue?.eventCount != null
     ? `${replayQueue.pendingCount ?? replayQueue.eventCount} pending / ${replayQueue.eventCount} total`

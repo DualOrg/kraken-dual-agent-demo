@@ -1,4 +1,5 @@
 import http from "node:http";
+import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,6 +48,18 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/dual/passport") {
+    const result = await dualPersistence.readPassportObject();
+    sendJson(res, result.available ? 200 : 409, result);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/proof") {
+    const proof = await buildProofBundle();
+    sendJson(res, 200, proof);
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/dual/template") {
     const result = await dualPersistence.createTemplate();
     sendJson(res, 200, result);
@@ -86,7 +99,7 @@ async function handleApi(req, res, url) {
       "market_snapshot",
       "ok",
       `${pair} market snapshot`,
-      `${market.source === "kraken-cli" ? "Kraken CLI" : "Simulator"} returned ${pair} at $${market.price}.`,
+      `${describeMarketSource(market.source)} returned ${pair} at $${market.price}.`,
       { pair, source: market.source, price: market.price }
     );
     await saveState(state);
@@ -271,6 +284,70 @@ function describePolicy(trade, policy) {
   return `DUAL blocked action: ${policy.violations.join(" ")}`;
 }
 
+async function buildProofBundle() {
+  const [state, adapter] = await Promise.all([loadState(), getAdapterStatus()]);
+  let dualObject = null;
+  try {
+    dualObject = await dualPersistence.readPassportObject();
+  } catch (error) {
+    dualObject = { available: false, error: error.message };
+  }
+
+  const audit = state.audit || [];
+  const auditRoot = hashJson(audit.map((event) => ({
+    id: event.id,
+    type: event.type,
+    status: event.status,
+    hash: event.provenanceHash || event.id,
+    dualSync: event.dualSync || null
+  })));
+
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    demo: "DUAL x Kraken Agent Trading Passport",
+    status: {
+      krakenMarketData: adapter.source,
+      krakenPaperExecution: adapter.krakenCliAvailable ? "kraken-cli-paper" : "simulated-paper",
+      dualMode: dualPersistence.status()
+    },
+    dualObject,
+    passport: {
+      id: state.passport.id,
+      agentName: state.passport.agentName,
+      mode: state.passport.mode,
+      state: state.passport.dualObjectState || state.passport.state,
+      allowedPairs: state.passport.allowedPairs
+    },
+    audit: {
+      eventCount: audit.length,
+      rootHash: auditRoot,
+      latest: audit.slice(0, 8).map((event) => ({
+        id: event.id,
+        type: event.type,
+        status: event.status,
+        hash: event.provenanceHash || event.id,
+        dualSync: event.dualSync || null,
+        timestamp: event.timestamp
+      }))
+    },
+    caveats: [
+      adapter.krakenCliAvailable ? "Kraken paper execution is CLI-backed." : "Kraken paper execution is simulated because Kraken CLI is unavailable in this runtime.",
+      dualPersistence.status().writable ? "DUAL event-bus writes are enabled." : "DUAL is read-linked; event-bus writes require bearer/session/service-account auth."
+    ]
+  };
+
+  return {
+    ...payload,
+    proofHash: hashJson(payload)
+  };
+}
+
+function describeMarketSource(source) {
+  if (source === "kraken-cli") return "Kraken CLI";
+  if (source === "kraken-public-api") return "Kraken public API";
+  return "Simulator";
+}
+
 async function addAudit(state, type, status, title, detail, payload = {}) {
   const event = createAuditEvent(type, status, title, detail, payload);
   try {
@@ -283,6 +360,10 @@ async function addAudit(state, type, status, title, detail, payload = {}) {
   }
   state.audit.unshift(event);
   return event;
+}
+
+function hashJson(value) {
+  return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
 async function loadDotEnv() {

@@ -19,6 +19,7 @@
         <nav>
           <button class="nav-item active" data-view="command">Command</button>
           <button class="nav-item" data-view="mandate">Mandate</button>
+          <button class="nav-item" data-view="proof">Proof</button>
           <button class="nav-item" data-view="audit">Audit</button>
           <button class="nav-item" data-view="redteam">Red Team</button>
         </nav>
@@ -37,6 +38,7 @@
           </div>
           <div class="top-actions">
             <span class="status-pill" id="adapterStatus">Checking adapter</span>
+            <span class="status-pill" id="dualStatus">Checking DUAL</span>
             <button id="resetButton" class="ghost-button">Reset demo</button>
           </div>
         </header>
@@ -111,6 +113,17 @@
               <button data-scenario="leverage">Leverage attempt</button>
               <button data-scenario="missing_approval">Missing approval</button>
             </div>
+          </article>
+
+          <article class="panel proof-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Live Proof Bundle</h2>
+                <p>Readback from DUAL, Kraken source, and local audit root.</p>
+              </div>
+              <button id="exportProofButton" class="ghost-button" type="button">Export proof</button>
+            </div>
+            <div class="proof-grid" id="proofGrid"></div>
           </article>
 
           <article class="panel audit-panel">

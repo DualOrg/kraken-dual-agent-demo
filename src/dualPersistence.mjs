@@ -100,6 +100,28 @@ export async function createDualPersistence() {
       });
     },
 
+    async readPassportObject() {
+      if (!client || !objectId) {
+        return {
+          available: false,
+          reason: objectId ? this.status().detail : "Set DUAL_AGENT_PASSPORT_OBJECT_ID."
+        };
+      }
+
+      const object = await client.objects.get(objectId);
+      return {
+        available: true,
+        id: object.id,
+        templateId: object.template_id || object.templateId || null,
+        orgId: object.org_id || object.organization_id || null,
+        owner: object.owner || object.owner_id || null,
+        custom: object.custom || object.properties || {},
+        integrityHash: object.integrity_hash || object.integrityHash || null,
+        stateHash: object.state_hash || object.stateHash || null,
+        whenModified: object.when_modified || object.updated_at || object.updatedAt || null
+      };
+    },
+
     async recordEvent(passport, event) {
       if (!client) return { skipped: true, reason: this.status().detail };
       if (writeMode !== "event_bus") {

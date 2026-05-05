@@ -283,6 +283,10 @@ h2 {
   grid-column: span 2;
 }
 
+.proof-panel {
+  grid-column: span 2;
+}
+
 .panel-header {
   align-items: flex-start;
   margin-bottom: 14px;
@@ -344,15 +348,33 @@ select {
   gap: 8px;
 }
 
-.mandate-row {
+.mandate-row,
+.proof-row {
   border-bottom: 1px solid var(--line);
   padding: 9px 0;
 }
 
-.mandate-row strong {
+.mandate-row strong,
+.proof-row strong {
   text-align: right;
   color: var(--text);
   font-weight: 650;
+}
+
+.proof-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 18px;
+}
+
+.proof-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.proof-row span {
+  color: var(--muted);
 }
 
 .state-chip {
@@ -433,8 +455,13 @@ select {
     grid-template-columns: 1fr;
   }
 
-  .audit-panel {
+  .audit-panel,
+  .proof-panel {
     grid-column: auto;
+  }
+
+  .proof-grid {
+    grid-template-columns: 1fr;
   }
 
   .topbar {

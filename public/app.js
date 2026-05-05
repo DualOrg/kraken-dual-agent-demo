@@ -1,6 +1,8 @@
 const state = {
   data: null,
-  activeProposalId: null
+  activeProposalId: null,
+  health: null,
+  proof: null
 };
 
 const pairs = ["BTCUSD", "ETHUSD", "SOLUSD"];
@@ -8,6 +10,7 @@ const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD
 
 const els = {
   adapterStatus: document.querySelector("#adapterStatus"),
+  dualStatus: document.querySelector("#dualStatus"),
   marketStrip: document.querySelector("#marketStrip"),
   mandateList: document.querySelector("#mandateList"),
   passportState: document.querySelector("#passportState"),
@@ -17,6 +20,8 @@ const els = {
   proposalCard: document.querySelector("#proposalCard"),
   approveButton: document.querySelector("#approveButton"),
   executeButton: document.querySelector("#executeButton"),
+  exportProofButton: document.querySelector("#exportProofButton"),
+  proofGrid: document.querySelector("#proofGrid"),
   tradeForm: document.querySelector("#tradeForm"),
   resetButton: document.querySelector("#resetButton")
 };
@@ -28,6 +33,7 @@ async function init() {
   await checkHealth();
   await loadState();
   await refreshMarkets();
+  await loadProof();
 }
 
 function bindEvents() {
@@ -68,6 +74,17 @@ function bindEvents() {
     await refreshMarkets();
   });
 
+  els.exportProofButton.addEventListener("click", async () => {
+    const proof = await loadProof();
+    const blob = new Blob([JSON.stringify(proof, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `dual-kraken-proof-${Date.now()}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  });
+
   document.querySelectorAll("[data-scenario]").forEach((button) => {
     button.addEventListener("click", async () => {
       const result = await postJson("/api/red-team", { scenario: button.dataset.scenario });
@@ -79,9 +96,20 @@ function bindEvents() {
 
 async function checkHealth() {
   const health = await getJson("/api/health");
-  els.adapterStatus.textContent = health.adapter.krakenCliAvailable ? "Kraken CLI live" : "Simulator fallback";
-  els.adapterStatus.classList.toggle("live", health.adapter.krakenCliAvailable);
-  els.adapterStatus.classList.toggle("sim", !health.adapter.krakenCliAvailable);
+  state.health = health;
+  const adapterLive = health.adapter.source === "kraken-cli" || health.adapter.source === "kraken-public-api";
+  els.adapterStatus.textContent = health.adapter.source === "kraken-cli"
+    ? "Kraken CLI live"
+    : health.adapter.source === "kraken-public-api"
+      ? "Kraken public API live"
+      : "Simulator fallback";
+  els.adapterStatus.classList.toggle("live", adapterLive);
+  els.adapterStatus.classList.toggle("sim", !adapterLive);
+  els.dualStatus.textContent = health.dual.available
+    ? health.dual.writable ? "DUAL write-sync live" : "DUAL read-linked"
+    : "DUAL not configured";
+  els.dualStatus.classList.toggle("live", health.dual.available);
+  els.dualStatus.classList.toggle("sim", !health.dual.available || !health.dual.writable);
 }
 
 async function loadState() {
@@ -103,6 +131,7 @@ function render() {
   renderMarkets();
   renderPassport();
   renderProposal();
+  renderProof();
   renderTimeline();
 }
 
@@ -183,6 +212,46 @@ function renderTimeline() {
       <span class="event-status ${event.status}">${event.status}</span>
     </li>
   `).join("");
+}
+
+async function loadProof() {
+  state.proof = await getJson("/api/proof");
+  renderProof();
+  return state.proof;
+}
+
+function renderProof() {
+  const proof = state.proof;
+  const dual = proof?.status?.dualMode || state.health?.dual;
+  const adapter = proof?.status?.krakenMarketData || state.health?.adapter?.source || "checking";
+  const dualObject = proof?.dualObject;
+  const rows = [
+    ["Kraken market", sourceLabel(adapter)],
+    ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
+    ["DUAL mode", dual?.available ? dual.writable ? "write-sync" : "read-linked" : "not configured"],
+    ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
+    ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],
+    ["Proof hash", proof?.proofHash ? shortId(proof.proofHash) : "pending"]
+  ];
+
+  els.proofGrid.innerHTML = rows.map(([label, value]) => `
+    <div class="proof-row">
+      <span>${label}</span>
+      <strong>${value}</strong>
+    </div>
+  `).join("");
+}
+
+function sourceLabel(source) {
+  if (source === "kraken-cli") return "Kraken CLI";
+  if (source === "kraken-public-api") return "Kraken public API";
+  return source || "simulator";
+}
+
+function shortId(value) {
+  const text = String(value || "");
+  if (text.length <= 16) return text || "pending";
+  return `${text.slice(0, 8)}…${text.slice(-6)}`;
 }
 
 async function getJson(url) {

@@ -75,11 +75,15 @@ Useful endpoints:
 
 ```text
 GET  /api/dual/status
+GET  /api/dual/passport
 POST /api/dual/template
 POST /api/dual/sync-passport
+GET  /api/proof
 ```
 
 Template schema: `dual-agent-passport.schema.json`.
+
+`/api/proof` returns a portable proof bundle with Kraken source status, DUAL passport readback, local audit root hash, latest event hashes, caveats, and a bundle hash.
 
 ## DUAL Object Model
 

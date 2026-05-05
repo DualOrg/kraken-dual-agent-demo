@@ -215,19 +215,35 @@ export async function createDualPersistence() {
       const objectProperties = passportProperties(passport, {
         lastEventId: "passport_setup"
       });
-      const object = await writeClient.objects.create({
-        template_id: createdTemplateId,
-        properties: objectProperties
-      });
+      const mintMetadata = {
+        source: "kraken_dual_action_passport_setup",
+        event_type: "passport_setup",
+        event_status: "created"
+      };
+      const mintResult = await executeEventBusWithFallback(
+        writeClient,
+        "mint",
+        "",
+        createdTemplateId,
+        orgId,
+        objectProperties,
+        mintMetadata,
+        mintEventBusEnvelope("nested", createdTemplateId, orgId, objectProperties, mintMetadata)
+      );
+      const object = await findMintedObjectForTemplate(writeClient, createdTemplateId);
+      const mintedObjectId = object?.id || object?.object_id || object?.objectId || null;
 
       return {
         template: summarizeDualTemplate(template),
-        object: summarizeDualObject(object),
+        object: object ? summarizeDualObject(object) : null,
+        mint: summarizeDualResult(mintResult),
         vercelEnv: {
           DUAL_AGENT_PASSPORT_TEMPLATE_ID: createdTemplateId,
-          DUAL_AGENT_PASSPORT_OBJECT_ID: object.id || object.object_id || object.objectId || null
+          DUAL_AGENT_PASSPORT_OBJECT_ID: mintedObjectId
         },
-        next: "Update Vercel production env vars to these ids, redeploy, then rerun authenticated DUAL replay."
+        next: mintedObjectId
+          ? "Update Vercel production env vars to these ids, redeploy, then rerun authenticated DUAL replay."
+          : "Mint was accepted, but object search has not indexed the new object yet. Search this template for the minted object before updating Vercel."
       };
     },
 
@@ -697,6 +713,51 @@ function summarizeDualObject(object) {
     integrityHash: object.integrity_hash || object.integrityHash || null,
     stateHash: object.state_hash || object.stateHash || null
   };
+}
+
+async function findMintedObjectForTemplate(writeClient, templateId) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const object = await searchObjectsByTemplate(writeClient, templateId);
+    if (object) return object;
+    await delay(750);
+  }
+  return null;
+}
+
+async function searchObjectsByTemplate(writeClient, templateId) {
+  try {
+    const result = await writeClient.objects.search({ template_id: templateId });
+    const items = normalizeItems(result);
+    if (items.length) return newestObject(items);
+  } catch {
+    // Some gateways expose template filtering only on list.
+  }
+
+  try {
+    const result = await writeClient.objects.list({ template_id: templateId, limit: 10 });
+    const items = normalizeItems(result);
+    if (items.length) return newestObject(items);
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function normalizeItems(result) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.items)) return result.items;
+  if (Array.isArray(result?.data)) return result.data;
+  if (Array.isArray(result?.objects)) return result.objects;
+  return [];
+}
+
+function newestObject(items) {
+  return [...items].sort((a, b) => String(b.when_created || b.created_at || b.createdAt || "").localeCompare(String(a.when_created || a.created_at || a.createdAt || "")))[0];
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function summarizeDualError(style, error) {

@@ -29,6 +29,7 @@ assert(typeof proof.status.writeReadiness.ready === "boolean", "proof includes w
 assert(proof.replayQueue.rootHash, "proof includes replay queue root");
 assert(typeof proof.replayQueue.pendingCount === "number", "proof includes pending replay count");
 assert(proof.policy.hash, "proof includes policy hash");
+assert(proof.dualBatch && typeof proof.dualBatch.available === "boolean", "proof includes DUAL batch status");
 assert(Array.isArray(proof.verification), "proof includes verification checks");
 
 const proofVerify = await get("/api/proof/verify");

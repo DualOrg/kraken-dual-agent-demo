@@ -6,6 +6,10 @@ export async function createDualPersistence() {
   const templateId = process.env.DUAL_AGENT_PASSPORT_TEMPLATE_ID || "";
   const objectId = process.env.DUAL_AGENT_PASSPORT_OBJECT_ID || "";
   const apiKey = process.env.DUAL_API_KEY || "";
+  const serviceAccountToken = process.env.DUAL_SERVICE_ACCOUNT_TOKEN
+    || process.env.DUAL_SERVICE_ACCOUNT_BEARER_TOKEN
+    || process.env.DUAL_BEARER_TOKEN
+    || "";
   const baseUrl = process.env.DUAL_API_URL || "https://gateway-48587430648.europe-west6.run.app";
   const authMode = process.env.DUAL_AUTH_MODE || "api_key";
   const writeMode = process.env.DUAL_WRITE_MODE || (authMode === "api_key" ? "read_only" : "event_bus");
@@ -18,10 +22,12 @@ export async function createDualPersistence() {
     baseUrl,
     authMode,
     writeMode,
-    configured: Boolean(apiKey && orgId && templateId)
+    serviceAccountConfigured: Boolean(serviceAccountToken),
+    configured: Boolean((apiKey || serviceAccountToken) && orgId && templateId)
   };
 
   let client = null;
+  let serviceAccountClient = null;
   let sessionClient = null;
   let session = null;
   let pendingEmail = null;
@@ -33,8 +39,11 @@ export async function createDualPersistence() {
     try {
       const { DualClient } = await import("dual-sdk");
       DualClientClass = DualClient;
-      if (config.configured) {
+      if (apiKey && orgId && templateId) {
         client = new DualClient({ baseUrl, token: apiKey, authMode, timeout: 30000 });
+      }
+      if (serviceAccountToken && orgId && templateId) {
+        serviceAccountClient = new DualClient({ baseUrl, token: serviceAccountToken, authMode: "bearer", timeout: 30000 });
       }
     } catch (error) {
       sdkError = error;
@@ -64,6 +73,10 @@ export async function createDualPersistence() {
         objectId: objectId || null,
         authMode: effectiveAuthMode(),
         writeMode: effectiveWriteMode(),
+        serviceAccount: {
+          configured: config.serviceAccountConfigured,
+          writable: Boolean(serviceAccountClient && writeMode === "event_bus")
+        },
         emailSession: session ? {
           authenticated: true,
           email: maskEmail(session.email),
@@ -75,6 +88,10 @@ export async function createDualPersistence() {
           ? writeClient
             ? "DUAL persistence adapter is ready for event-bus writes."
             : "DUAL passport is linked for read verification. Event-bus writes need bearer/session auth."
+          : serviceAccountClient
+            ? writeClient
+              ? "DUAL service-account bearer auth is ready for unattended event-bus writes."
+              : "DUAL service-account bearer auth is configured; set DUAL_WRITE_MODE=event_bus to enable writes."
           : sessionClient
             ? "DUAL email session is active for event-bus writes."
           : sdkError
@@ -96,7 +113,7 @@ export async function createDualPersistence() {
         current: status,
         missing: ready ? [] : [
           ...(status.available || DualClientClass ? [] : ["DUAL SDK/client availability"]),
-          ...(sessionClient ? [] : ["email OTP bearer session or DUAL_AUTH_MODE=bearer"]),
+          ...(activeWriteClient() ? [] : ["email OTP bearer session, DUAL_SERVICE_ACCOUNT_TOKEN, or DUAL_AUTH_MODE=bearer"]),
           ...(effectiveWriteMode() === "event_bus" ? [] : ["DUAL_WRITE_MODE=event_bus or authenticated email session"]),
           "bearer/session/service-account token with /ebus/execute permission"
         ],
@@ -107,16 +124,30 @@ export async function createDualPersistence() {
     },
 
     authStatus() {
+      const serviceWritable = Boolean(serviceAccountClient && writeMode === "event_bus");
+      const envBearerWritable = Boolean(client && authMode === "bearer" && writeMode === "event_bus");
       return {
         enabled: mode === "dual" && Boolean(DualClientClass),
-        authenticated: Boolean(sessionClient),
+        authenticated: Boolean(sessionClient || serviceWritable || envBearerWritable),
         writable: Boolean(activeWriteClient()),
+        authType: sessionClient
+          ? "email_session"
+          : serviceWritable
+            ? "service_account"
+            : envBearerWritable
+              ? "bearer_env"
+              : null,
+        serviceAccountConfigured: config.serviceAccountConfigured,
         pendingEmail: pendingEmail ? maskEmail(pendingEmail) : null,
         email: session ? maskEmail(session.email) : null,
         orgId: session?.orgId || null,
         authenticatedAt: session?.authenticatedAt || null,
         detail: sessionClient
           ? "Bearer email session is active for DUAL event-bus writes."
+          : serviceWritable
+            ? "Service-account bearer auth is active for unattended DUAL event-bus writes."
+          : envBearerWritable
+            ? "Bearer env auth is active for unattended DUAL event-bus writes."
           : "Request an email code, then verify it to unlock DUAL event-bus writes for this server session."
       };
     },
@@ -387,6 +418,41 @@ export async function createDualPersistence() {
       };
     },
 
+    async readLatestBatchProof() {
+      const readClient = activeReadClient();
+      if (!readClient?.sequencer?.listBatches) {
+        return {
+          available: false,
+          reason: readClient ? "DUAL sequencer batch API is unavailable in this SDK/runtime." : this.status().detail
+        };
+      }
+
+      const response = await readClient.sequencer.listBatches({ limit: 10 });
+      const batches = extractItems(response).map(summarizeDualBatch).filter(Boolean);
+      const latest = batches[0] || null;
+      if (!latest?.id) {
+        return {
+          available: false,
+          reason: "No DUAL sequencer batches were returned for this credential."
+        };
+      }
+
+      let detail = latest;
+      if (readClient.sequencer.getBatch) {
+        try {
+          detail = summarizeDualBatch(await readClient.sequencer.getBatch(latest.id)) || latest;
+        } catch {
+          detail = latest;
+        }
+      }
+
+      return {
+        available: true,
+        ...detail,
+        finality: describeBatchFinality(detail)
+      };
+    },
+
     async recordEvent(passport, event) {
       const writeClient = activeWriteClient();
       if (!activeReadClient()) return { skipped: true, reason: this.status().detail };
@@ -451,17 +517,20 @@ export async function createDualPersistence() {
   };
 
   function activeReadClient() {
-    return sessionClient || client;
+    return sessionClient || client || serviceAccountClient;
   }
 
   function activeWriteClient() {
     if (sessionClient) return sessionClient;
+    if (serviceAccountClient && writeMode === "event_bus") return serviceAccountClient;
     if (client && authMode === "bearer" && writeMode === "event_bus") return client;
     return null;
   }
 
   function effectiveAuthMode() {
-    return sessionClient ? "bearer_email_session" : authMode;
+    if (sessionClient) return "bearer_email_session";
+    if (serviceAccountClient) return "bearer_service_account";
+    return authMode;
   }
 
   function effectiveWriteMode() {
@@ -1304,8 +1373,49 @@ function summarizeDualResult(result) {
     status: result.status || result.state || null,
     hash: result.hash || result.integrity_hash || result.integrityHash || result.state_hash || result.stateHash || null,
     actionId: result.action_id || result.actionId || null,
+    batchId: result.batch_id || result.batchId || null,
     payloadStyle: result.payloadStyle || null
   };
+}
+
+function summarizeDualBatch(batch) {
+  if (!batch || typeof batch !== "object") return null;
+  return {
+    id: batch.id || batch.batch_id || batch.batchId || null,
+    status: batch.status || batch.state || null,
+    proofValue: batch.proof_value || batch.proofValue || batch.proof?.value || batch.proof?.status || null,
+    actionCount: batch.action_count ?? batch.actionCount ?? batch.actions?.length ?? null,
+    merkleRoot: batch.merkle_root || batch.merkleRoot || batch.root_hash || batch.rootHash || null,
+    checkpointId: batch.checkpoint_id || batch.checkpointId || batch.checkpoint?.id || null,
+    transactionHash: batch.transaction_hash || batch.transactionHash || batch.tx_hash || batch.txHash || batch.l1_tx_hash || batch.l1TxHash || null,
+    chainId: batch.chain_id || batch.chainId || batch.network || batch.chain || null,
+    createdAt: batch.created_at || batch.createdAt || batch.when_created || batch.whenCreated || null,
+    updatedAt: batch.updated_at || batch.updatedAt || batch.when_modified || batch.whenModified || null
+  };
+}
+
+function extractItems(response) {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.items)) return response.items;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.results)) return response.results;
+  return [];
+}
+
+function describeBatchFinality(batch) {
+  const status = String(batch?.status || "").toLowerCase();
+  const proofValue = String(batch?.proofValue || "").toLowerCase();
+  const hasL1Hash = Boolean(batch?.transactionHash);
+  if (/final|confirmed|complete|completed|anchored/.test(status) || hasL1Hash) {
+    return "finalized";
+  }
+  if (proofValue === "success" || status === "anchoring") {
+    return "proof-success";
+  }
+  if (/fail|error|reject/.test(status) || /fail|error|reject/.test(proofValue)) {
+    return "failed";
+  }
+  return status || proofValue ? "pending" : "unknown";
 }
 
 function summarizeDualTemplate(template) {

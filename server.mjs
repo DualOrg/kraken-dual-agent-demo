@@ -556,6 +556,7 @@ async function buildProofBundle() {
   const [state, adapter] = await Promise.all([loadState(), getAdapterStatus()]);
   let dualObject = null;
   let dualTemplate = null;
+  let dualBatch = null;
   try {
     dualObject = await dualPersistence.readPassportObject();
   } catch (error) {
@@ -565,6 +566,11 @@ async function buildProofBundle() {
     dualTemplate = await dualPersistence.readPassportTemplate();
   } catch (error) {
     dualTemplate = { available: false, error: error.message };
+  }
+  try {
+    dualBatch = await dualPersistence.readLatestBatchProof();
+  } catch (error) {
+    dualBatch = { available: false, error: error.message };
   }
 
   const audit = state.audit || [];
@@ -655,6 +661,13 @@ async function buildProofBundle() {
       detail: replayQueue.writable
         ? `${replayQueue.pendingCount}/${replayQueue.eventCount} event-bus envelopes are pending with write auth active.`
         : `${replayQueue.pendingCount}/${replayQueue.eventCount} event-bus envelopes are pending until write auth is available.`
+    },
+    {
+      id: "dual-batch-status",
+      ok: Boolean(dualBatch?.available && dualBatch.finality !== "failed"),
+      detail: dualBatch?.available
+        ? `Latest DUAL batch ${dualBatch.id} is ${dualBatch.status || dualBatch.finality}; proof ${dualBatch.proofValue || "pending"}.`
+        : "DUAL sequencer batch status is not readable."
     }
   ];
 
@@ -669,6 +682,7 @@ async function buildProofBundle() {
     },
     dualTemplate,
     dualObject,
+    dualBatch,
     replayQueue: {
       ready: replayQueue.ready,
       writable: replayQueue.writable,

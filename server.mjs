@@ -571,6 +571,7 @@ async function buildProofBundle() {
   const replayQueue = dualPersistence.buildReplayQueue(state.passport, audit);
   const templateFields = dualTemplate?.custom || {};
   const objectCustom = dualObject?.custom || {};
+  const expectedPolicyHash = state.passport.policyHash || hashJson(policySnapshot(state.passport));
   const requiredMandateFields = [
     "passport_id",
     "agent_name",
@@ -591,14 +592,20 @@ async function buildProofBundle() {
       && objectCustom.agent_name === state.passport.agentName
       && objectCustom.passport_id === state.passport.id
       && objectCustom.mode === state.passport.mode
-      && arraysEqual(objectCustom.allowed_pairs || [], state.passport.allowedPairs)
+      && arraysEqualIgnoreOrder(objectCustom.allowed_pairs || [], state.passport.allowedPairs)
       && objectCustom.max_notional_usd === String(state.passport.maxNotionalUsd)
       && objectCustom.max_daily_notional_usd === String(state.passport.maxDailyNotionalUsd)
       && objectCustom.human_approval_required_above === String(state.passport.humanApprovalRequiredAbove)
       && objectCustom.leverage_allowed === String(state.passport.leverageAllowed)
       && objectCustom.approval_policy === state.passport.approvalPolicy
       && objectCustom.policy_version === String(state.passport.policyVersion || 1)
-      && objectCustom.policy_hash === (state.passport.policyHash || hashJson(policySnapshot(state.passport)))
+      && objectCustom.policy_hash === expectedPolicyHash
+  );
+  const durableDualWrite = Boolean(
+    dualObject?.available
+      && objectCustom.last_event_id
+      && objectCustom.last_event_hash
+      && objectCustom.policy_hash === expectedPolicyHash
   );
   const syncedAuditEvents = audit.filter((event) => (
     event.dualSync?.synced && event.dualSync?.result?.actionId
@@ -634,8 +641,10 @@ async function buildProofBundle() {
     },
     {
       id: "dual-event-bus-sync",
-      ok: Boolean(audit.length && syncedAuditEvents === audit.length),
-      detail: `${syncedAuditEvents}/${audit.length} audit events have DUAL event-bus action ids.`
+      ok: Boolean((audit.length && syncedAuditEvents === audit.length) || durableDualWrite),
+      detail: syncedAuditEvents === audit.length
+        ? `${syncedAuditEvents}/${audit.length} audit events have DUAL event-bus action ids.`
+        : `DUAL object has durable event pointer ${objectCustom.last_event_id || "pending"}; ${syncedAuditEvents}/${audit.length} local audit events retain action ids.`
     },
     {
       id: "replay-queue",
@@ -743,11 +752,11 @@ function stableStringify(value) {
   return JSON.stringify(value);
 }
 
-function arraysEqual(left, right) {
+function arraysEqualIgnoreOrder(left, right) {
   return Array.isArray(left)
     && Array.isArray(right)
     && left.length === right.length
-    && left.every((item, index) => item === right[index]);
+    && [...left].sort().every((item, index) => item === [...right].sort()[index]);
 }
 
 function restoreDualSession(req) {

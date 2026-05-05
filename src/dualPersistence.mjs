@@ -198,11 +198,37 @@ export async function createDualPersistence() {
 
     async createTemplate() {
       const writeClient = requireWritableClient();
-      return writeClient.templates.create({
-        name: "io.dual.kraken.agent_trading_passport",
-        description: "Policy-bound agent passport for Kraken paper/live trading governance.",
-        properties: agentTradingPassportProperties()
+      return writeClient.templates.create(agentTradingPassportTemplatePayload());
+    },
+
+    async createActionEnabledPassport(passport) {
+      const writeClient = requireWritableClient();
+      const template = await writeClient.templates.create(agentTradingPassportTemplatePayload());
+      const createdTemplateId = template.id || template.template_id || template.templateId;
+      if (!createdTemplateId) {
+        const error = new Error("DUAL created a template response without an id.");
+        error.status = 502;
+        error.body = template;
+        throw error;
+      }
+
+      const objectProperties = passportProperties(passport, {
+        lastEventId: "passport_setup"
       });
+      const object = await writeClient.objects.create({
+        template_id: createdTemplateId,
+        properties: objectProperties
+      });
+
+      return {
+        template: summarizeDualTemplate(template),
+        object: summarizeDualObject(object),
+        vercelEnv: {
+          DUAL_AGENT_PASSPORT_TEMPLATE_ID: createdTemplateId,
+          DUAL_AGENT_PASSPORT_OBJECT_ID: object.id || object.object_id || object.objectId || null
+        },
+        next: "Update Vercel production env vars to these ids, redeploy, then rerun authenticated DUAL replay."
+      };
     },
 
     async syncPassport(passport, metadata = {}) {
@@ -494,6 +520,35 @@ function agentTradingPassportProperties() {
   };
 }
 
+function agentTradingPassportTemplatePayload() {
+  const custom = agentTradingPassportProperties();
+  const publicFields = Object.keys(custom);
+  return {
+    name: "io.dual.kraken.agent_trading_passport",
+    description: "Policy-bound agent passport for Kraken paper/live trading governance.",
+    organization_id: process.env.DUAL_ORG_ID || undefined,
+    organizationId: process.env.DUAL_ORG_ID || undefined,
+    properties: custom,
+    object: {
+      metadata: {
+        name: "Kraken Market Agent Passport",
+        description: "A DUAL-governed trading-agent passport for Kraken market data, mandate checks, paper execution, and event replay.",
+        category: "agent-commerce-trading-passport",
+        integration: "kraken-dual-agent-demo",
+        demo_mode: "paper"
+      },
+      custom
+    },
+    actions: [
+      { name: "mint", alias: "issue_kraken_agent_passport", access: "owner" },
+      { name: "update", alias: "record_kraken_agent_event", access: "owner" }
+    ],
+    public_access: {
+      custom: publicFields
+    }
+  };
+}
+
 function eventBusEnvelope(objectId, templateId, orgId, passport, event) {
   const properties = {
     ...passportProperties(passport, { lastEventId: event.id }),
@@ -618,6 +673,28 @@ function summarizeDualResult(result) {
     status: result.status || result.state || null,
     hash: result.hash || result.integrity_hash || result.integrityHash || result.state_hash || result.stateHash || null,
     actionId: result.action_id || result.actionId || null
+  };
+}
+
+function summarizeDualTemplate(template) {
+  if (!template || typeof template !== "object") return template || null;
+  return {
+    id: template.id || template.template_id || template.templateId || null,
+    name: template.name || null,
+    actions: template.actions || null,
+    publicAccess: template.public_access || template.publicAccess || null
+  };
+}
+
+function summarizeDualObject(object) {
+  if (!object || typeof object !== "object") return object || null;
+  return {
+    id: object.id || object.object_id || object.objectId || null,
+    templateId: object.template_id || object.templateId || null,
+    owner: object.owner || object.owner_id || null,
+    custom: object.custom || object.properties || null,
+    integrityHash: object.integrity_hash || object.integrityHash || null,
+    stateHash: object.state_hash || object.stateHash || null
   };
 }
 

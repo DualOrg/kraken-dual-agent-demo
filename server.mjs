@@ -159,6 +159,21 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/dual/action-passport/setup") {
+    const body = await readBody(req);
+    if (body.confirm !== "create-action-enabled-kraken-passport") {
+      sendJson(res, 400, {
+        error: "confirmation_required",
+        message: "Send confirm=create-action-enabled-kraken-passport to create a persistent DUAL template and object."
+      });
+      return;
+    }
+    const state = await loadState();
+    const result = await dualPersistence.createActionEnabledPassport(state.passport);
+    sendJson(res, 200, result);
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/dual/sync-passport") {
     const state = await loadState();
     const result = await dualPersistence.syncPassport(state.passport, { source: "manual_sync" });

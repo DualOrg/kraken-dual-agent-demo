@@ -67,11 +67,12 @@ DUAL_AUTH_MODE=api_key
 DUAL_WRITE_MODE=read_only
 DUAL_SERVICE_ACCOUNT_AUTH_MODE=bearer
 DUAL_SERVICE_ACCOUNT_TOKEN=...
+DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN=...
 ```
 
 The adapter is intentionally optional. If the DUAL SDK or credentials are unavailable, the app keeps running in local simulator mode.
 
-With API-key auth, the app can link to and verify a real DUAL passport object. Event-bus writes require a write-capable bearer or service-account credential. For unattended production write sync, set `DUAL_SERVICE_ACCOUNT_TOKEN`, `DUAL_SERVICE_ACCOUNT_AUTH_MODE`, and `DUAL_WRITE_MODE=event_bus`; the token is used only server-side and is never returned to the browser.
+With API-key auth, the app can link to and verify a real DUAL passport object. Event-bus writes require a write-capable bearer session. For unattended production write sync, set `DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN` and `DUAL_WRITE_MODE=event_bus`; the refresh token is used only server-side to mint a bearer access token and is never returned to the browser. Direct bearer service tokens are also supported with `DUAL_SERVICE_ACCOUNT_TOKEN` and `DUAL_SERVICE_ACCOUNT_AUTH_MODE=bearer`.
 
 The app also supports an operator email-code flow for bearer auth. A code is requested from DUAL, verified server-side, switched into the configured org, and held only in the server session. Once authenticated, new audit events write through the DUAL event bus and the replay queue can be executed into DUAL.
 

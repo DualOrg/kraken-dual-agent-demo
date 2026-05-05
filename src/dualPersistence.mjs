@@ -10,6 +10,7 @@ export async function createDualPersistence() {
     || process.env.DUAL_SERVICE_ACCOUNT_BEARER_TOKEN
     || process.env.DUAL_BEARER_TOKEN
     || "";
+  const serviceAccountRefreshToken = process.env.DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN || "";
   const serviceAccountAuthMode = process.env.DUAL_SERVICE_ACCOUNT_AUTH_MODE || "bearer";
   const baseUrl = process.env.DUAL_API_URL || "https://gateway-48587430648.europe-west6.run.app";
   const authMode = process.env.DUAL_AUTH_MODE || "api_key";
@@ -24,21 +25,22 @@ export async function createDualPersistence() {
     authMode,
     writeMode,
     serviceAccountAuthMode,
-    serviceAccountConfigured: Boolean(serviceAccountToken),
-    configured: Boolean((apiKey || serviceAccountToken) && orgId && templateId)
+    serviceAccountConfigured: Boolean(serviceAccountToken || serviceAccountRefreshToken),
+    serviceAccountRefreshConfigured: Boolean(serviceAccountRefreshToken),
+    configured: Boolean((apiKey || serviceAccountToken || serviceAccountRefreshToken) && orgId && templateId)
   };
 
   let client = null;
   let serviceAccountClient = null;
   let sessionClient = null;
   let session = null;
+  let serviceAccountSession = null;
+  let serviceAccountError = null;
   let pendingEmail = null;
   let DualClientClass = null;
   let resolvedEventBusPayloadStyle = process.env.DUAL_EVENTBUS_PAYLOAD_STYLE || "auto";
   let sdkError = null;
-  const serviceAccountEventBusWritable = Boolean(
-    serviceAccountToken && serviceAccountAuthMode === "bearer" && writeMode === "event_bus"
-  );
+  let serviceAccountEventBusWritable = false;
 
   if (mode === "dual") {
     try {
@@ -49,9 +51,30 @@ export async function createDualPersistence() {
       }
       if (serviceAccountToken && orgId && templateId) {
         serviceAccountClient = new DualClient({ baseUrl, token: serviceAccountToken, authMode: serviceAccountAuthMode, timeout: 30000 });
+        serviceAccountEventBusWritable = serviceAccountAuthMode === "bearer" && writeMode === "event_bus";
+      }
+      if (serviceAccountRefreshToken && orgId && templateId) {
+        serviceAccountClient = new DualClient({ baseUrl, authMode: "bearer", timeout: 30000 });
+        const tokens = await serviceAccountClient.wallets.refreshToken(serviceAccountRefreshToken);
+        serviceAccountClient.setToken(tokens.access_token);
+        let activeTokens = tokens;
+        try {
+          const orgTokens = await serviceAccountClient.wallets.switchOrganization(orgId);
+          serviceAccountClient.setToken(orgTokens.access_token);
+          activeTokens = orgTokens;
+        } catch {
+          // Some refresh tokens are already organization-scoped.
+        }
+        serviceAccountSession = {
+          orgId,
+          refreshedAt: new Date().toISOString(),
+          refreshTokenPresent: Boolean(activeTokens.refresh_token || tokens.refresh_token)
+        };
+        serviceAccountEventBusWritable = writeMode === "event_bus";
       }
     } catch (error) {
-      sdkError = error;
+      if (serviceAccountRefreshToken) serviceAccountError = error;
+      else sdkError = error;
     }
   }
 
@@ -81,7 +104,10 @@ export async function createDualPersistence() {
         serviceAccount: {
           configured: config.serviceAccountConfigured,
           authMode: serviceAccountAuthMode,
-          writable: Boolean(serviceAccountClient && serviceAccountEventBusWritable)
+          refreshTokenConfigured: config.serviceAccountRefreshConfigured,
+          session: serviceAccountSession,
+          writable: Boolean(serviceAccountClient && serviceAccountEventBusWritable),
+          error: serviceAccountError ? serviceAccountError.message : null
         },
         emailSession: session ? {
           authenticated: true,
@@ -100,6 +126,8 @@ export async function createDualPersistence() {
               : "DUAL service-account bearer auth is configured; set DUAL_WRITE_MODE=event_bus to enable writes."
           : sessionClient
             ? "DUAL email session is active for event-bus writes."
+          : serviceAccountError
+            ? `DUAL service-account refresh failed: ${serviceAccountError.message}`
           : sdkError
             ? `DUAL SDK unavailable: ${sdkError.message}`
             : "Set DUAL_API_KEY, DUAL_ORG_ID, and DUAL_AGENT_PASSPORT_TEMPLATE_ID."
@@ -119,7 +147,7 @@ export async function createDualPersistence() {
         current: status,
         missing: ready ? [] : [
           ...(status.available || DualClientClass ? [] : ["DUAL SDK/client availability"]),
-          ...(activeWriteClient() ? [] : ["email OTP bearer session, DUAL_SERVICE_ACCOUNT_TOKEN, or DUAL_AUTH_MODE=bearer"]),
+          ...(activeWriteClient() ? [] : ["email OTP bearer session, DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN, DUAL_SERVICE_ACCOUNT_TOKEN bearer, or DUAL_AUTH_MODE=bearer"]),
           ...(effectiveWriteMode() === "event_bus" ? [] : ["DUAL_WRITE_MODE=event_bus or authenticated email session"]),
           "bearer/session/service-account token with /ebus/execute permission"
         ],
@@ -138,18 +166,23 @@ export async function createDualPersistence() {
         writable: Boolean(activeWriteClient()),
         authType: sessionClient
           ? "email_session"
+          : serviceWritable && serviceAccountSession
+            ? "refresh_token_service_session"
           : serviceWritable
-            ? "service_account"
+            ? "bearer_service_account"
             : envBearerWritable
               ? "bearer_env"
               : null,
         serviceAccountConfigured: config.serviceAccountConfigured,
+        serviceAccountRefreshConfigured: config.serviceAccountRefreshConfigured,
         pendingEmail: pendingEmail ? maskEmail(pendingEmail) : null,
         email: session ? maskEmail(session.email) : null,
-        orgId: session?.orgId || null,
-        authenticatedAt: session?.authenticatedAt || null,
+        orgId: session?.orgId || serviceAccountSession?.orgId || null,
+        authenticatedAt: session?.authenticatedAt || serviceAccountSession?.refreshedAt || null,
         detail: sessionClient
           ? "Bearer email session is active for DUAL event-bus writes."
+          : serviceWritable && serviceAccountSession
+            ? "Refresh-token service session is active for unattended DUAL event-bus writes."
           : serviceWritable
             ? "Service-account bearer auth is active for unattended DUAL event-bus writes."
           : envBearerWritable

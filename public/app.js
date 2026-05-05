@@ -226,6 +226,7 @@ function renderProof() {
   const adapter = proof?.status?.krakenMarketData || state.health?.adapter?.source || "checking";
   const dualObject = proof?.dualObject;
   const dualTemplate = proof?.dualTemplate;
+  const replayQueue = proof?.replayQueue;
   const rows = [
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
@@ -233,6 +234,8 @@ function renderProof() {
     ["Write readiness", proof?.status?.writeReadiness?.ready ? "ready" : "needs bearer auth"],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
+    ["Replay queue", replayQueue?.eventCount != null ? `${replayQueue.eventCount} events` : "pending"],
+    ["Replay root", replayQueue?.rootHash ? shortId(replayQueue.rootHash) : "pending"],
     ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],
     ["Proof hash", proof?.proofHash ? shortId(proof.proofHash) : "pending"]
   ];

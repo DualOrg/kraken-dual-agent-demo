@@ -10,10 +10,15 @@ assert(dualStatus.available, "DUAL persistence adapter is available");
 const writeReadiness = await get("/api/dual/write-readiness");
 assert(typeof writeReadiness.ready === "boolean", "write readiness reports a boolean ready state");
 
+const replayQueue = await get("/api/dual/replay-queue");
+assert(replayQueue.rootHash, "replay queue returns a root hash");
+assert(Array.isArray(replayQueue.events), "replay queue returns event payloads");
+
 const proof = await get("/api/proof");
 assert(proof.proofHash, "proof endpoint returns a proof hash");
 assert(proof.audit.rootHash, "proof endpoint returns an audit root");
 assert(typeof proof.status.writeReadiness.ready === "boolean", "proof includes write readiness");
+assert(proof.replayQueue.rootHash, "proof includes replay queue root");
 
 let state = await get("/api/state");
 assert(state.passport.mode === "paper", "passport is paper mode");

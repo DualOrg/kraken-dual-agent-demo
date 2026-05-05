@@ -53,6 +53,12 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/dual/replay-queue") {
+    const state = await loadState();
+    sendJson(res, 200, dualPersistence.buildReplayQueue(state.passport, state.audit || []));
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/dual/passport") {
     const result = await dualPersistence.readPassportObject();
     sendJson(res, result.available ? 200 : 409, result);
@@ -311,6 +317,7 @@ async function buildProofBundle() {
   }
 
   const audit = state.audit || [];
+  const replayQueue = dualPersistence.buildReplayQueue(state.passport, audit);
   const auditRoot = hashJson(audit.map((event) => ({
     id: event.id,
     type: event.type,
@@ -330,6 +337,14 @@ async function buildProofBundle() {
     },
     dualTemplate,
     dualObject,
+    replayQueue: {
+      ready: replayQueue.ready,
+      writable: replayQueue.writable,
+      eventCount: replayQueue.eventCount,
+      rootHash: replayQueue.rootHash,
+      targetObjectId: replayQueue.targetObjectId,
+      latest: replayQueue.events.slice(0, 8)
+    },
     passport: {
       id: state.passport.id,
       agentName: state.passport.agentName,
@@ -372,7 +387,7 @@ async function addAudit(state, type, status, title, detail, payload = {}) {
   try {
     const dualResult = await dualPersistence.recordEvent(state.passport, event);
     event.dualSync = dualResult?.skipped
-      ? { synced: false, reason: dualResult.reason }
+      ? { synced: false, reason: dualResult.reason, replay: dualResult.replay || null }
       : { synced: true };
   } catch (error) {
     event.dualSync = { synced: false, error: error.message };

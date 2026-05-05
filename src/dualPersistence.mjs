@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 export async function createDualPersistence() {
   const mode = process.env.DUAL_PERSISTENCE_MODE || "local";
   const orgId = process.env.DUAL_ORG_ID || "";
@@ -123,6 +125,37 @@ export async function createDualPersistence() {
       });
     },
 
+    buildReplayQueue(passport, audit = []) {
+      const events = audit.map((event) => {
+        const envelope = eventBusEnvelope(objectId, templateId, passport, event);
+        return {
+          eventId: event.id,
+          eventType: event.type,
+          eventStatus: event.status,
+          eventHash: event.provenanceHash || event.id,
+          ready: Boolean(objectId || templateId),
+          envelope,
+          envelopeHash: hashJson(envelope)
+        };
+      });
+
+      return {
+        ready: Boolean(objectId || templateId),
+        writable: Boolean(client && writeMode === "event_bus"),
+        targetObjectId: objectId || null,
+        targetTemplateId: templateId || null,
+        authMode,
+        writeMode,
+        eventCount: events.length,
+        rootHash: hashJson(events.map((event) => ({
+          eventId: event.eventId,
+          eventHash: event.eventHash,
+          envelopeHash: event.envelopeHash
+        }))),
+        events
+      };
+    },
+
     async readPassportObject() {
       if (!client || !objectId) {
         return {
@@ -167,47 +200,18 @@ export async function createDualPersistence() {
     async recordEvent(passport, event) {
       if (!client) return { skipped: true, reason: this.status().detail };
       if (writeMode !== "event_bus") {
-        return { skipped: true, reason: "DUAL event-bus writes require bearer/session auth; current deployment is read-linked." };
-      }
-
-      const properties = {
-        ...passportProperties(passport, { lastEventId: event.id }),
-        last_event_id: event.id,
-        last_event_type: event.type,
-        last_event_status: event.status,
-        last_event_hash: event.provenanceHash || event.id,
-        last_event_at: event.timestamp
-      };
-
-      const metadata = {
-        event_id: event.id,
-        event_type: event.type,
-        event_status: event.status,
-        event_hash: event.provenanceHash,
-        event_payload: event.payload || {}
-      };
-
-      if (objectId) {
-        return client.eventBus.execute({
-          action: {
-            update: {
-              id: objectId,
-              custom: properties
-            }
-          },
-          metadata
-        });
-      }
-
-      return client.eventBus.execute({
-        action: {
-          mint: {
-            template_id: templateId,
-            custom: properties
+        const envelope = eventBusEnvelope(objectId, templateId, passport, event);
+        return {
+          skipped: true,
+          reason: "DUAL event-bus writes require bearer/session auth; current deployment is read-linked.",
+          replay: {
+            envelope,
+            envelopeHash: hashJson(envelope)
           }
-        },
-        metadata
-      });
+        };
+      }
+
+      return client.eventBus.execute(eventBusEnvelope(objectId, templateId, passport, event));
     }
   };
 }
@@ -268,4 +272,57 @@ function agentTradingPassportProperties() {
     last_event_hash: "string",
     last_event_at: "string"
   };
+}
+
+function eventBusEnvelope(objectId, templateId, passport, event) {
+  const properties = {
+    ...passportProperties(passport, { lastEventId: event.id }),
+    last_event_id: event.id,
+    last_event_type: event.type,
+    last_event_status: event.status,
+    last_event_hash: event.provenanceHash || event.id,
+    last_event_at: event.timestamp
+  };
+
+  const metadata = {
+    event_id: event.id,
+    event_type: event.type,
+    event_status: event.status,
+    event_hash: event.provenanceHash,
+    event_payload: event.payload || {}
+  };
+
+  if (objectId) {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          custom: properties
+        }
+      },
+      metadata
+    };
+  }
+
+  return {
+    action: {
+      mint: {
+        template_id: templateId,
+        custom: properties
+      }
+    },
+    metadata
+  };
+}
+
+function hashJson(value) {
+  return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }

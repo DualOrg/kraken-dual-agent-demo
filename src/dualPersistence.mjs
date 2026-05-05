@@ -494,7 +494,7 @@ export async function createDualPersistence() {
 
   function eventBusPayloadAttempts(actionName, objectId, templateId, orgId, properties, metadata, preferredPayload) {
     const styles = resolvedEventBusPayloadStyle === "auto"
-      ? ["flat", "nested", "top_level_custom", "top_level_public", "top_level_custom_public", "top_level_custom_data", "top_level_public_data", "object_id_custom", "object_id_custom_data", "nested_custom_data", "nested_public_data", "nested_object_custom", "nested_public", "nested_custom_public", "named", "classic_object", "classic_custom"]
+      ? ["flat", "nested", "top_level_custom", "top_level_public", "top_level_custom_public", "top_level_payload", "top_level_payload_custom", "top_level_payload_public", "nested_payload", "nested_payload_custom", "nested_payload_public", "nested_customData", "nested_publicData", "top_level_custom_data", "top_level_public_data", "object_id_custom", "object_id_custom_data", "nested_custom_data", "nested_public_data", "nested_object_custom", "nested_public", "nested_custom_public", "named", "classic_object", "classic_custom"]
       : [resolvedEventBusPayloadStyle];
     return styles.map((style) => ({
       style,
@@ -687,6 +687,102 @@ function updateEventBusEnvelope(style, objectId, templateId, orgId, properties, 
       },
       custom: properties,
       public: properties,
+      metadata
+    };
+  }
+  if (style === "top_level_payload") {
+    return {
+      action: {
+        update: {
+          id: objectId
+        }
+      },
+      payload: properties,
+      metadata
+    };
+  }
+  if (style === "top_level_payload_custom") {
+    return {
+      action: {
+        update: {
+          id: objectId
+        }
+      },
+      payload: {
+        custom: properties
+      },
+      metadata
+    };
+  }
+  if (style === "top_level_payload_public") {
+    return {
+      action: {
+        update: {
+          id: objectId
+        }
+      },
+      payload: {
+        public: properties
+      },
+      metadata
+    };
+  }
+  if (style === "nested_payload") {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          payload: properties
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_payload_custom") {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          payload: {
+            custom: properties
+          }
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_payload_public") {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          payload: {
+            public: properties
+          }
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_customData") {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          customData: properties
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_publicData") {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          publicData: properties
+        }
+      },
       metadata
     };
   }
@@ -900,6 +996,110 @@ function mintEventBusEnvelope(style, templateId, orgId, properties, metadata) {
       },
       custom: properties,
       public: properties,
+      metadata
+    };
+  }
+  if (style === "top_level_payload") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1
+        }
+      },
+      payload: properties,
+      metadata
+    };
+  }
+  if (style === "top_level_payload_custom") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1
+        }
+      },
+      payload: {
+        custom: properties
+      },
+      metadata
+    };
+  }
+  if (style === "top_level_payload_public") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1
+        }
+      },
+      payload: {
+        public: properties
+      },
+      metadata
+    };
+  }
+  if (style === "nested_payload") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1,
+          payload: properties
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_payload_custom") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1,
+          payload: {
+            custom: properties
+          }
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_payload_public") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1,
+          payload: {
+            public: properties
+          }
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_customData") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1,
+          customData: properties
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "nested_publicData") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1,
+          publicData: properties
+        }
+      },
       metadata
     };
   }

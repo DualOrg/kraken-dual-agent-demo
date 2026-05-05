@@ -464,7 +464,7 @@ export async function createDualPersistence() {
 
   function eventBusPayloadAttempts(actionName, objectId, templateId, orgId, properties, metadata, preferredPayload) {
     const styles = resolvedEventBusPayloadStyle === "auto"
-      ? ["flat", "nested", "top_level_custom", "top_level_public", "top_level_custom_public", "nested_custom_data", "nested_public_data", "nested_object_custom", "nested_public", "nested_custom_public", "named", "classic_object", "classic_custom"]
+      ? ["flat", "nested", "top_level_custom", "top_level_public", "top_level_custom_public", "top_level_custom_data", "top_level_public_data", "object_id_custom", "object_id_custom_data", "nested_custom_data", "nested_public_data", "nested_object_custom", "nested_public", "nested_custom_public", "named", "classic_object", "classic_custom"]
       : [resolvedEventBusPayloadStyle];
     return styles.map((style) => ({
       style,
@@ -660,6 +660,50 @@ function updateEventBusEnvelope(style, objectId, templateId, orgId, properties, 
       metadata
     };
   }
+  if (style === "top_level_custom_data") {
+    return {
+      action: {
+        update: {
+          id: objectId
+        }
+      },
+      custom_data: properties,
+      metadata
+    };
+  }
+  if (style === "top_level_public_data") {
+    return {
+      action: {
+        update: {
+          id: objectId
+        }
+      },
+      public_data: properties,
+      metadata
+    };
+  }
+  if (style === "object_id_custom") {
+    return {
+      action: {
+        update: {
+          object_id: objectId
+        }
+      },
+      custom: properties,
+      metadata
+    };
+  }
+  if (style === "object_id_custom_data") {
+    return {
+      action: {
+        update: {
+          object_id: objectId
+        }
+      },
+      custom_data: properties,
+      metadata
+    };
+  }
   if (style === "nested_custom_data") {
     return {
       action: {
@@ -806,6 +850,33 @@ function mintEventBusEnvelope(style, templateId, orgId, properties, metadata) {
       public: properties,
       metadata
     };
+  }
+  if (style === "top_level_custom_data") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1
+        }
+      },
+      custom_data: properties,
+      metadata
+    };
+  }
+  if (style === "top_level_public_data") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1
+        }
+      },
+      public_data: properties,
+      metadata
+    };
+  }
+  if (style === "object_id_custom" || style === "object_id_custom_data") {
+    return mintEventBusEnvelope(style === "object_id_custom" ? "top_level_custom" : "top_level_custom_data", templateId, orgId, properties, metadata);
   }
   if (style === "nested_custom_data") {
     return {

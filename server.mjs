@@ -181,6 +181,21 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/dual/probe-update-schemas") {
+    const body = await readBody(req);
+    if (body.confirm !== "probe-dual-update-schemas") {
+      sendJson(res, 400, {
+        error: "confirmation_required",
+        message: "Send confirm=probe-dual-update-schemas to run sanitized DUAL update schema probes."
+      });
+      return;
+    }
+    const state = await loadState();
+    const result = await dualPersistence.probeUpdateSchemas(state.passport);
+    sendJson(res, 200, result);
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/state") {
     const state = await loadState();
     sendJson(res, 200, state);

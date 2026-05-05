@@ -401,6 +401,36 @@ export async function createDualPersistence() {
         envelopeHash: hashJson(envelope.payload),
         result: summarizeDualResult(result)
       };
+    },
+
+    async probeUpdateSchemas(passport) {
+      const writeClient = requireWritableClient();
+      const properties = passportProperties(passport, { lastEventId: "schema_probe" });
+      const probes = updateSchemaProbePayloads(objectId, properties);
+      const results = [];
+      for (const probe of probes) {
+        try {
+          const result = probe.kind === "object_update"
+            ? await writeClient.objects.update(objectId, probe.payload)
+            : await writeClient.eventBus.execute(probe.payload);
+          results.push({
+            name: probe.name,
+            ok: true,
+            result: probe.kind === "object_update" ? summarizeDualObject(result) : summarizeDualResult(result)
+          });
+        } catch (error) {
+          results.push({
+            name: probe.name,
+            ok: false,
+            error: summarizeDualError(probe.name, error)
+          });
+        }
+      }
+      return {
+        targetObjectId: objectId,
+        targetTemplateId: templateId,
+        results
+      };
     }
   };
 
@@ -785,6 +815,28 @@ function updateEventBusEnvelope(style, objectId, templateId, orgId, properties, 
     properties,
     metadata
   };
+}
+
+function updateSchemaProbePayloads(objectId, properties) {
+  return [
+    { kind: "object_update", name: "object_update_properties", payload: { properties } },
+    { kind: "object_update", name: "object_update_custom", payload: { custom: properties } },
+    { kind: "object_update", name: "object_update_object_custom", payload: { object: { custom: properties } } },
+    { kind: "event_bus", name: "update_customData", payload: { action: { update: { id: objectId, customData: properties } } } },
+    { kind: "event_bus", name: "update_publicData", payload: { action: { update: { id: objectId, publicData: properties } } } },
+    { kind: "event_bus", name: "update_custom_json", payload: { action: { update: { id: objectId, custom_json: properties } } } },
+    { kind: "event_bus", name: "update_public_json", payload: { action: { update: { id: objectId, public_json: properties } } } },
+    { kind: "event_bus", name: "update_data_custom", payload: { action: { update: { id: objectId, data: { custom: properties } } } } },
+    { kind: "event_bus", name: "update_data_public", payload: { action: { update: { id: objectId, data: { public: properties } } } } },
+    { kind: "event_bus", name: "update_object_custom_top", payload: { action: { update: { id: objectId } }, object: { custom: properties } } },
+    { kind: "event_bus", name: "update_object_public_top", payload: { action: { update: { id: objectId } }, object: { public: properties } } },
+    { kind: "event_bus", name: "update_with_custom_root", payload: { action: { update: { id: objectId } }, custom: properties } },
+    { kind: "event_bus", name: "update_with_public_root", payload: { action: { update: { id: objectId } }, public: properties } },
+    { kind: "event_bus", name: "update_with_customData_root", payload: { action: { update: { id: objectId } }, customData: properties } },
+    { kind: "event_bus", name: "update_with_publicData_root", payload: { action: { update: { id: objectId } }, publicData: properties } },
+    { kind: "event_bus", name: "update_custom_empty_metadata", payload: { action: { update: { id: objectId, custom: properties } }, metadata: {} } },
+    { kind: "event_bus", name: "update_public_empty_metadata", payload: { action: { update: { id: objectId, public: properties } }, metadata: {} } }
+  ];
 }
 
 function mintEventBusEnvelope(style, templateId, orgId, properties, metadata) {

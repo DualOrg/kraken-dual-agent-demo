@@ -10,6 +10,7 @@ export async function createDualPersistence() {
     || process.env.DUAL_SERVICE_ACCOUNT_BEARER_TOKEN
     || process.env.DUAL_BEARER_TOKEN
     || "";
+  const serviceAccountAuthMode = process.env.DUAL_SERVICE_ACCOUNT_AUTH_MODE || "bearer";
   const baseUrl = process.env.DUAL_API_URL || "https://gateway-48587430648.europe-west6.run.app";
   const authMode = process.env.DUAL_AUTH_MODE || "api_key";
   const writeMode = process.env.DUAL_WRITE_MODE || (authMode === "api_key" ? "read_only" : "event_bus");
@@ -22,6 +23,7 @@ export async function createDualPersistence() {
     baseUrl,
     authMode,
     writeMode,
+    serviceAccountAuthMode,
     serviceAccountConfigured: Boolean(serviceAccountToken),
     configured: Boolean((apiKey || serviceAccountToken) && orgId && templateId)
   };
@@ -43,7 +45,7 @@ export async function createDualPersistence() {
         client = new DualClient({ baseUrl, token: apiKey, authMode, timeout: 30000 });
       }
       if (serviceAccountToken && orgId && templateId) {
-        serviceAccountClient = new DualClient({ baseUrl, token: serviceAccountToken, authMode: "bearer", timeout: 30000 });
+        serviceAccountClient = new DualClient({ baseUrl, token: serviceAccountToken, authMode: serviceAccountAuthMode, timeout: 30000 });
       }
     } catch (error) {
       sdkError = error;
@@ -75,6 +77,7 @@ export async function createDualPersistence() {
         writeMode: effectiveWriteMode(),
         serviceAccount: {
           configured: config.serviceAccountConfigured,
+          authMode: serviceAccountAuthMode,
           writable: Boolean(serviceAccountClient && writeMode === "event_bus")
         },
         emailSession: session ? {
@@ -529,7 +532,7 @@ export async function createDualPersistence() {
 
   function effectiveAuthMode() {
     if (sessionClient) return "bearer_email_session";
-    if (serviceAccountClient) return "bearer_service_account";
+    if (serviceAccountClient) return `${serviceAccountAuthMode}_service_account`;
     return authMode;
   }
 

@@ -26,6 +26,7 @@ export async function createDualPersistence() {
   let session = null;
   let pendingEmail = null;
   let DualClientClass = null;
+  let resolvedEventBusPayloadStyle = process.env.DUAL_EVENTBUS_PAYLOAD_STYLE || "auto";
   let sdkError = null;
 
   if (mode === "dual") {
@@ -207,24 +208,10 @@ export async function createDualPersistence() {
     async syncPassport(passport, metadata = {}) {
       const writeClient = requireWritableClient();
       const properties = passportProperties(passport, metadata);
-
-      if (objectId) {
-        return writeClient.eventBus.execute({
-          action: "update",
-          organizationId: orgId,
-          objectId,
-          properties,
-          metadata
-        });
-      }
-
-      return writeClient.eventBus.execute({
-        action: "mint",
-        organizationId: orgId,
-        templateId,
-        properties,
-        metadata
-      });
+      const envelope = objectId
+        ? updateEventBusEnvelope("flat", objectId, templateId, orgId, properties, metadata)
+        : mintEventBusEnvelope("flat", templateId, orgId, properties, metadata);
+      return executeEventBusWithFallback(writeClient, objectId ? "update" : "mint", objectId, templateId, orgId, properties, metadata, envelope);
     },
 
     buildReplayQueue(passport, audit = []) {
@@ -269,7 +256,16 @@ export async function createDualPersistence() {
 
       const executed = [];
       for (const event of [...replayQueue.events].reverse()) {
-        const result = await writeClient.eventBus.execute(event.envelope);
+        const result = await executeEventBusWithFallback(
+          writeClient,
+          event.envelope.actionName,
+          objectId,
+          templateId,
+          orgId,
+          event.envelope.properties,
+          event.envelope.metadata,
+          event.envelope.payload
+        );
         executed.push({
           eventId: event.eventId,
           eventType: event.eventType,
@@ -348,10 +344,19 @@ export async function createDualPersistence() {
         };
       }
 
-      const result = await writeClient.eventBus.execute(envelope);
+      const result = await executeEventBusWithFallback(
+        writeClient,
+        envelope.actionName,
+        objectId,
+        templateId,
+        orgId,
+        envelope.properties,
+        envelope.metadata,
+        envelope.payload
+      );
       return {
         synced: true,
-        envelopeHash: hashJson(envelope),
+        envelopeHash: hashJson(envelope.payload),
         result: summarizeDualResult(result)
       };
     }
@@ -390,6 +395,43 @@ export async function createDualPersistence() {
     const error = new Error("DUAL event-bus writes require an authenticated email-code bearer session or DUAL_AUTH_MODE=bearer with DUAL_WRITE_MODE=event_bus.");
     error.status = 400;
     throw error;
+  }
+
+  async function executeEventBusWithFallback(writeClient, actionName, objectId, templateId, orgId, properties, metadata, preferredPayload) {
+    const attempts = eventBusPayloadAttempts(actionName, objectId, templateId, orgId, properties, metadata, preferredPayload);
+    const errors = [];
+    for (const attempt of attempts) {
+      try {
+        const result = await writeClient.eventBus.execute(attempt.payload);
+        resolvedEventBusPayloadStyle = attempt.style;
+        return {
+          ...summarizeDualResult(result),
+          raw: result,
+          payloadStyle: attempt.style
+        };
+      } catch (error) {
+        errors.push(summarizeDualError(attempt.style, error));
+      }
+    }
+    const error = new Error(errors[0]?.message || "DUAL event-bus execute failed.");
+    error.status = errors[0]?.status || 400;
+    error.body = { attempts: errors };
+    throw error;
+  }
+
+  function eventBusPayloadAttempts(actionName, objectId, templateId, orgId, properties, metadata, preferredPayload) {
+    const styles = resolvedEventBusPayloadStyle === "auto"
+      ? ["flat", "nested", "named", "classic_object", "classic_custom"]
+      : [resolvedEventBusPayloadStyle];
+    return styles.map((style) => ({
+      style,
+      payload: actionName === "update"
+        ? updateEventBusEnvelope(style, objectId, templateId, orgId, properties, metadata)
+        : mintEventBusEnvelope(style, templateId, orgId, properties, metadata)
+    })).filter((attempt, index, attempts) => {
+      if (!preferredPayload || index > 0) return true;
+      return hashJson(attempt.payload) !== hashJson(preferredPayload) || attempts.findIndex((item) => hashJson(item.payload) === hashJson(preferredPayload)) === index;
+    });
   }
 }
 
@@ -471,14 +513,94 @@ function eventBusEnvelope(objectId, templateId, orgId, passport, event) {
 
   if (objectId) {
     return {
-      action: "update",
-      organizationId: orgId,
-      objectId,
       properties,
-      metadata
+      metadata,
+      actionName: "update",
+      payload: updateEventBusEnvelope("flat", objectId, templateId, orgId, properties, metadata)
     };
   }
 
+  return {
+    properties,
+    metadata,
+    actionName: "mint",
+    payload: mintEventBusEnvelope("flat", templateId, orgId, properties, metadata)
+  };
+}
+
+function updateEventBusEnvelope(style, objectId, templateId, orgId, properties, metadata) {
+  if (style === "nested") {
+    return {
+      action: {
+        update: {
+          id: objectId,
+          custom: properties
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "named") {
+    return {
+      action: {
+        name: "update",
+        template_id: templateId,
+        object_id: objectId,
+        properties
+      },
+      metadata
+    };
+  }
+  if (style === "classic_object") {
+    return {
+      this: objectId,
+      action: "update",
+      object: {
+        custom: properties
+      },
+      metadata
+    };
+  }
+  if (style === "classic_custom") {
+    return {
+      this: objectId,
+      action: "update",
+      custom: properties,
+      metadata
+    };
+  }
+  return {
+    action: "update",
+    organizationId: orgId,
+    objectId,
+    properties,
+    metadata
+  };
+}
+
+function mintEventBusEnvelope(style, templateId, orgId, properties, metadata) {
+  if (style === "nested") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1,
+          custom: properties
+        }
+      },
+      metadata
+    };
+  }
+  if (style === "named") {
+    return {
+      action: {
+        name: "mint",
+        template_id: templateId,
+        properties
+      },
+      metadata
+    };
+  }
   return {
     action: "mint",
     organizationId: orgId,
@@ -496,6 +618,24 @@ function summarizeDualResult(result) {
     hash: result.hash || result.integrity_hash || result.integrityHash || result.state_hash || result.stateHash || null,
     actionId: result.action_id || result.actionId || null
   };
+}
+
+function summarizeDualError(style, error) {
+  return {
+    style,
+    message: error?.message || "Unknown DUAL event-bus error",
+    code: error?.code || error?.name || null,
+    status: error?.status || error?.statusCode || null,
+    body: sanitizeDualErrorBody(error?.body)
+  };
+}
+
+function sanitizeDualErrorBody(body) {
+  if (!body || typeof body !== "object") return body || null;
+  return JSON.parse(JSON.stringify(body, (key, value) => {
+    if (/token|secret|key|auth|password/i.test(key)) return "[REDACTED]";
+    return value;
+  }));
 }
 
 function normalizeEmail(email) {

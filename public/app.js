@@ -5,7 +5,8 @@ const state = {
   proof: null,
   proofVerification: null,
   dualAuth: null,
-  replayExecution: null
+  replayExecution: null,
+  actionPassportSetup: null
 };
 
 const pairs = ["BTCUSD", "ETHUSD", "SOLUSD"];
@@ -28,6 +29,7 @@ const els = {
   dualAuthMessage: document.querySelector("#dualAuthMessage"),
   requestCodeButton: document.querySelector("#requestCodeButton"),
   verifyCodeButton: document.querySelector("#verifyCodeButton"),
+  setupActionPassportButton: document.querySelector("#setupActionPassportButton"),
   executeReplayButton: document.querySelector("#executeReplayButton"),
   exportProofButton: document.querySelector("#exportProofButton"),
   proofGrid: document.querySelector("#proofGrid"),
@@ -133,6 +135,20 @@ function bindEvents() {
         : result.readiness?.detail || "DUAL write auth is not ready.";
       render();
       await loadProof();
+    } catch (error) {
+      els.dualAuthMessage.textContent = error.message;
+    }
+  });
+
+  els.setupActionPassportButton.addEventListener("click", async () => {
+    try {
+      els.dualAuthMessage.textContent = "Creating action-enabled DUAL passport...";
+      const result = await postJson("/api/dual/action-passport/setup", {
+        confirm: "create-action-enabled-kraken-passport"
+      });
+      state.actionPassportSetup = result;
+      els.dualAuthMessage.textContent = `Created template ${shortId(result.vercelEnv.DUAL_AGENT_PASSPORT_TEMPLATE_ID)} and object ${shortId(result.vercelEnv.DUAL_AGENT_PASSPORT_OBJECT_ID)}.`;
+      renderProof();
     } catch (error) {
       els.dualAuthMessage.textContent = error.message;
     }
@@ -300,6 +316,7 @@ function renderProof() {
     ["Bearer auth", auth?.authenticated ? `session ${auth.email}` : auth?.pendingEmail ? `code sent ${auth.pendingEmail}` : "email code needed"],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
+    ["Action setup", state.actionPassportSetup?.vercelEnv ? `${shortId(state.actionPassportSetup.vercelEnv.DUAL_AGENT_PASSPORT_TEMPLATE_ID)} / ${shortId(state.actionPassportSetup.vercelEnv.DUAL_AGENT_PASSPORT_OBJECT_ID)}` : "not run"],
     ["Replay queue", replayQueue?.eventCount != null ? `${replayQueue.eventCount} events` : "pending"],
     ["Replay execution", state.replayExecution?.executedCount != null ? `${state.replayExecution.executedCount} writes` : "not executed"],
     ["Replay root", replayQueue?.rootHash ? shortId(replayQueue.rootHash) : "pending"],
@@ -316,6 +333,7 @@ function renderProof() {
   `).join("");
 
   els.executeReplayButton.disabled = !auth?.writable || !replayQueue?.eventCount;
+  els.setupActionPassportButton.disabled = !auth?.writable;
   if (auth?.authenticated) {
     els.dualAuthMessage.textContent = auth.detail;
   } else if (!els.dualAuthMessage.textContent) {

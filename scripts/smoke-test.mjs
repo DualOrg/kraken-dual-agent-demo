@@ -7,9 +7,13 @@ assert(["local", "dual"].includes(health.dual.mode), "DUAL persistence reports a
 const dualStatus = await get("/api/dual/status");
 assert(dualStatus.available, "DUAL persistence adapter is available");
 
+const writeReadiness = await get("/api/dual/write-readiness");
+assert(typeof writeReadiness.ready === "boolean", "write readiness reports a boolean ready state");
+
 const proof = await get("/api/proof");
 assert(proof.proofHash, "proof endpoint returns a proof hash");
 assert(proof.audit.rootHash, "proof endpoint returns an audit root");
+assert(typeof proof.status.writeReadiness.ready === "boolean", "proof includes write readiness");
 
 let state = await get("/api/state");
 assert(state.passport.mode === "paper", "passport is paper mode");

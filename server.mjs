@@ -48,6 +48,11 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/dual/write-readiness") {
+    sendJson(res, 200, dualPersistence.writeReadiness());
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/dual/passport") {
     const result = await dualPersistence.readPassportObject();
     sendJson(res, result.available ? 200 : 409, result);
@@ -320,7 +325,8 @@ async function buildProofBundle() {
     status: {
       krakenMarketData: adapter.source,
       krakenPaperExecution: adapter.krakenCliAvailable ? "kraken-cli-paper" : "simulated-paper",
-      dualMode: dualPersistence.status()
+      dualMode: dualPersistence.status(),
+      writeReadiness: dualPersistence.writeReadiness()
     },
     dualTemplate,
     dualObject,

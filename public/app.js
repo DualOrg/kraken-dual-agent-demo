@@ -230,6 +230,7 @@ function renderProof() {
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
     ["DUAL mode", dual?.available ? dual.writable ? "write-sync" : "read-linked" : "not configured"],
+    ["Write readiness", proof?.status?.writeReadiness?.ready ? "ready" : "needs bearer auth"],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
     ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],

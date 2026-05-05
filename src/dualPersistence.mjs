@@ -62,6 +62,29 @@ export async function createDualPersistence() {
       };
     },
 
+    writeReadiness() {
+      const status = this.status();
+      const ready = Boolean(status.available && status.writable);
+      return {
+        ready,
+        mode,
+        authMode,
+        writeMode,
+        requiredAuthMode: "bearer",
+        requiredWriteMode: "event_bus",
+        current: status,
+        missing: ready ? [] : [
+          ...(status.available ? [] : ["DUAL_API_KEY with read access"]),
+          ...(authMode === "bearer" ? [] : ["DUAL_AUTH_MODE=bearer"]),
+          ...(writeMode === "event_bus" ? [] : ["DUAL_WRITE_MODE=event_bus"]),
+          "bearer/session/service-account token with /ebus/execute permission"
+        ],
+        detail: ready
+          ? "DUAL event-bus write sync is enabled."
+          : "DUAL read-link is active; event-bus write sync needs bearer/session/service-account auth."
+      };
+    },
+
     async createTemplate() {
       requireClient(client, config);
       requireWritable(config);

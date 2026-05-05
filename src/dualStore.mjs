@@ -6,7 +6,7 @@ import crypto from "node:crypto";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 const seedPath = join(root, "data", "seed.json");
-const statePath = join(root, "data", "state.json");
+const statePath = process.env.STATE_PATH || (process.env.VERCEL ? "/tmp/kraken-dual-agent-state.json" : join(root, "data", "state.json"));
 
 export async function loadState() {
   try {

@@ -5,7 +5,8 @@ A safe partner-demo repo that shows Kraken as the agent execution venue and DUAL
 The public MVP runs in paper/simulator mode by default:
 
 - Kraken CLI market data if `kraken` is installed.
-- Simulator fallback when Kraken CLI is unavailable.
+- Kraken public market-data API when Kraken CLI is unavailable.
+- Simulator fallback only when both Kraken CLI and Kraken public API are unavailable.
 - Kraken spot paper trade command path when available.
 - DUAL `agent_trading_passport` lifecycle simulated locally with the same object model expected for a DUAL-backed integration.
 - Red-team scenarios that prove unsafe requests are blocked before execution.
@@ -49,7 +50,7 @@ kraken paper init --balance 10000 -o json
 kraken paper buy BTCUSD 0.01 -o json
 ```
 
-If the binary is missing or returns an error, the app falls back to deterministic simulated data and labels the adapter as `Simulator fallback`.
+If the binary is missing or returns an error, the app falls back to Kraken's public ticker API for market data. It uses deterministic simulated data only if both CLI and public API are unavailable.
 
 ## DUAL Persistence
 

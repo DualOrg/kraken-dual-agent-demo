@@ -3,6 +3,14 @@ import crypto from "node:crypto";
 
 const SIM_SOURCE = "simulated";
 const CLI_SOURCE = "kraken-cli";
+const API_SOURCE = "kraken-public-api";
+
+const KRAKEN_PUBLIC_PAIRS = {
+  BTCUSD: "XBTUSD",
+  XBTUSD: "XBTUSD",
+  ETHUSD: "ETHUSD",
+  SOLUSD: "SOLUSD"
+};
 
 export async function getMarket(pair, fallbackMarket = {}) {
   const normalizedPair = String(pair || "BTCUSD").toUpperCase();
@@ -13,7 +21,12 @@ export async function getMarket(pair, fallbackMarket = {}) {
     if (normalized) return { ...normalized, source: CLI_SOURCE, raw: cli.json };
   }
 
-  return simulatedMarket(normalizedPair, fallbackMarket[normalizedPair], cli.error);
+  const api = await getKrakenPublicTicker(normalizedPair);
+  if (api.ok) {
+    return { ...api.market, source: API_SOURCE, cliFallbackReason: cli.error?.message || null, raw: api.raw };
+  }
+
+  return simulatedMarket(normalizedPair, fallbackMarket[normalizedPair], api.error || cli.error);
 }
 
 export async function executePaperTrade(trade) {
@@ -38,11 +51,58 @@ export async function executePaperTrade(trade) {
 
 export async function getAdapterStatus() {
   const result = await runKraken(["status", "-o", "json"], { timeoutMs: 2500, tolerateFailure: true });
+  if (!result.ok) {
+    const api = await getKrakenPublicTicker("BTCUSD", { timeoutMs: 5000 });
+    if (api.ok) {
+      return {
+        krakenCliAvailable: false,
+        krakenPublicApiAvailable: true,
+        source: API_SOURCE,
+        detail: "Kraken CLI is unavailable; using Kraken public market-data API."
+      };
+    }
+  }
+
   return {
     krakenCliAvailable: result.ok,
+    krakenPublicApiAvailable: false,
     source: result.ok ? CLI_SOURCE : SIM_SOURCE,
     detail: result.ok ? "Kraken CLI is available." : "Kraken CLI was not found or did not respond; using simulator fallback."
   };
+}
+
+async function getKrakenPublicTicker(pair, options = {}) {
+  const apiPair = KRAKEN_PUBLIC_PAIRS[pair] || pair;
+  const timeoutMs = options.timeoutMs || 5000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${encodeURIComponent(apiPair)}`, {
+      signal: controller.signal
+    });
+    const json = await response.json();
+    if (!response.ok || json.error?.length) {
+      return {
+        ok: false,
+        error: {
+          message: json.error?.join("; ") || `Kraken public API returned ${response.status}.`,
+          code: response.status
+        }
+      };
+    }
+
+    const normalized = normalizeTicker(pair, json.result);
+    if (!normalized) {
+      return { ok: false, error: { message: "Kraken public API returned an unrecognized ticker payload.", code: "bad_payload" } };
+    }
+
+    return { ok: true, market: normalized, raw: json.result };
+  } catch (error) {
+    return { ok: false, error: { message: error.message, code: error.name || "kraken_api_error" } };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function runKraken(args, options = {}) {

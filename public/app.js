@@ -294,6 +294,12 @@ function renderProof() {
   const dualObject = proof?.dualObject;
   const dualTemplate = proof?.dualTemplate;
   const replayQueue = proof?.replayQueue;
+  const eventBusSync = verifier?.checks?.find((check) => check.id === "dual-event-bus-sync");
+  const replayExecutionLabel = state.replayExecution?.executedCount != null
+    ? `${state.replayExecution.executedCount} writes`
+    : eventBusSync?.ok
+      ? eventBusSync.detail.replace(" audit events have DUAL event-bus action ids.", " synced")
+      : "not executed";
   const rows = [
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
@@ -304,7 +310,7 @@ function renderProof() {
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
     ["Action setup", state.actionPassportSetup?.vercelEnv ? `${shortId(state.actionPassportSetup.vercelEnv.DUAL_AGENT_PASSPORT_TEMPLATE_ID)} / ${shortId(state.actionPassportSetup.vercelEnv.DUAL_AGENT_PASSPORT_OBJECT_ID)}` : "not run"],
     ["Replay queue", replayQueue?.eventCount != null ? `${replayQueue.eventCount} events` : "pending"],
-    ["Replay execution", state.replayExecution?.executedCount != null ? `${state.replayExecution.executedCount} writes` : "not executed"],
+    ["Replay execution", replayExecutionLabel],
     ["Replay root", replayQueue?.rootHash ? shortId(replayQueue.rootHash) : "pending"],
     ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],
     ["Proof hash", proof?.proofHash ? shortId(proof.proofHash) : "pending"],

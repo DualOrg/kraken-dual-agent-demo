@@ -572,6 +572,7 @@ async function buildProofBundle() {
   const templateFields = dualTemplate?.custom || {};
   const objectCustom = dualObject?.custom || {};
   const expectedPolicyHash = state.passport.policyHash || hashJson(policySnapshot(state.passport));
+  const dualPolicyAuthoritative = Boolean(objectCustom.policy_version && objectCustom.policy_hash);
   const requiredMandateFields = [
     "passport_id",
     "agent_name",
@@ -592,20 +593,22 @@ async function buildProofBundle() {
       && objectCustom.agent_name === state.passport.agentName
       && objectCustom.passport_id === state.passport.id
       && objectCustom.mode === state.passport.mode
-      && arraysEqualIgnoreOrder(objectCustom.allowed_pairs || [], state.passport.allowedPairs)
-      && objectCustom.max_notional_usd === String(state.passport.maxNotionalUsd)
-      && objectCustom.max_daily_notional_usd === String(state.passport.maxDailyNotionalUsd)
-      && objectCustom.human_approval_required_above === String(state.passport.humanApprovalRequiredAbove)
-      && objectCustom.leverage_allowed === String(state.passport.leverageAllowed)
-      && objectCustom.approval_policy === state.passport.approvalPolicy
-      && objectCustom.policy_version === String(state.passport.policyVersion || 1)
-      && objectCustom.policy_hash === expectedPolicyHash
+      && (dualPolicyAuthoritative || (
+        arraysEqualIgnoreOrder(objectCustom.allowed_pairs || [], state.passport.allowedPairs)
+        && objectCustom.max_notional_usd === String(state.passport.maxNotionalUsd)
+        && objectCustom.max_daily_notional_usd === String(state.passport.maxDailyNotionalUsd)
+        && objectCustom.human_approval_required_above === String(state.passport.humanApprovalRequiredAbove)
+        && objectCustom.leverage_allowed === String(state.passport.leverageAllowed)
+        && objectCustom.approval_policy === state.passport.approvalPolicy
+        && objectCustom.policy_version === String(state.passport.policyVersion || 1)
+        && objectCustom.policy_hash === expectedPolicyHash
+      ))
   );
   const durableDualWrite = Boolean(
     dualObject?.available
       && objectCustom.last_event_id
       && objectCustom.last_event_hash
-      && objectCustom.policy_hash === expectedPolicyHash
+      && (dualPolicyAuthoritative || objectCustom.policy_hash === expectedPolicyHash)
   );
   const syncedAuditEvents = audit.filter((event) => (
     event.dualSync?.synced && event.dualSync?.result?.actionId
@@ -686,13 +689,13 @@ async function buildProofBundle() {
       allowedPairs: state.passport.allowedPairs
     },
     policy: {
-      version: state.passport.policyVersion || 1,
-      hash: state.passport.policyHash || hashJson(policySnapshot(state.passport)),
-      allowedPairs: state.passport.allowedPairs,
-      maxNotionalUsd: state.passport.maxNotionalUsd,
-      maxDailyNotionalUsd: state.passport.maxDailyNotionalUsd,
-      leverageAllowed: state.passport.leverageAllowed,
-      humanApprovalRequiredAbove: state.passport.humanApprovalRequiredAbove
+      version: dualPolicyAuthoritative ? Number(objectCustom.policy_version) : state.passport.policyVersion || 1,
+      hash: dualPolicyAuthoritative ? objectCustom.policy_hash : state.passport.policyHash || hashJson(policySnapshot(state.passport)),
+      allowedPairs: dualPolicyAuthoritative ? objectCustom.allowed_pairs || [] : state.passport.allowedPairs,
+      maxNotionalUsd: dualPolicyAuthoritative ? Number(objectCustom.max_notional_usd) : state.passport.maxNotionalUsd,
+      maxDailyNotionalUsd: dualPolicyAuthoritative ? Number(objectCustom.max_daily_notional_usd) : state.passport.maxDailyNotionalUsd,
+      leverageAllowed: dualPolicyAuthoritative ? objectCustom.leverage_allowed === "true" : state.passport.leverageAllowed,
+      humanApprovalRequiredAbove: dualPolicyAuthoritative ? Number(objectCustom.human_approval_required_above) : state.passport.humanApprovalRequiredAbove
     },
     audit: {
       eventCount: audit.length,

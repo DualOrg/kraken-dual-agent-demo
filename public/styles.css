@@ -353,6 +353,55 @@ select {
   gap: 8px;
 }
 
+.policy-form {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.policy-section {
+  display: grid;
+  gap: 8px;
+}
+
+.policy-section > span,
+.policy-message {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.check-grid,
+.policy-number-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.check-tile,
+.toggle-row {
+  align-items: center;
+  background: #081010;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--soft);
+  display: flex;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+}
+
+.check-tile input,
+.toggle-row input {
+  min-height: 0;
+  width: 16px;
+}
+
+.policy-message {
+  min-height: 20px;
+}
+
 .mandate-row,
 .proof-row {
   border-bottom: 1px solid var(--line);
@@ -470,7 +519,9 @@ select {
   nav,
   .market-strip,
   .grid,
-  .trade-form {
+  .trade-form,
+  .check-grid,
+  .policy-number-grid {
     grid-template-columns: 1fr;
   }
 

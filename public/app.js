@@ -33,6 +33,12 @@ const els = {
   executeReplayButton: document.querySelector("#executeReplayButton"),
   exportProofButton: document.querySelector("#exportProofButton"),
   proofGrid: document.querySelector("#proofGrid"),
+  policyForm: document.querySelector("#policyForm"),
+  policyMessage: document.querySelector("#policyMessage"),
+  policyMaxTrade: document.querySelector("#policyMaxTrade"),
+  policyDailyCap: document.querySelector("#policyDailyCap"),
+  policyApprovalThreshold: document.querySelector("#policyApprovalThreshold"),
+  policyLeverageAllowed: document.querySelector("#policyLeverageAllowed"),
   tradeForm: document.querySelector("#tradeForm"),
   resetButton: document.querySelector("#resetButton")
 };
@@ -140,6 +146,32 @@ function bindEvents() {
     }
   });
 
+  els.policyForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      els.policyMessage.textContent = "Saving...";
+      const form = new FormData(els.policyForm);
+      const payload = {
+        allowedPairs: form.getAll("allowedPairs"),
+        maxNotionalUsd: Number(form.get("maxNotionalUsd")),
+        maxDailyNotionalUsd: Number(form.get("maxDailyNotionalUsd")),
+        humanApprovalRequiredAbove: Number(form.get("humanApprovalRequiredAbove")),
+        leverageAllowed: form.has("leverageAllowed")
+      };
+      const result = await postJson("/api/policy", payload);
+      state.data = result.state;
+      state.replayExecution = null;
+      els.policyMessage.textContent = result.event?.dualSync?.synced
+        ? "Saved and synced"
+        : "Saved, replay pending";
+      render();
+      await checkHealth();
+      await loadProof();
+    } catch (error) {
+      els.policyMessage.textContent = error.message;
+    }
+  });
+
   document.querySelectorAll("[data-scenario]").forEach((button) => {
     button.addEventListener("click", async () => {
       const result = await postJson("/api/red-team", { scenario: button.dataset.scenario });
@@ -233,6 +265,19 @@ function renderPassport() {
       <strong>${value}</strong>
     </div>
   `).join("");
+
+  renderPolicyForm(passport);
+}
+
+function renderPolicyForm(passport) {
+  if (els.policyForm.matches(":focus-within")) return;
+  document.querySelectorAll('input[name="allowedPairs"]').forEach((input) => {
+    input.checked = passport.allowedPairs.includes(input.value);
+  });
+  els.policyMaxTrade.value = passport.maxNotionalUsd;
+  els.policyDailyCap.value = passport.maxDailyNotionalUsd;
+  els.policyApprovalThreshold.value = passport.humanApprovalRequiredAbove;
+  els.policyLeverageAllowed.checked = Boolean(passport.leverageAllowed);
 }
 
 function renderProposal() {

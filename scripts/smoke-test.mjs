@@ -38,6 +38,16 @@ assert(proofAgain.proofHash === proof.proofHash, "proof hash is stable across ge
 let state = await get("/api/state");
 assert(state.passport.mode === "paper", "passport is paper mode");
 
+const policy = await post("/api/policy", {
+  allowedPairs: ["BTCUSD", "ETHUSD", "SOLUSD"],
+  maxNotionalUsd: 250,
+  maxDailyNotionalUsd: 1000,
+  humanApprovalRequiredAbove: 100,
+  leverageAllowed: false
+});
+assert(policy.policy.maxNotionalUsd === 250, "policy endpoint updates max trade");
+assert(policy.policy.allowedPairs.includes("BTCUSD"), "policy endpoint keeps BTCUSD allowed");
+
 const market = await get("/api/market?pair=BTCUSD");
 assert(market.pair === "BTCUSD", "market endpoint returns BTCUSD");
 assert(Number(market.price) > 0, "market endpoint returns a price");

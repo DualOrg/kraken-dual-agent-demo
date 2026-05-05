@@ -98,6 +98,47 @@
               <span class="state-chip" id="stateChip">active</span>
             </div>
             <div class="mandate-list" id="mandateList"></div>
+            <form id="policyForm" class="policy-form">
+              <div class="policy-section">
+                <span>Allowed pairs</span>
+                <div class="check-grid">
+                  <label class="check-tile">
+                    <input type="checkbox" name="allowedPairs" value="BTCUSD">
+                    <span>BTCUSD</span>
+                  </label>
+                  <label class="check-tile">
+                    <input type="checkbox" name="allowedPairs" value="ETHUSD">
+                    <span>ETHUSD</span>
+                  </label>
+                  <label class="check-tile">
+                    <input type="checkbox" name="allowedPairs" value="SOLUSD">
+                    <span>SOLUSD</span>
+                  </label>
+                </div>
+              </div>
+              <div class="policy-number-grid">
+                <label>
+                  Max trade
+                  <input id="policyMaxTrade" name="maxNotionalUsd" type="number" min="1" step="1">
+                </label>
+                <label>
+                  Daily cap
+                  <input id="policyDailyCap" name="maxDailyNotionalUsd" type="number" min="1" step="1">
+                </label>
+                <label>
+                  Approval above
+                  <input id="policyApprovalThreshold" name="humanApprovalRequiredAbove" type="number" min="0" step="1">
+                </label>
+              </div>
+              <label class="toggle-row">
+                <input id="policyLeverageAllowed" name="leverageAllowed" type="checkbox">
+                <span>Allow leverage</span>
+              </label>
+              <div class="button-row">
+                <button class="primary-button" type="submit">Save policy</button>
+                <span class="policy-message" id="policyMessage"></span>
+              </div>
+            </form>
           </article>
 
           <article class="panel red-panel">

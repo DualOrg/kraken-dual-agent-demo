@@ -202,6 +202,51 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/policy") {
+    const body = await readBody(req);
+    const state = await loadState();
+    const previousPolicy = policySnapshot(state.passport);
+    const policy = normalizePolicy(body, state.passport);
+
+    state.passport = {
+      ...state.passport,
+      ...policy,
+      dualObjectState: "active"
+    };
+
+    state.proposals = (state.proposals || []).map((proposal) => {
+      if (proposal.state === "executed") return proposal;
+      const nextPolicy = evaluateTrade(state.passport, {
+        ...proposal.trade,
+        approved: proposal.approved
+      });
+      return {
+        ...proposal,
+        policy: nextPolicy,
+        state: nextPolicy.decision === "block"
+          ? "blocked"
+          : nextPolicy.decision === "needs_approval"
+            ? "awaiting_approval"
+            : "approved",
+        approved: proposal.approved || nextPolicy.decision === "allow"
+      };
+    });
+
+    const event = await addAudit(state,
+      "policy_updated",
+      "ok",
+      "Policy updated",
+      `DUAL mandate now allows ${state.passport.allowedPairs.join(", ")} with ${formatUsd(state.passport.maxNotionalUsd)} per-trade cap.`,
+      {
+        previousPolicy,
+        policy: policySnapshot(state.passport)
+      }
+    );
+    await saveState(state);
+    sendJson(res, 200, { state, policy: policySnapshot(state.passport), event });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/reset") {
     const state = await resetState();
     sendJson(res, 200, state);
@@ -402,6 +447,97 @@ function normalizeTrade(input) {
   };
 }
 
+function normalizePolicy(input, currentPassport) {
+  const allowedPairs = normalizeAllowedPairs(input.allowedPairs);
+  const maxNotionalUsd = parsePositiveMoney(input.maxNotionalUsd, "Max trade");
+  const maxDailyNotionalUsd = parsePositiveMoney(input.maxDailyNotionalUsd, "Daily cap");
+  const humanApprovalRequiredAbove = parseNonNegativeMoney(input.humanApprovalRequiredAbove, "Approval threshold");
+  const leverageAllowed = parseBoolean(input.leverageAllowed);
+
+  if (maxDailyNotionalUsd < maxNotionalUsd) {
+    const error = new Error("Daily cap must be at least the max trade amount.");
+    error.status = 400;
+    throw error;
+  }
+
+  const blockedActions = new Set(currentPassport.blockedActions || []);
+  blockedActions.add("live_order");
+  blockedActions.add("unsupported_pair");
+  blockedActions.add("over_limit");
+  blockedActions.add("missing_approval");
+  if (leverageAllowed) {
+    blockedActions.delete("leverage");
+  } else {
+    blockedActions.add("leverage");
+  }
+
+  return {
+    allowedPairs,
+    maxNotionalUsd,
+    maxDailyNotionalUsd,
+    humanApprovalRequiredAbove,
+    leverageAllowed,
+    blockedActions: [...blockedActions],
+    approvalPolicy: "human_required_above_threshold"
+  };
+}
+
+function normalizeAllowedPairs(input) {
+  const supportedPairs = new Set(["BTCUSD", "ETHUSD", "SOLUSD"]);
+  const values = Array.isArray(input)
+    ? input
+    : String(input || "").split(/[\s,]+/);
+  const allowedPairs = [...new Set(values
+    .map((pair) => String(pair || "").trim().toUpperCase())
+    .filter((pair) => supportedPairs.has(pair)))];
+  if (!allowedPairs.length) {
+    const error = new Error("Select at least one supported pair.");
+    error.status = 400;
+    throw error;
+  }
+  return allowedPairs;
+}
+
+function parsePositiveMoney(value, label) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    const error = new Error(`${label} must be greater than zero.`);
+    error.status = 400;
+    throw error;
+  }
+  return roundMoney(amount);
+}
+
+function parseNonNegativeMoney(value, label) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    const error = new Error(`${label} must be zero or greater.`);
+    error.status = 400;
+    throw error;
+  }
+  return roundMoney(amount);
+}
+
+function parseBoolean(value) {
+  return value === true || value === "true" || value === "on" || value === "1";
+}
+
+function policySnapshot(passport) {
+  return {
+    allowedPairs: passport.allowedPairs,
+    maxNotionalUsd: passport.maxNotionalUsd,
+    maxDailyNotionalUsd: passport.maxDailyNotionalUsd,
+    leverageAllowed: passport.leverageAllowed,
+    humanApprovalRequiredAbove: passport.humanApprovalRequiredAbove,
+    blockedActions: passport.blockedActions,
+    approvalPolicy: passport.approvalPolicy
+  };
+}
+
+function formatUsd(value) {
+  return `$${Number(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
 function describePolicy(trade, policy) {
   if (policy.decision === "allow") {
     return `DUAL policy allowed ${trade.side.toUpperCase()} ${trade.quantity} ${trade.pair} for $${policy.notional}.`;
@@ -451,6 +587,12 @@ async function buildProofBundle() {
       && objectCustom.agent_name === state.passport.agentName
       && objectCustom.passport_id === state.passport.id
       && objectCustom.mode === state.passport.mode
+      && arraysEqual(objectCustom.allowed_pairs || [], state.passport.allowedPairs)
+      && objectCustom.max_notional_usd === String(state.passport.maxNotionalUsd)
+      && objectCustom.max_daily_notional_usd === String(state.passport.maxDailyNotionalUsd)
+      && objectCustom.human_approval_required_above === String(state.passport.humanApprovalRequiredAbove)
+      && objectCustom.leverage_allowed === String(state.passport.leverageAllowed)
+      && objectCustom.approval_policy === state.passport.approvalPolicy
   );
   const syncedAuditEvents = audit.filter((event) => (
     event.dualSync?.synced && event.dualSync?.result?.actionId
@@ -580,6 +722,13 @@ function stableStringify(value) {
     return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function arraysEqual(left, right) {
+  return Array.isArray(left)
+    && Array.isArray(right)
+    && left.length === right.length
+    && left.every((item, index) => item === right[index]);
 }
 
 function restoreDualSession(req) {

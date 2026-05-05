@@ -338,6 +338,7 @@ function renderProof() {
   const adapter = proof?.status?.krakenMarketData || state.health?.adapter?.source || "checking";
   const dualObject = proof?.dualObject;
   const dualTemplate = proof?.dualTemplate;
+  const dualBatch = proof?.dualBatch;
   const replayQueue = proof?.replayQueue;
   const policy = proof?.policy;
   const eventBusSync = verifier?.checks?.find((check) => check.id === "dual-event-bus-sync");
@@ -356,7 +357,7 @@ function renderProof() {
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
     ["DUAL mode", dual?.available ? dual.writable ? "write-sync" : "read-linked" : "not configured"],
     ["Write readiness", proof?.status?.writeReadiness?.ready ? "ready" : "needs bearer auth"],
-    ["Bearer auth", auth?.authenticated ? `session ${auth.email}` : auth?.pendingEmail ? `code sent ${auth.pendingEmail}` : "email code needed"],
+    ["Bearer auth", authLabel(auth)],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
     ["Policy version", policy?.version ? `v${policy.version}` : "pending"],
@@ -365,6 +366,8 @@ function renderProof() {
     ["Replay queue", replayQueueLabel],
     ["Replay execution", replayExecutionLabel],
     ["DUAL actions", replayQueue?.syncedCount != null ? `${replayQueue.syncedCount} action ids` : "pending"],
+    ["DUAL batch", dualBatch?.available ? `${shortId(dualBatch.id)} ${dualBatch.status || dualBatch.finality || "pending"}` : "not readable"],
+    ["Batch proof", dualBatch?.available ? batchProofLabel(dualBatch) : "pending"],
     ["Replay root", replayQueue?.rootHash ? shortId(replayQueue.rootHash) : "pending"],
     ["Pending root", replayQueue?.pendingRootHash ? shortId(replayQueue.pendingRootHash) : "pending"],
     ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],
@@ -392,6 +395,22 @@ function sourceLabel(source) {
   if (source === "kraken-cli") return "Kraken CLI";
   if (source === "kraken-public-api") return "Kraken public API";
   return source || "simulator";
+}
+
+function batchProofLabel(batch) {
+  if (batch.finality === "finalized") return batch.transactionHash ? `finalized ${shortId(batch.transactionHash)}` : "finalized";
+  if (batch.finality === "proof-success") return batch.proofValue ? `proof ${batch.proofValue}` : "proof success";
+  if (batch.proofValue) return `proof ${batch.proofValue}`;
+  return batch.finality || "pending";
+}
+
+function authLabel(auth) {
+  if (auth?.authType === "service_account") return "service account";
+  if (auth?.authType === "bearer_env") return "bearer env";
+  if (auth?.authenticated && auth.email) return `session ${auth.email}`;
+  if (auth?.pendingEmail) return `code sent ${auth.pendingEmail}`;
+  if (auth?.serviceAccountConfigured) return "service account pending write mode";
+  return "email code needed";
 }
 
 function shortId(value) {

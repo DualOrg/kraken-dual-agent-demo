@@ -122,7 +122,21 @@
                 <p>Readback from DUAL, Kraken source, and local audit root.</p>
               </div>
               <button id="exportProofButton" class="ghost-button" type="button">Export proof</button>
+              <button id="executeReplayButton" class="secondary-button" type="button" disabled>Execute DUAL replay</button>
             </div>
+            <div class="auth-grid">
+              <label>
+                DUAL email
+                <input id="dualAuthEmail" name="dualAuthEmail" type="email" autocomplete="email" placeholder="name@example.com">
+              </label>
+              <button id="requestCodeButton" class="secondary-button" type="button">Get code</button>
+              <label>
+                Code
+                <input id="dualAuthCode" name="dualAuthCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
+              </label>
+              <button id="verifyCodeButton" class="primary-button" type="button">Authenticate</button>
+            </div>
+            <p class="auth-message" id="dualAuthMessage">Email-code auth unlocks DUAL event-bus writes for this server session.</p>
             <div class="proof-grid" id="proofGrid"></div>
           </article>
 

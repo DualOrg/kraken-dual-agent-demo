@@ -3,7 +3,9 @@ const state = {
   activeProposalId: null,
   health: null,
   proof: null,
-  proofVerification: null
+  proofVerification: null,
+  dualAuth: null,
+  replayExecution: null
 };
 
 const pairs = ["BTCUSD", "ETHUSD", "SOLUSD"];
@@ -21,6 +23,12 @@ const els = {
   proposalCard: document.querySelector("#proposalCard"),
   approveButton: document.querySelector("#approveButton"),
   executeButton: document.querySelector("#executeButton"),
+  dualAuthEmail: document.querySelector("#dualAuthEmail"),
+  dualAuthCode: document.querySelector("#dualAuthCode"),
+  dualAuthMessage: document.querySelector("#dualAuthMessage"),
+  requestCodeButton: document.querySelector("#requestCodeButton"),
+  verifyCodeButton: document.querySelector("#verifyCodeButton"),
+  executeReplayButton: document.querySelector("#executeReplayButton"),
   exportProofButton: document.querySelector("#exportProofButton"),
   proofGrid: document.querySelector("#proofGrid"),
   tradeForm: document.querySelector("#tradeForm"),
@@ -32,6 +40,7 @@ init();
 async function init() {
   bindEvents();
   await checkHealth();
+  await loadDualAuthStatus();
   await loadState();
   await refreshMarkets();
   await loadProof();
@@ -86,6 +95,49 @@ function bindEvents() {
     URL.revokeObjectURL(url);
   });
 
+  els.requestCodeButton.addEventListener("click", async () => {
+    try {
+      const email = els.dualAuthEmail.value;
+      els.dualAuthMessage.textContent = "Requesting DUAL email code...";
+      const result = await postJson("/api/dual/auth/request-code", { email });
+      els.dualAuthMessage.textContent = `Code sent to ${result.email}.`;
+      await loadDualAuthStatus();
+    } catch (error) {
+      els.dualAuthMessage.textContent = error.message;
+    }
+  });
+
+  els.verifyCodeButton.addEventListener("click", async () => {
+    try {
+      const email = els.dualAuthEmail.value;
+      const code = els.dualAuthCode.value;
+      els.dualAuthMessage.textContent = "Authenticating bearer session...";
+      const result = await postJson("/api/dual/auth/verify-code", { email, code });
+      els.dualAuthMessage.textContent = result.detail;
+      await checkHealth();
+      await loadDualAuthStatus();
+      await loadProof();
+    } catch (error) {
+      els.dualAuthMessage.textContent = error.message;
+    }
+  });
+
+  els.executeReplayButton.addEventListener("click", async () => {
+    try {
+      els.dualAuthMessage.textContent = "Executing replay queue into DUAL...";
+      const result = await postJson("/api/dual/replay-queue/execute", {});
+      state.replayExecution = result.executed ? result.result : result;
+      if (result.state) state.data = result.state;
+      els.dualAuthMessage.textContent = result.executed
+        ? `Executed ${result.result.executedCount} DUAL event-bus writes.`
+        : result.readiness?.detail || "DUAL write auth is not ready.";
+      render();
+      await loadProof();
+    } catch (error) {
+      els.dualAuthMessage.textContent = error.message;
+    }
+  });
+
   document.querySelectorAll("[data-scenario]").forEach((button) => {
     button.addEventListener("click", async () => {
       const result = await postJson("/api/red-team", { scenario: button.dataset.scenario });
@@ -111,6 +163,11 @@ async function checkHealth() {
     : "DUAL not configured";
   els.dualStatus.classList.toggle("live", health.dual.available);
   els.dualStatus.classList.toggle("sim", !health.dual.available || !health.dual.writable);
+}
+
+async function loadDualAuthStatus() {
+  state.dualAuth = await getJson("/api/dual/auth/status");
+  renderProof();
 }
 
 async function loadState() {
@@ -229,6 +286,7 @@ async function loadProof() {
 function renderProof() {
   const proof = state.proof;
   const verifier = state.proofVerification;
+  const auth = state.dualAuth;
   const dual = proof?.status?.dualMode || state.health?.dual;
   const adapter = proof?.status?.krakenMarketData || state.health?.adapter?.source || "checking";
   const dualObject = proof?.dualObject;
@@ -239,9 +297,11 @@ function renderProof() {
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
     ["DUAL mode", dual?.available ? dual.writable ? "write-sync" : "read-linked" : "not configured"],
     ["Write readiness", proof?.status?.writeReadiness?.ready ? "ready" : "needs bearer auth"],
+    ["Bearer auth", auth?.authenticated ? `session ${auth.email}` : auth?.pendingEmail ? `code sent ${auth.pendingEmail}` : "email code needed"],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
     ["Replay queue", replayQueue?.eventCount != null ? `${replayQueue.eventCount} events` : "pending"],
+    ["Replay execution", state.replayExecution?.executedCount != null ? `${state.replayExecution.executedCount} writes` : "not executed"],
     ["Replay root", replayQueue?.rootHash ? shortId(replayQueue.rootHash) : "pending"],
     ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],
     ["Proof hash", proof?.proofHash ? shortId(proof.proofHash) : "pending"],
@@ -254,6 +314,13 @@ function renderProof() {
       <strong>${value}</strong>
     </div>
   `).join("");
+
+  els.executeReplayButton.disabled = !auth?.writable || !replayQueue?.eventCount;
+  if (auth?.authenticated) {
+    els.dualAuthMessage.textContent = auth.detail;
+  } else if (!els.dualAuthMessage.textContent) {
+    els.dualAuthMessage.textContent = auth?.detail || "Email-code auth unlocks DUAL event-bus writes for this server session.";
+  }
 }
 
 function sourceLabel(source) {
@@ -280,6 +347,9 @@ async function postJson(url, payload) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload)
   });
-  if (!response.ok && response.status !== 409) throw new Error(`POST ${url} failed`);
-  return response.json();
+  const body = await response.json();
+  if (!response.ok && response.status !== 409) {
+    throw new Error(body.message || body.error || `POST ${url} failed`);
+  }
+  return body;
 }

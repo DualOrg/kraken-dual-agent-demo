@@ -367,6 +367,20 @@ select {
   gap: 8px 18px;
 }
 
+.auth-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(140px, 0.5fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.auth-message {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
 .proof-row {
   display: flex;
   justify-content: space-between;
@@ -461,6 +475,10 @@ select {
   }
 
   .proof-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-grid {
     grid-template-columns: 1fr;
   }
 

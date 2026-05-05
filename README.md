@@ -71,12 +71,18 @@ The adapter is intentionally optional. If the DUAL SDK or credentials are unavai
 
 With API-key auth, the app can link to and verify a real DUAL passport object. Event-bus writes require bearer/session auth, so production should stay in `DUAL_WRITE_MODE=read_only` unless a suitable session token is explicitly provided.
 
+The app also supports an operator email-code flow for bearer auth. A code is requested from DUAL, verified server-side, switched into the configured org, and held only in the server session. Once authenticated, new audit events write through the DUAL event bus and the replay queue can be executed into DUAL.
+
 Useful endpoints:
 
 ```text
 GET  /api/dual/status
 GET  /api/dual/write-readiness
+GET  /api/dual/auth/status
+POST /api/dual/auth/request-code
+POST /api/dual/auth/verify-code
 GET  /api/dual/replay-queue
+POST /api/dual/replay-queue/execute
 GET  /api/dual/passport
 GET  /api/dual/template-readback
 POST /api/dual/template
@@ -87,7 +93,7 @@ GET  /api/proof/verify
 
 Template schema: `dual-agent-passport.schema.json`.
 
-`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, write-readiness, local audit root hash, replay queue root, latest event hashes, caveats, verification checks, and a stable bundle hash. `generatedAt` is outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes that become executable once bearer/session auth is provisioned.
+`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, write-readiness, local audit root hash, replay queue root, latest event hashes, caveats, verification checks, and a stable bundle hash. `generatedAt` is outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has an authenticated bearer session with `/ebus/execute` permission.
 
 ## DUAL Object Model
 

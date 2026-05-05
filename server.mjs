@@ -53,9 +53,61 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/dual/auth/status") {
+    sendJson(res, 200, dualPersistence.authStatus());
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/dual/auth/request-code") {
+    const body = await readBody(req);
+    const result = await dualPersistence.requestEmailCode(body.email);
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/dual/auth/verify-code") {
+    const body = await readBody(req);
+    const result = await dualPersistence.verifyEmailCode(body.email, body.code);
+    sendJson(res, 200, result);
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/dual/replay-queue") {
     const state = await loadState();
     sendJson(res, 200, dualPersistence.buildReplayQueue(state.passport, state.audit || []));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/dual/replay-queue/execute") {
+    const state = await loadState();
+    const readiness = dualPersistence.writeReadiness();
+    if (!readiness.ready) {
+      sendJson(res, 409, {
+        executed: false,
+        error: "dual_write_not_ready",
+        readiness,
+        replayQueue: dualPersistence.buildReplayQueue(state.passport, state.audit || [])
+      });
+      return;
+    }
+
+    const result = await dualPersistence.executeReplayQueue(state.passport, state.audit || []);
+    const syncedByEventId = new Map(result.events.map((event) => [event.eventId, event]));
+    state.audit = (state.audit || []).map((event) => {
+      const synced = syncedByEventId.get(event.id);
+      if (!synced) return event;
+      return {
+        ...event,
+        dualSync: {
+          synced: true,
+          envelopeHash: synced.envelopeHash,
+          replayedAt: new Date().toISOString(),
+          result: synced.result
+        }
+      };
+    });
+    await saveState(state);
+    sendJson(res, 200, { executed: true, state, result });
     return;
   }
 
@@ -425,7 +477,7 @@ async function addAudit(state, type, status, title, detail, payload = {}) {
     const dualResult = await dualPersistence.recordEvent(state.passport, event);
     event.dualSync = dualResult?.skipped
       ? { synced: false, reason: dualResult.reason, replay: dualResult.replay || null }
-      : { synced: true };
+      : { synced: true, envelopeHash: dualResult?.envelopeHash || null, result: dualResult?.result || null };
   } catch (error) {
     event.dualSync = { synced: false, error: error.message };
   }

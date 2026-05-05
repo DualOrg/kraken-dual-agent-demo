@@ -464,7 +464,7 @@ export async function createDualPersistence() {
 
   function eventBusPayloadAttempts(actionName, objectId, templateId, orgId, properties, metadata, preferredPayload) {
     const styles = resolvedEventBusPayloadStyle === "auto"
-      ? ["flat", "nested", "nested_custom_data", "nested_public_data", "nested_object_custom", "nested_public", "nested_custom_public", "named", "classic_object", "classic_custom"]
+      ? ["flat", "nested", "top_level_custom", "top_level_public", "top_level_custom_public", "nested_custom_data", "nested_public_data", "nested_object_custom", "nested_public", "nested_custom_public", "named", "classic_object", "classic_custom"]
       : [resolvedEventBusPayloadStyle];
     return styles.map((style) => ({
       style,
@@ -626,6 +626,40 @@ function updateEventBusEnvelope(style, objectId, templateId, orgId, properties, 
       metadata
     };
   }
+  if (style === "top_level_custom") {
+    return {
+      action: {
+        update: {
+          id: objectId
+        }
+      },
+      custom: properties,
+      metadata
+    };
+  }
+  if (style === "top_level_public") {
+    return {
+      action: {
+        update: {
+          id: objectId
+        }
+      },
+      public: properties,
+      metadata
+    };
+  }
+  if (style === "top_level_custom_public") {
+    return {
+      action: {
+        update: {
+          id: objectId
+        }
+      },
+      custom: properties,
+      public: properties,
+      metadata
+    };
+  }
   if (style === "nested_custom_data") {
     return {
       action: {
@@ -733,6 +767,43 @@ function mintEventBusEnvelope(style, templateId, orgId, properties, metadata) {
           }
         }
       },
+      metadata
+    };
+  }
+  if (style === "top_level_custom") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1
+        }
+      },
+      custom: properties,
+      metadata
+    };
+  }
+  if (style === "top_level_public") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1
+        }
+      },
+      public: properties,
+      metadata
+    };
+  }
+  if (style === "top_level_custom_public") {
+    return {
+      action: {
+        mint: {
+          template_id: templateId,
+          num: 1
+        }
+      },
+      custom: properties,
+      public: properties,
       metadata
     };
   }

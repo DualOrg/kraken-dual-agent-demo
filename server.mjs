@@ -5,7 +5,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { loadState, resetState, saveState, createAuditEvent, createProposal } from "./src/dualStore.mjs";
-import { evaluateTrade, redTeamTrade, roundQty } from "./src/policy.mjs";
+import { evaluateTrade, redTeamTrade, roundMoney, roundQty } from "./src/policy.mjs";
 import { executePaperTrade, getAdapterStatus, getMarket } from "./src/krakenAdapter.mjs";
 import { createDualPersistence } from "./src/dualPersistence.mjs";
 

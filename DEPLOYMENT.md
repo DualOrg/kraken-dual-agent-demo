@@ -34,23 +34,24 @@ To enable real DUAL persistence in Vercel, add these environment variables to th
 
 ```text
 DUAL_PERSISTENCE_MODE=dual
-DUAL_API_URL=https://gateway-48587430648.europe-west6.run.app
+DUAL_API_URL=https://api-testnet.dual.network
 DUAL_API_KEY=...
 DUAL_ORG_ID=...
 DUAL_AGENT_PASSPORT_TEMPLATE_ID=...
 DUAL_AGENT_PASSPORT_OBJECT_ID=...
 DUAL_AUTH_MODE=api_key
-DUAL_WRITE_MODE=read_only
+DUAL_WRITE_MODE=event_bus
+DUAL_EVENTBUS_WRITE_PATH=/ebus/actions
 ```
 
 The runtime also needs `dual-sdk` available. If the package is not installed in the deployment, `/api/dual/status` will report the SDK as unavailable and the app should remain in local mode.
 
-API-key auth is suitable for linking the Vercel deployment to a real DUAL passport object for read verification. DUAL event-bus writes currently require bearer/session auth, so do not set `DUAL_WRITE_MODE=event_bus` unless that token path has been deliberately provisioned.
+API-key auth is suitable for linking the Vercel deployment to a real DUAL passport object and writing event-bus actions when the key is scoped for event-bus action creation. Use the current testnet host and `/ebus/actions` path.
 
 Recommended rollout:
 
 1. Create the DUAL template from `dual-agent-passport.schema.json`.
 2. Mint one passport object for the Kraken Market Agent.
 3. Set `DUAL_AGENT_PASSPORT_OBJECT_ID` in Vercel.
-4. Keep `DUAL_WRITE_MODE=read_only` for API-key deployments.
+4. Set `DUAL_WRITE_MODE=event_bus` for scoped API-key deployments.
 5. Redeploy and verify `/api/dual/status`.

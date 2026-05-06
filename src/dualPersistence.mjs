@@ -26,8 +26,8 @@ export async function createDualPersistence() {
   if (mode === "dual") {
     try {
       ({ DualClient } = await import("dual-sdk"));
-      if (apiKey) client = makeClient(apiKey, authMode);
-      if (serviceToken) serviceClient = makeClient(serviceToken, serviceAuthMode);
+      if (apiKey) client = makeClient(apiKey, sdkAuthMode(authMode));
+      if (serviceToken) serviceClient = makeClient(serviceToken, sdkAuthMode(serviceAuthMode));
       if (serviceRefreshToken) {
         const refreshed = makeClient("", "bearer");
         const tokens = await refreshed.sdk.wallets.refreshToken(serviceRefreshToken);
@@ -110,7 +110,7 @@ export async function createDualPersistence() {
           ...(status.available || DualClient ? [] : ["DUAL SDK/client availability"]),
           ...(activeReadClient() ? [] : ["DUAL_API_KEY, service token, refresh token, or email session"]),
           ...(writeMode === "event_bus" ? [] : ["DUAL_WRITE_MODE=event_bus"]),
-          "scoped API key or bearer/session credential with event-bus action create permission"
+          "scoped API key with ebus.actions:create, or bearer/session credential with event-bus action create permission"
         ],
         detail: ready
           ? "DUAL event-bus write sync is enabled via direct server-side POST."
@@ -129,9 +129,9 @@ export async function createDualPersistence() {
           : serviceClient && serviceRefreshToken
             ? "refresh_token_service_session"
             : serviceClient
-              ? `${serviceAuthMode === "both" ? "api_key" : serviceAuthMode}_service_account`
+              ? `${directEventBusAuthMode(serviceClient)}_service_account`
               : write
-                ? `${authMode === "both" ? "api_key" : authMode}_env`
+                ? `${directEventBusAuthMode(client)}_env`
                 : null,
         serviceAccountConfigured: Boolean(serviceToken || serviceRefreshToken),
         serviceAccountRefreshConfigured: Boolean(serviceRefreshToken),
@@ -267,16 +267,8 @@ export async function createDualPersistence() {
       const write = requireWritable();
       const queue = this.buildReplayQueue(passport, audit);
       const executed = [];
-      const usedActionIds = new Set(queue.allEvents.map((event) => event.actionId).filter(Boolean));
       for (const event of [...queue.events].reverse()) {
-        let result = null;
-        try {
-          result = summarizeResult(await writeAction(write, event.envelope.payload));
-        } catch (error) {
-          result = await recoverLatestAction(write, event.envelope.actionName, usedActionIds, error);
-          if (!result) throw error;
-        }
-        if (result?.actionId) usedActionIds.add(result.actionId);
+        const result = summarizeResult(await writeAction(write, event.envelope.payload));
         executed.push({ ...event, result });
       }
       return {
@@ -361,10 +353,14 @@ export async function createDualPersistence() {
     return write;
   }
 
+  function sdkAuthMode(modeName) {
+    return modeName === "both" ? "api_key" : modeName;
+  }
+
   function effectiveAuthMode() {
     if (sessionClient) return "bearer_email_session";
-    if (serviceClient) return serviceSession ? "bearer_service_account" : `${serviceClient.authMode}_service_account`;
-    return authMode;
+    if (serviceClient) return serviceSession ? "bearer_service_account" : `${directEventBusAuthMode(serviceClient)}_service_account`;
+    return directEventBusAuthMode(client || {});
   }
 
   function effectiveWriteMode() {
@@ -386,38 +382,11 @@ export async function createDualPersistence() {
     throw error;
   }
 
-  async function recoverLatestAction(write, actionName, usedActionIds, originalError) {
-    if (!write?.sdk?.sequencer?.listBatches) return null;
-    try {
-      const batches = extractItems(await write.sdk.sequencer.listBatches({ limit: 5 }));
-      for (const batch of batches) {
-        const actions = [...extractBatchActions(batch)].reverse();
-        for (const action of actions) {
-          const actionId = action?.id || action?.action_id || action?.actionId || null;
-          const name = action?.name || action?.action || actionName;
-          if (!actionId || usedActionIds.has(actionId) || name !== actionName) continue;
-          return {
-            id: actionId,
-            status: "recovered_from_batch",
-            hash: action.hash || action.integrity_hash || action.integrityHash || null,
-            actionId,
-            batchId: batch.id || batch.batch_id || batch.batchId || null,
-            payloadStyle: "direct_nested_data_custom",
-            recoveredAfterError: originalError?.message || null
-          };
-        }
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  }
-
   function directEventBusAuthMode(write) {
     if (write === sessionClient) return "bearer";
     if (write === serviceClient && serviceSession) return "bearer";
-    if (write === serviceClient) return serviceAuthMode === "both" ? "api_key" : serviceAuthMode;
-    return authMode === "both" ? "api_key" : authMode;
+    if (write === serviceClient) return sdkAuthMode(serviceAuthMode);
+    return sdkAuthMode(authMode);
   }
 
   function directEventBusHeaders(write) {
@@ -528,9 +497,7 @@ function eventMetadata(event) {
     event_hash: event.provenanceHash || event.id,
     event_payload: event.payload || {}
   };
-}
-
-function summarizeResult(result) {
+}\nfunction summarizeResult(result) {
   if (!result || typeof result !== "object") return result || null;
   const data = objectOrNull(result.data) || result;
   const inner = objectOrNull(data.result) || objectOrNull(result.result) || data;
@@ -539,26 +506,10 @@ function summarizeResult(result) {
   const mint = objectOrNull(action.mint) || null;
   const object = objectOrNull(inner.object) || objectOrNull(data.object) || objectOrNull(result.object) || null;
   return {
-    id: first(
-      result.id, result.object_id, result.objectId, result.event_id, result.eventId,
-      data.id, data.object_id, data.objectId, data.event_id, data.eventId,
-      inner.id, inner.object_id, inner.objectId, inner.event_id, inner.eventId,
-      action.id, update?.id, mint?.id, object?.id, object?.object_id, object?.objectId
-    ),
+    id: first(result.id, result.object_id, result.objectId, result.event_id, result.eventId, data.id, data.object_id, data.objectId, inner.id, inner.object_id, inner.objectId, action.id, update?.id, mint?.id, object?.id, object?.object_id, object?.objectId),
     status: first(result.status, result.state, data.status, data.state, inner.status, inner.state, action.status, action.state, update?.status, update?.state, mint?.status, mint?.state),
-    hash: first(
-      result.hash, result.integrity_hash, result.integrityHash, result.state_hash, result.stateHash,
-      data.hash, data.integrity_hash, data.integrityHash, data.state_hash, data.stateHash,
-      inner.hash, inner.integrity_hash, inner.integrityHash, inner.state_hash, inner.stateHash,
-      action.hash, action.integrity_hash, action.integrityHash, action.state_hash, action.stateHash,
-      object?.integrity_hash, object?.integrityHash, object?.state_hash, object?.stateHash
-    ),
-    actionId: first(
-      result.action_id, result.actionId, data.action_id, data.actionId,
-      inner.action_id, inner.actionId, action.action_id, action.actionId,
-      update?.action_id, update?.actionId, mint?.action_id, mint?.actionId,
-      action.id, update?.id, mint?.id, result.id, data.id, inner.id
-    ),
+    hash: first(result.hash, result.integrity_hash, result.integrityHash, result.state_hash, result.stateHash, data.hash, data.integrity_hash, data.integrityHash, inner.hash, inner.integrity_hash, inner.integrityHash, action.hash, action.integrity_hash, action.integrityHash, object?.integrity_hash, object?.integrityHash),
+    actionId: first(result.action_id, result.actionId, data.action_id, data.actionId, inner.action_id, inner.actionId, action.action_id, action.actionId, update?.action_id, update?.actionId, mint?.action_id, mint?.actionId, action.id, update?.id, mint?.id, result.id, data.id, inner.id),
     batchId: first(result.batch_id, result.batchId, data.batch_id, data.batchId, inner.batch_id, inner.batchId, action.batch_id, action.batchId, update?.batch_id, update?.batchId, mint?.batch_id, mint?.batchId),
     payloadStyle: "direct_nested_data_custom"
   };

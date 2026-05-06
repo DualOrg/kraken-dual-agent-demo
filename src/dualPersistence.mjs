@@ -42,11 +42,7 @@ export async function createDualPersistence() {
           // Some refresh tokens are already org scoped.
         }
         serviceClient = refreshed;
-        serviceSession = {
-          orgId,
-          refreshedAt: new Date().toISOString(),
-          refreshTokenPresent: Boolean(active.refresh_token || tokens.refresh_token)
-        };
+        serviceSession = { orgId, refreshedAt: new Date().toISOString(), refreshTokenPresent: Boolean(active.refresh_token || tokens.refresh_token) };
       }
     } catch (error) {
       sdkError = error;
@@ -166,34 +162,16 @@ export async function createDualPersistence() {
         login.sdk.setToken(active.access_token);
       }
       sessionClient = login;
-      session = {
-        email: normalized,
-        orgId: orgId || null,
-        authenticatedAt: new Date().toISOString(),
-        refreshTokenPresent: Boolean(active.refresh_token)
-      };
+      session = { email: normalized, orgId: orgId || null, authenticatedAt: new Date().toISOString(), refreshTokenPresent: Boolean(active.refresh_token) };
       pendingEmail = null;
       options.onSession?.({ token: active.access_token, ...session });
-      return {
-        authenticated: true,
-        writable: Boolean(activeWriteClient()),
-        email: maskEmail(normalized),
-        orgId: session.orgId,
-        authMode: effectiveAuthMode(),
-        writeMode: effectiveWriteMode(),
-        detail: "Bearer session authenticated. DUAL event-bus replay is ready if this wallet has action create permission."
-      };
+      return { authenticated: true, writable: Boolean(activeWriteClient()), email: maskEmail(normalized), orgId: session.orgId, authMode: effectiveAuthMode(), writeMode: effectiveWriteMode(), detail: "Bearer session authenticated. DUAL event-bus replay is ready if this wallet has action create permission." };
     },
 
     restoreEmailSession(restored) {
       if (!restored?.token || !restored.email) return false;
       sessionClient = makeClient(restored.token, "bearer");
-      session = {
-        email: restored.email,
-        orgId: restored.orgId || orgId || null,
-        authenticatedAt: restored.authenticatedAt || new Date().toISOString(),
-        refreshTokenPresent: Boolean(restored.refreshTokenPresent)
-      };
+      session = { email: restored.email, orgId: restored.orgId || orgId || null, authenticatedAt: restored.authenticatedAt || new Date().toISOString(), refreshTokenPresent: Boolean(restored.refreshTokenPresent) };
       return true;
     },
 
@@ -233,17 +211,7 @@ export async function createDualPersistence() {
         const payload = objectId ? updatePayload(objectId, properties, metadata) : mintPayload(templateId, properties, metadata);
         const actionId = event.dualSync?.result?.actionId || null;
         const envelope = { actionName: objectId ? "update" : "mint", properties, metadata, payload };
-        return {
-          eventId: event.id,
-          eventType: event.type,
-          eventStatus: event.status,
-          eventHash: event.provenanceHash || event.id,
-          synced: Boolean(event.dualSync?.synced && actionId),
-          actionId,
-          ready: Boolean(objectId || templateId),
-          envelope,
-          envelopeHash: hashJson(envelope)
-        };
+        return { eventId: event.id, eventType: event.type, eventStatus: event.status, eventHash: event.provenanceHash || event.id, synced: Boolean(event.dualSync?.synced && actionId), actionId, ready: Boolean(objectId || templateId), envelope, envelopeHash: hashJson(envelope) };
       });
       const pending = events.filter((event) => !event.synced);
       return {
@@ -271,16 +239,7 @@ export async function createDualPersistence() {
         const result = summarizeResult(await writeAction(write, event.envelope.payload));
         executed.push({ ...event, result });
       }
-      return {
-        executed: true,
-        executedCount: executed.length,
-        skippedCount: queue.syncedCount,
-        replayRoot: queue.rootHash,
-        pendingReplayRoot: queue.pendingRootHash,
-        targetObjectId: queue.targetObjectId,
-        targetTemplateId: queue.targetTemplateId,
-        events: executed
-      };
+      return { executed: true, executedCount: executed.length, skippedCount: queue.syncedCount, replayRoot: queue.rootHash, pendingReplayRoot: queue.pendingRootHash, targetObjectId: queue.targetObjectId, targetTemplateId: queue.targetTemplateId, events: executed };
     },
 
     async readPassportObject() {
@@ -319,13 +278,7 @@ export async function createDualPersistence() {
       const properties = passportProperties(passport, { lastEventId: `api_key_probe_${Date.now()}` });
       const payload = updatePayload(objectId, properties, { source: "api_key_execute_probe", event_type: "api_key_execute_probe", event_status: "ok" });
       const result = await writeAction(write, payload);
-      return {
-        targetObjectId: objectId,
-        targetTemplateId: templateId,
-        authMode: directEventBusAuthMode(write),
-        eventBusWritePath,
-        results: [{ name: "direct_nested_data_custom", ok: true, result: summarizeResult(result) }]
-      };
+      return { targetObjectId: objectId, targetTemplateId: templateId, authMode: directEventBusAuthMode(write), eventBusWritePath, results: [{ name: "direct_nested_data_custom", ok: true, result: summarizeResult(result) }] };
     }
   };
 
@@ -345,12 +298,10 @@ export async function createDualPersistence() {
 
   function requireWritable() {
     const write = activeWriteClient();
-    if (!write) {
-      const error = new Error("DUAL event-bus write auth is not ready.");
-      error.status = 409;
-      throw error;
-    }
-    return write;
+    if (write) return write;
+    const error = new Error("DUAL event-bus write auth is not ready.");
+    error.status = 409;
+    throw error;
   }
 
   function sdkAuthMode(modeName) {
@@ -368,11 +319,7 @@ export async function createDualPersistence() {
   }
 
   async function writeAction(write, payload) {
-    const response = await fetch(`${baseUrl}${eventBusWritePath}`, {
-      method: "POST",
-      headers: directEventBusHeaders(write),
-      body: JSON.stringify(payload)
-    });
+    const response = await fetch(`${baseUrl}${eventBusWritePath}`, { method: "POST", headers: directEventBusHeaders(write), body: JSON.stringify(payload) });
     const contentType = response.headers.get("content-type") || "";
     const body = contentType.includes("application/json") ? await response.json().catch(() => ({})) : await response.text();
     if (response.ok) return body;
@@ -401,103 +348,28 @@ export async function createDualPersistence() {
 }
 
 function updatePayload(targetObjectId, properties, metadata) {
-  return {
-    action: {
-      update: {
-        id: targetObjectId,
-        data: {
-          custom: {
-            ...properties,
-            last_event_type: metadata.event_type || "",
-            last_event_status: metadata.event_status || "",
-            last_event_hash: metadata.event_hash || ""
-          }
-        }
-      }
-    },
-    metadata
-  };
+  return { action: { update: { id: targetObjectId, data: { custom: { ...properties, last_event_type: metadata.event_type || "", last_event_status: metadata.event_status || "", last_event_hash: metadata.event_hash || "" } } } }, metadata };
 }
 
 function mintPayload(targetTemplateId, properties, metadata) {
-  return {
-    action: {
-      mint: {
-        template_id: targetTemplateId,
-        num: 1,
-        custom: {
-          ...properties,
-          last_event_type: metadata.event_type || "",
-          last_event_status: metadata.event_status || "",
-          last_event_hash: metadata.event_hash || ""
-        }
-      }
-    },
-    metadata
-  };
+  return { action: { mint: { template_id: targetTemplateId, num: 1, custom: { ...properties, last_event_type: metadata.event_type || "", last_event_status: metadata.event_status || "", last_event_hash: metadata.event_hash || "" } } }, metadata };
 }
 
 function agentTemplatePayload() {
   const custom = passportProperties({}, {});
-  return {
-    name: `io.dual.kraken.agent_trading_passport.action_enabled.${Date.now()}`,
-    description: "Policy-bound agent passport for Kraken paper/live trading governance.",
-    organization_id: process.env.DUAL_ORG_ID || undefined,
-    object: {
-      metadata: {
-        name: "Kraken Market Agent Passport",
-        description: "A DUAL-governed trading-agent passport for Kraken market data, mandate checks, paper execution, and event replay."
-      },
-      custom
-    },
-    actions: [
-      { name: "mint", alias: "issue_kraken_agent_passport" },
-      { name: "update", alias: "record_kraken_agent_event" }
-    ],
-    public_access: { custom: Object.keys(custom) }
-  };
+  return { name: `io.dual.kraken.agent_trading_passport.action_enabled.${Date.now()}`, description: "Policy-bound agent passport for Kraken paper/live trading governance.", organization_id: process.env.DUAL_ORG_ID || undefined, object: { metadata: { name: "Kraken Market Agent Passport", description: "A DUAL-governed trading-agent passport for Kraken market data, mandate checks, paper execution, and event replay." }, custom }, actions: [{ name: "mint", alias: "issue_kraken_agent_passport" }, { name: "update", alias: "record_kraken_agent_event" }], public_access: { custom: Object.keys(custom) } };
 }
 
 function passportProperties(passport = {}, metadata = {}) {
-  const policy = {
-    allowedPairs: passport.allowedPairs || ["BTCUSD", "ETHUSD", "SOLUSD"],
-    maxNotionalUsd: passport.maxNotionalUsd || 250,
-    maxDailyNotionalUsd: passport.maxDailyNotionalUsd || 1000,
-    humanApprovalRequiredAbove: passport.humanApprovalRequiredAbove || 100,
-    leverageAllowed: Boolean(passport.leverageAllowed),
-    approvalPolicy: passport.approvalPolicy || "human_required_above_threshold",
-    policyVersion: passport.policyVersion || 1
-  };
-  return {
-    passport_id: passport.id || "kraken-market-agent-passport",
-    agent_name: passport.agentName || "Kraken Market Agent",
-    mode: passport.mode || "paper",
-    state: passport.dualObjectState || passport.state || "active",
-    allowed_pairs: policy.allowedPairs,
-    max_notional_usd: String(policy.maxNotionalUsd),
-    max_daily_notional_usd: String(policy.maxDailyNotionalUsd),
-    human_approval_required_above: String(policy.humanApprovalRequiredAbove),
-    leverage_allowed: String(policy.leverageAllowed),
-    approval_policy: policy.approvalPolicy,
-    policy_version: String(policy.policyVersion),
-    policy_hash: passport.policyHash || hashJson(policy),
-    daily_notional_used: String(passport.dailyNotionalUsed || 0),
-    blocked_actions: passport.blockedActions || [],
-    owner_wallet: passport.ownerWallet || "",
-    last_event_id: metadata.lastEventId || passport.lastEventId || "initial",
-    updated_at: new Date().toISOString()
-  };
+  const policy = { allowedPairs: passport.allowedPairs || ["BTCUSD", "ETHUSD", "SOLUSD"], maxNotionalUsd: passport.maxNotionalUsd || 250, maxDailyNotionalUsd: passport.maxDailyNotionalUsd || 1000, humanApprovalRequiredAbove: passport.humanApprovalRequiredAbove || 100, leverageAllowed: Boolean(passport.leverageAllowed), approvalPolicy: passport.approvalPolicy || "human_required_above_threshold", policyVersion: passport.policyVersion || 1 };
+  return { passport_id: passport.id || "kraken-market-agent-passport", agent_name: passport.agentName || "Kraken Market Agent", mode: passport.mode || "paper", state: passport.dualObjectState || passport.state || "active", allowed_pairs: policy.allowedPairs, max_notional_usd: String(policy.maxNotionalUsd), max_daily_notional_usd: String(policy.maxDailyNotionalUsd), human_approval_required_above: String(policy.humanApprovalRequiredAbove), leverage_allowed: String(policy.leverageAllowed), approval_policy: policy.approvalPolicy, policy_version: String(policy.policyVersion), policy_hash: passport.policyHash || hashJson(policy), daily_notional_used: String(passport.dailyNotionalUsed || 0), blocked_actions: passport.blockedActions || [], owner_wallet: passport.ownerWallet || "", last_event_id: metadata.lastEventId || passport.lastEventId || "initial", updated_at: new Date().toISOString() };
 }
 
 function eventMetadata(event) {
-  return {
-    event_id: event.id,
-    event_type: event.type,
-    event_status: event.status,
-    event_hash: event.provenanceHash || event.id,
-    event_payload: event.payload || {}
-  };
-}\nfunction summarizeResult(result) {
+  return { event_id: event.id, event_type: event.type, event_status: event.status, event_hash: event.provenanceHash || event.id, event_payload: event.payload || {} };
+}
+
+function summarizeResult(result) {
   if (!result || typeof result !== "object") return result || null;
   const data = objectOrNull(result.data) || result;
   const inner = objectOrNull(data.result) || objectOrNull(result.result) || data;
@@ -505,46 +377,15 @@ function eventMetadata(event) {
   const update = objectOrNull(action.update) || null;
   const mint = objectOrNull(action.mint) || null;
   const object = objectOrNull(inner.object) || objectOrNull(data.object) || objectOrNull(result.object) || null;
-  return {
-    id: first(result.id, result.object_id, result.objectId, result.event_id, result.eventId, data.id, data.object_id, data.objectId, inner.id, inner.object_id, inner.objectId, action.id, update?.id, mint?.id, object?.id, object?.object_id, object?.objectId),
-    status: first(result.status, result.state, data.status, data.state, inner.status, inner.state, action.status, action.state, update?.status, update?.state, mint?.status, mint?.state),
-    hash: first(result.hash, result.integrity_hash, result.integrityHash, result.state_hash, result.stateHash, data.hash, data.integrity_hash, data.integrityHash, inner.hash, inner.integrity_hash, inner.integrityHash, action.hash, action.integrity_hash, action.integrityHash, object?.integrity_hash, object?.integrityHash),
-    actionId: first(result.action_id, result.actionId, data.action_id, data.actionId, inner.action_id, inner.actionId, action.action_id, action.actionId, update?.action_id, update?.actionId, mint?.action_id, mint?.actionId, action.id, update?.id, mint?.id, result.id, data.id, inner.id),
-    batchId: first(result.batch_id, result.batchId, data.batch_id, data.batchId, inner.batch_id, inner.batchId, action.batch_id, action.batchId, update?.batch_id, update?.batchId, mint?.batch_id, mint?.batchId),
-    payloadStyle: "direct_nested_data_custom"
-  };
-}
-
-function first(...values) {
-  return values.find((value) => value !== undefined && value !== null && value !== "") || null;
-}
-
-function objectOrNull(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  return { id: first(result.id, result.object_id, result.objectId, result.event_id, result.eventId, data.id, data.object_id, data.objectId, inner.id, inner.object_id, inner.objectId, action.id, update?.id, mint?.id, object?.id, object?.object_id, object?.objectId), status: first(result.status, result.state, data.status, data.state, inner.status, inner.state, action.status, action.state, update?.status, update?.state, mint?.status, mint?.state), hash: first(result.hash, result.integrity_hash, result.integrityHash, result.state_hash, result.stateHash, data.hash, data.integrity_hash, data.integrityHash, inner.hash, inner.integrity_hash, inner.integrityHash, action.hash, action.integrity_hash, action.integrityHash, object?.integrity_hash, object?.integrityHash), actionId: first(result.action_id, result.actionId, data.action_id, data.actionId, inner.action_id, inner.actionId, action.action_id, action.actionId, update?.action_id, update?.actionId, mint?.action_id, mint?.actionId, action.id, update?.id, mint?.id, result.id, data.id, inner.id), batchId: first(result.batch_id, result.batchId, data.batch_id, data.batchId, inner.batch_id, inner.batchId, action.batch_id, action.batchId, update?.batch_id, update?.batchId, mint?.batch_id, mint?.batchId), payloadStyle: "direct_nested_data_custom" };
 }
 
 function summarizeTemplate(template) {
-  return {
-    id: template?.id || template?.template_id || template?.templateId || null,
-    name: template?.name || null,
-    custom: template?.object?.custom || template?.properties || {},
-    actions: template?.actions || null,
-    publicAccess: template?.public_access || template?.publicAccess || null,
-    whenModified: template?.when_modified || template?.updated_at || template?.updatedAt || null
-  };
+  return { id: template?.id || template?.template_id || template?.templateId || null, name: template?.name || null, custom: template?.object?.custom || template?.properties || {}, actions: template?.actions || null, publicAccess: template?.public_access || template?.publicAccess || null, whenModified: template?.when_modified || template?.updated_at || template?.updatedAt || null };
 }
 
 function summarizeObject(object) {
-  return {
-    id: object?.id || object?.object_id || object?.objectId || null,
-    templateId: object?.template_id || object?.templateId || null,
-    orgId: object?.org_id || object?.organization_id || null,
-    owner: object?.owner || object?.owner_id || null,
-    custom: object?.custom || object?.properties || {},
-    integrityHash: object?.integrity_hash || object?.integrityHash || null,
-    stateHash: object?.state_hash || object?.stateHash || null,
-    whenModified: object?.when_modified || object?.updated_at || object?.updatedAt || null
-  };
+  return { id: object?.id || object?.object_id || object?.objectId || null, templateId: object?.template_id || object?.templateId || null, orgId: object?.org_id || object?.organization_id || null, owner: object?.owner || object?.owner_id || null, custom: object?.custom || object?.properties || {}, integrityHash: object?.integrity_hash || object?.integrityHash || null, stateHash: object?.state_hash || object?.stateHash || null, whenModified: object?.when_modified || object?.updated_at || object?.updatedAt || null };
 }
 
 async function findObjectForTemplate(sdk, targetTemplateId) {
@@ -571,18 +412,7 @@ async function searchObjects(sdk, targetTemplateId) {
 
 function summarizeBatch(batch) {
   if (!batch || typeof batch !== "object") return null;
-  return {
-    id: batch.id || batch.batch_id || batch.batchId || null,
-    status: batch.status || batch.state || null,
-    proofValue: batch.proof_value || batch.proofValue || batch.proof?.value || batch.proof?.status || null,
-    actionCount: batch.action_count ?? batch.actions_count ?? batch.actionCount ?? batch.actions?.length ?? extractBatchActions(batch).length ?? null,
-    merkleRoot: batch.merkle_root || batch.merkleRoot || batch.root_hash || batch.rootHash || null,
-    checkpointId: batch.checkpoint_id || batch.checkpointId || batch.checkpoint?.id || null,
-    transactionHash: nonZeroHash(batch.transaction_hash || batch.transactionHash || batch.tx_hash || batch.txHash || batch.l1_tx_hash || batch.l1TxHash),
-    chainId: batch.chain_id || batch.chainId || batch.network || batch.chain || null,
-    createdAt: batch.created_at || batch.createdAt || batch.when_created || batch.whenCreated || null,
-    updatedAt: batch.updated_at || batch.updatedAt || batch.when_modified || batch.whenModified || null
-  };
+  return { id: batch.id || batch.batch_id || batch.batchId || null, status: batch.status || batch.state || null, proofValue: batch.proof_value || batch.proofValue || batch.proof?.value || batch.proof?.status || null, actionCount: batch.action_count ?? batch.actions_count ?? batch.actionCount ?? batch.actions?.length ?? extractBatchActions(batch).length ?? null, merkleRoot: batch.merkle_root || batch.merkleRoot || batch.root_hash || batch.rootHash || null, checkpointId: batch.checkpoint_id || batch.checkpointId || batch.checkpoint?.id || null, transactionHash: nonZeroHash(batch.transaction_hash || batch.transactionHash || batch.tx_hash || batch.txHash || batch.l1_tx_hash || batch.l1TxHash), chainId: batch.chain_id || batch.chainId || batch.network || batch.chain || null, createdAt: batch.created_at || batch.createdAt || batch.when_created || batch.whenCreated || null, updatedAt: batch.updated_at || batch.updatedAt || batch.when_modified || batch.whenModified || null };
 }
 
 function describeBatchFinality(batch) {
@@ -614,12 +444,7 @@ function extractBatchActions(batch) {
 }
 
 function rootItem(event) {
-  return {
-    eventId: event.eventId,
-    eventHash: event.eventHash,
-    actionId: event.actionId,
-    envelopeHash: event.envelopeHash
-  };
+  return { eventId: event.eventId, eventHash: event.eventHash, actionId: event.actionId, envelopeHash: event.envelopeHash };
 }
 
 function normalizePath(value) {
@@ -644,6 +469,14 @@ function maskEmail(email) {
   return name && domain ? `${name.slice(0, 2)}***@${domain}` : null;
 }
 
+function first(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== "") || null;
+}
+
+function objectOrNull(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
 function messageFromBody(body, fallback) {
   if (typeof body === "string") return body || fallback;
   return body?.message || body?.error || fallback;
@@ -660,8 +493,6 @@ function hashJson(value) {
 
 function stableStringify(value) {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
-  }
+  if (value && typeof value === "object") return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
   return JSON.stringify(value);
 }

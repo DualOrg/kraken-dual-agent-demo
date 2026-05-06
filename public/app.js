@@ -356,8 +356,8 @@ function renderProof() {
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
     ["DUAL mode", dual?.available ? dual.writable ? "write-sync" : "read-linked" : "not configured"],
-    ["Write readiness", proof?.status?.writeReadiness?.ready ? "ready" : "needs bearer auth"],
-    ["Bearer auth", authLabel(auth)],
+    ["Write readiness", proof?.status?.writeReadiness?.ready ? "ready" : "needs write auth"],
+    ["Write auth", authLabel(auth)],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
     ["Policy version", policy?.version ? `v${policy.version}` : "pending"],
@@ -387,7 +387,7 @@ function renderProof() {
   if (auth?.authenticated) {
     els.dualAuthMessage.textContent = auth.detail;
   } else if (!els.dualAuthMessage.textContent) {
-    els.dualAuthMessage.textContent = auth?.detail || "Email-code auth unlocks DUAL event-bus writes for this server session.";
+    els.dualAuthMessage.textContent = auth?.detail || "Scoped API-key auth or email-code auth unlocks DUAL event-bus writes.";
   }
 }
 
@@ -405,12 +405,15 @@ function batchProofLabel(batch) {
 }
 
 function authLabel(auth) {
-  if (auth?.authType === "service_account") return "service account";
+  if (auth?.authType === "api_key_env") return "API key";
+  if (auth?.authType === "api_key_service_account") return "service API key";
+  if (auth?.authType === "bearer_service_account") return "service bearer";
+  if (auth?.authType === "both_service_account") return "service both";
   if (auth?.authType === "bearer_env") return "bearer env";
   if (auth?.authenticated && auth.email) return `session ${auth.email}`;
   if (auth?.pendingEmail) return `code sent ${auth.pendingEmail}`;
   if (auth?.serviceAccountConfigured) return "service account pending write mode";
-  return "email code needed";
+  return "write auth needed";
 }
 
 function shortId(value) {

@@ -406,6 +406,7 @@ function batchProofLabel(batch) {
 
 function authLabel(auth) {
   if (auth?.authType === "api_key_env") return "API key";
+  if (auth?.authType === "both_env") return "API key + bearer";
   if (auth?.authType === "api_key_service_account") return "service API key";
   if (auth?.authType === "bearer_service_account") return "service bearer";
   if (auth?.authType === "both_service_account") return "service both";

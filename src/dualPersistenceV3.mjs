@@ -9,7 +9,7 @@ export async function createDualPersistence() {
   const apiKey = process.env.DUAL_API_KEY || "";
   const authMode = process.env.DUAL_AUTH_MODE || "api_key";
   const writeMode = process.env.DUAL_WRITE_MODE || "read_only";
-  const eventBusWritePath = normalizePath(process.env.DUAL_EVENTBUS_WRITE_PATH || "/ebus/actions");
+  const eventBusWritePath = normalizePath(process.env.DUAL_EVENTBUS_WRITE_PATH || "/ebus/execute");
   const serviceToken = process.env.DUAL_SERVICE_ACCOUNT_TOKEN
     || process.env.DUAL_SERVICE_ACCOUNT_BEARER_TOKEN
     || process.env.DUAL_BEARER_TOKEN
@@ -376,35 +376,45 @@ export async function createDualPersistence() {
 
 function authHeaders(write) {
   const headers = { "content-type": "application/json", accept: "application/json" };
-  if (write.authMode === "api_key") headers["x-api-key"] = write.token;
-  else headers.authorization = `Bearer ${write.token}`;
+  if (write.authMode === "api_key" || write.authMode === "both") headers["x-api-key"] = write.token;
+  if (write.authMode === "bearer" || write.authMode === "both") headers.authorization = `Bearer ${write.token}`;
   return headers;
 }
 
 function updatePayload(targetObjectId, properties, metadata) {
   return {
-    objectId: targetObjectId,
-    action: "update",
-    actor: "kraken-dual-agent-demo",
-    parameters: {
-      objectId: targetObjectId,
-      custom: properties,
-      metadata
-    }
+    action: {
+      update: {
+        id: targetObjectId,
+        data: {
+          custom: {
+            ...properties,
+            last_event_type: metadata.event_type || "",
+            last_event_status: metadata.event_status || "",
+            last_event_hash: metadata.event_hash || ""
+          }
+        }
+      }
+    },
+    metadata
   };
 }
 
 function mintPayload(targetTemplateId, properties, metadata) {
   return {
-    templateId: targetTemplateId,
-    action: "mint",
-    actor: "kraken-dual-agent-demo",
-    parameters: {
-      templateId: targetTemplateId,
-      num: 1,
-      custom: properties,
-      metadata
-    }
+    action: {
+      mint: {
+        template_id: targetTemplateId,
+        num: 1,
+        custom: {
+          ...properties,
+          last_event_type: metadata.event_type || "",
+          last_event_status: metadata.event_status || "",
+          last_event_hash: metadata.event_hash || ""
+        }
+      }
+    },
+    metadata
   };
 }
 
@@ -477,7 +487,7 @@ function summarizeResult(result) {
     hash: result.hash || result.integrity_hash || result.integrityHash || result.state_hash || result.stateHash || null,
     actionId: result.action_id || result.actionId || result.id || null,
     batchId: result.batch_id || result.batchId || null,
-    payloadStyle: "v3_action_parameters"
+    payloadStyle: "nested_data_custom"
   };
 }
 
@@ -574,8 +584,8 @@ function rootItem(event) {
 
 function normalizePath(value) {
   const raw = String(value || "").trim();
-  if (!raw || raw === "actions") return "/ebus/actions";
-  if (raw === "execute") return "/ebus/execute";
+  if (!raw || raw === "execute") return "/ebus/execute";
+  if (raw === "actions") return "/ebus/actions";
   return raw.startsWith("/") ? raw : `/${raw}`;
 }
 

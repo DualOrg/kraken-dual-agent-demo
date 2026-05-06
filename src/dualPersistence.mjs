@@ -22,6 +22,7 @@ export async function createDualPersistence() {
   let serviceSession = null;
   let pendingEmail = null;
   let sdkError = null;
+  let preferredPayloadStyle = process.env.DUAL_EVENTBUS_PAYLOAD_STYLE || "direct_custom";
 
   if (mode === "dual") {
     try {
@@ -184,7 +185,7 @@ export async function createDualPersistence() {
       const template = await write.sdk.templates.create(agentTemplatePayload());
       const newTemplateId = template.id || template.template_id || template.templateId;
       const properties = passportProperties(passport, { lastEventId: "passport_setup" });
-      const mint = await writeAction(write, mintPayload(newTemplateId, properties, { source: "passport_setup", event_type: "passport_setup", event_status: "created" }));
+      const mint = await writeActionWithFallback(write, "mint", newTemplateId, null, properties, { source: "passport_setup", event_type: "passport_setup", event_status: "created" });
       const object = await findObjectForTemplate(write.sdk, newTemplateId);
       return {
         template: summarizeTemplate(template),
@@ -201,7 +202,7 @@ export async function createDualPersistence() {
     async syncPassport(passport, metadata = {}) {
       const write = requireWritable();
       const properties = passportProperties(passport, metadata);
-      return writeAction(write, objectId ? updatePayload(objectId, properties, metadata) : mintPayload(templateId, properties, metadata));
+      return writeActionWithFallback(write, objectId ? "update" : "mint", templateId, objectId, properties, metadata);
     },
 
     buildReplayQueue(passport, audit = []) {
@@ -236,8 +237,8 @@ export async function createDualPersistence() {
       const queue = this.buildReplayQueue(passport, audit);
       const executed = [];
       for (const event of [...queue.events].reverse()) {
-        const result = summarizeResult(await writeAction(write, event.envelope.payload));
-        executed.push({ ...event, result });
+        const result = await writeActionWithFallback(write, event.envelope.actionName, queue.targetTemplateId, queue.targetObjectId, event.envelope.properties, event.envelope.metadata);
+        executed.push({ ...event, result: summarizeResult(result) });
       }
       return { executed: true, executedCount: executed.length, skippedCount: queue.syncedCount, replayRoot: queue.rootHash, pendingReplayRoot: queue.pendingRootHash, targetObjectId: queue.targetObjectId, targetTemplateId: queue.targetTemplateId, events: executed };
     },
@@ -269,16 +270,16 @@ export async function createDualPersistence() {
       const metadata = eventMetadata(event);
       const payload = objectId ? updatePayload(objectId, properties, metadata) : mintPayload(templateId, properties, metadata);
       if (!write) return { skipped: true, reason: "DUAL event-bus writes need DUAL_WRITE_MODE=event_bus plus scoped API-key or bearer/session auth.", replay: { envelope: payload, envelopeHash: hashJson(payload) } };
-      const result = await writeAction(write, payload);
+      const result = await writeActionWithFallback(write, objectId ? "update" : "mint", templateId, objectId, properties, metadata);
       return { synced: true, envelopeHash: hashJson(payload), result: summarizeResult(result) };
     },
 
     async probeUpdateSchemas(passport) {
       const write = requireWritable();
       const properties = passportProperties(passport, { lastEventId: `api_key_probe_${Date.now()}` });
-      const payload = updatePayload(objectId, properties, { source: "api_key_execute_probe", event_type: "api_key_execute_probe", event_status: "ok" });
-      const result = await writeAction(write, payload);
-      return { targetObjectId: objectId, targetTemplateId: templateId, authMode: directEventBusAuthMode(write), eventBusWritePath, results: [{ name: "direct_nested_data_custom", ok: true, result: summarizeResult(result) }] };
+      const metadata = { source: "api_key_execute_probe", event_type: "api_key_execute_probe", event_status: "ok" };
+      const result = await writeActionWithFallback(write, "update", templateId, objectId, properties, metadata);
+      return { targetObjectId: objectId, targetTemplateId: templateId, authMode: directEventBusAuthMode(write), eventBusWritePath, payloadStyle: preferredPayloadStyle, results: [{ name: preferredPayloadStyle, ok: true, result: summarizeResult(result) }] };
     }
   };
 
@@ -318,6 +319,31 @@ export async function createDualPersistence() {
     return activeWriteClient() ? "event_bus" : writeMode;
   }
 
+  async function writeActionWithFallback(write, actionName, targetTemplateId, targetObjectId, properties, metadata) {
+    const attempts = payloadAttempts(actionName, targetTemplateId, targetObjectId, properties, metadata);
+    const errors = [];
+    for (const attempt of attempts) {
+      try {
+        const result = await writeAction(write, attempt.payload);
+        preferredPayloadStyle = attempt.style;
+        return { ...summarizeResult(result), raw: result, payloadStyle: attempt.style };
+      } catch (error) {
+        errors.push({ style: attempt.style, status: error.status || null, message: error.message, body: error.body || null });
+      }
+    }
+    const error = new Error(`DUAL event-bus action write failed. ${errors.map((item) => `${item.style}: ${item.message}`).join(" | ")}`);
+    error.status = errors[0]?.status || 400;
+    error.body = { attempts: errors };
+    throw error;
+  }
+
+  function payloadAttempts(actionName, targetTemplateId, targetObjectId, properties, metadata) {
+    const styles = preferredPayloadStyle === "auto"
+      ? ["direct_custom", "direct_data_custom", "top_level_action", "classic_custom"]
+      : [preferredPayloadStyle, ...["direct_custom", "direct_data_custom", "top_level_action", "classic_custom"].filter((style) => style !== preferredPayloadStyle)];
+    return styles.map((style) => ({ style, payload: actionName === "update" ? updatePayloadByStyle(style, targetObjectId, properties, metadata) : mintPayloadByStyle(style, targetTemplateId, properties, metadata) }));
+  }
+
   async function writeAction(write, payload) {
     const response = await fetch(`${baseUrl}${eventBusWritePath}`, { method: "POST", headers: directEventBusHeaders(write), body: JSON.stringify(payload) });
     const contentType = response.headers.get("content-type") || "";
@@ -348,11 +374,36 @@ export async function createDualPersistence() {
 }
 
 function updatePayload(targetObjectId, properties, metadata) {
-  return { action: { update: { id: targetObjectId, data: { custom: { ...properties, last_event_type: metadata.event_type || "", last_event_status: metadata.event_status || "", last_event_hash: metadata.event_hash || "" } } } }, metadata };
+  return updatePayloadByStyle("direct_custom", targetObjectId, properties, metadata);
+}
+
+function updatePayloadByStyle(style, targetObjectId, properties, metadata) {
+  const custom = withEventFields(properties, metadata);
+  if (style === "direct_data_custom") return { action: { update: { id: targetObjectId, data: { custom } } }, metadata };
+  if (style === "top_level_action") return { action: "update", object_id: targetObjectId, custom, metadata };
+  if (style === "classic_custom") return { this: targetObjectId, action: "update", custom, metadata };
+  return { action: { update: { id: targetObjectId, custom } }, metadata };
 }
 
 function mintPayload(targetTemplateId, properties, metadata) {
-  return { action: { mint: { template_id: targetTemplateId, num: 1, custom: { ...properties, last_event_type: metadata.event_type || "", last_event_status: metadata.event_status || "", last_event_hash: metadata.event_hash || "" } } }, metadata };
+  return mintPayloadByStyle("direct_custom", targetTemplateId, properties, metadata);
+}
+
+function mintPayloadByStyle(style, targetTemplateId, properties, metadata) {
+  const custom = withEventFields(properties, metadata);
+  if (style === "direct_data_custom") return { action: { mint: { template_id: targetTemplateId, num: 1, data: { custom } } }, metadata };
+  if (style === "top_level_action") return { action: "mint", template_id: targetTemplateId, num: 1, custom, metadata };
+  if (style === "classic_custom") return { template: targetTemplateId, action: "mint", custom, metadata };
+  return { action: { mint: { template_id: targetTemplateId, num: 1, custom } }, metadata };
+}
+
+function withEventFields(properties, metadata = {}) {
+  return {
+    ...properties,
+    last_event_type: metadata.event_type || "",
+    last_event_status: metadata.event_status || "",
+    last_event_hash: metadata.event_hash || ""
+  };
 }
 
 function agentTemplatePayload() {
@@ -377,7 +428,7 @@ function summarizeResult(result) {
   const update = objectOrNull(action.update) || null;
   const mint = objectOrNull(action.mint) || null;
   const object = objectOrNull(inner.object) || objectOrNull(data.object) || objectOrNull(result.object) || null;
-  return { id: first(result.id, result.object_id, result.objectId, result.event_id, result.eventId, data.id, data.object_id, data.objectId, inner.id, inner.object_id, inner.objectId, action.id, update?.id, mint?.id, object?.id, object?.object_id, object?.objectId), status: first(result.status, result.state, data.status, data.state, inner.status, inner.state, action.status, action.state, update?.status, update?.state, mint?.status, mint?.state), hash: first(result.hash, result.integrity_hash, result.integrityHash, result.state_hash, result.stateHash, data.hash, data.integrity_hash, data.integrityHash, inner.hash, inner.integrity_hash, inner.integrityHash, action.hash, action.integrity_hash, action.integrityHash, object?.integrity_hash, object?.integrityHash), actionId: first(result.action_id, result.actionId, data.action_id, data.actionId, inner.action_id, inner.actionId, action.action_id, action.actionId, update?.action_id, update?.actionId, mint?.action_id, mint?.actionId, action.id, update?.id, mint?.id, result.id, data.id, inner.id), batchId: first(result.batch_id, result.batchId, data.batch_id, data.batchId, inner.batch_id, inner.batchId, action.batch_id, action.batchId, update?.batch_id, update?.batchId, mint?.batch_id, mint?.batchId), payloadStyle: "direct_nested_data_custom" };
+  return { id: first(result.id, result.object_id, result.objectId, result.event_id, result.eventId, data.id, data.object_id, data.objectId, inner.id, inner.object_id, inner.objectId, action.id, update?.id, mint?.id, object?.id, object?.object_id, object?.objectId), status: first(result.status, result.state, data.status, data.state, inner.status, inner.state, action.status, action.state, update?.status, update?.state, mint?.status, mint?.state), hash: first(result.hash, result.integrity_hash, result.integrityHash, result.state_hash, result.stateHash, data.hash, data.integrity_hash, data.integrityHash, inner.hash, inner.integrity_hash, inner.integrityHash, action.hash, action.integrity_hash, action.integrityHash, object?.integrity_hash, object?.integrityHash), actionId: first(result.action_id, result.actionId, data.action_id, data.actionId, inner.action_id, inner.actionId, action.action_id, action.actionId, update?.action_id, update?.actionId, mint?.action_id, mint?.actionId, action.id, update?.id, mint?.id, result.id, data.id, inner.id), batchId: first(result.batch_id, result.batchId, data.batch_id, data.batchId, inner.batch_id, inner.batchId, action.batch_id, action.batchId, update?.batch_id, update?.batchId, mint?.batch_id, mint?.batchId) };
 }
 
 function summarizeTemplate(template) {
@@ -412,7 +463,7 @@ async function searchObjects(sdk, targetTemplateId) {
 
 function summarizeBatch(batch) {
   if (!batch || typeof batch !== "object") return null;
-  return { id: batch.id || batch.batch_id || batch.batchId || null, status: batch.status || batch.state || null, proofValue: batch.proof_value || batch.proofValue || batch.proof?.value || batch.proof?.status || null, actionCount: batch.action_count ?? batch.actions_count ?? batch.actionCount ?? batch.actions?.length ?? extractBatchActions(batch).length ?? null, merkleRoot: batch.merkle_root || batch.merkleRoot || batch.root_hash || batch.rootHash || null, checkpointId: batch.checkpoint_id || batch.checkpointId || batch.checkpoint?.id || null, transactionHash: nonZeroHash(batch.transaction_hash || batch.transactionHash || batch.tx_hash || batch.txHash || batch.l1_tx_hash || batch.l1TxHash), chainId: batch.chain_id || batch.chainId || batch.network || batch.chain || null, createdAt: batch.created_at || batch.createdAt || batch.when_created || batch.whenCreated || null, updatedAt: batch.updated_at || batch.updatedAt || batch.when_modified || batch.whenModified || null };
+  return { id: batch.id || batch.batch_id || batch.batchId || null, status: batch.status || batch.state || null, proofValue: batch.proof_value || batch.proofValue || batch.proof?.value || batch.proof?.status || null, actionCount: batch.action_count ?? batch.actions_count ?? batch.actionCount ?? batch.actions?.length ?? extractBatchActions(batch).length ?? null, merkleRoot: batch.merkle_root || batch.merkleRoot || batch.root_hash || batch.rootHash || null, checkpointId: batch.checkpoint_id || batch.checkpointId || batch.checkpoint?.id || null, transactionHash: nonZeroHash(batch.transaction_hash || batch.transactionHash || batch.tx_hash || batch.txHash || batch.l1_tx_hash || batch.l1TxHash), chainId: batch.chain_id || batch.chainId || batch.network || batch.chain || null, createdAt: batch.created_at || batch.createdAt || batch.when_created || batch.whenCreated || null, updatedAt: batch.updated_at || batch.when_modified || batch.whenModified || null };
 }
 
 function describeBatchFinality(batch) {

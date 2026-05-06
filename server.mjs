@@ -7,7 +7,7 @@ import { dirname } from "node:path";
 import { loadState, resetState, saveState, createAuditEvent, createProposal } from "./src/dualStore.mjs";
 import { evaluateTrade, redTeamTrade, roundMoney, roundQty } from "./src/policy.mjs";
 import { executePaperTrade, getAdapterStatus, getMarket } from "./src/krakenAdapter.mjs";
-import { createDualPersistence } from "./src/dualPersistence.mjs";
+import { createDualPersistence } from "./src/dualPersistenceV3.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = __dirname;
@@ -725,7 +725,7 @@ async function buildProofBundle() {
     },
     caveats: [
       adapter.krakenCliAvailable ? "Kraken paper execution is CLI-backed." : "Kraken paper execution is simulated because Kraken CLI is unavailable in this runtime.",
-      dualPersistence.status().writable ? "DUAL event-bus writes are enabled." : "DUAL is read-linked; event-bus writes require bearer/session/service-account auth."
+      dualPersistence.status().writable ? "DUAL event-bus writes are enabled." : "DUAL is read-linked; event-bus writes require DUAL_WRITE_MODE=event_bus plus scoped API-key or bearer/session auth."
     ],
     verification
   };

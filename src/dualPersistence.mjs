@@ -259,9 +259,17 @@ export async function createDualPersistence() {
       const write = requireWritable();
       const queue = this.buildReplayQueue(passport, audit);
       const executed = [];
+      const usedActionIds = new Set(queue.allEvents.map((event) => event.actionId).filter(Boolean));
       for (const event of [...queue.events].reverse()) {
-        const result = await writeAction(write, event.envelope.payload);
-        executed.push({ ...event, result: summarizeResult(result) });
+        let result = null;
+        try {
+          result = summarizeResult(await writeAction(write, event.envelope.payload));
+        } catch (error) {
+          result = await recoverLatestAction(write, event.envelope.actionName, usedActionIds, error);
+          if (!result) throw error;
+        }
+        if (result?.actionId) usedActionIds.add(result.actionId);
+        executed.push({ ...event, result });
       }
       return {
         executed: true,
@@ -366,6 +374,33 @@ export async function createDualPersistence() {
       throw error;
     }
     return body;
+  }
+
+  async function recoverLatestAction(write, actionName, usedActionIds, originalError) {
+    if (!write?.sdk?.sequencer?.listBatches) return null;
+    try {
+      const batches = extractItems(await write.sdk.sequencer.listBatches({ limit: 5 }));
+      for (const batch of batches) {
+        const actions = [...extractBatchActions(batch)].reverse();
+        for (const action of actions) {
+          const actionId = action?.id || action?.action_id || action?.actionId || null;
+          const name = action?.name || action?.action || actionName;
+          if (!actionId || usedActionIds.has(actionId) || name !== actionName) continue;
+          return {
+            id: actionId,
+            status: "recovered_from_batch",
+            hash: action.hash || action.integrity_hash || action.integrityHash || null,
+            actionId,
+            batchId: batch.id || batch.batch_id || batch.batchId || null,
+            payloadStyle: "nested_data_custom",
+            recoveredAfterError: originalError?.message || null
+          };
+        }
+      }
+    } catch {
+      return null;
+    }
+    return null;
   }
 }
 
@@ -568,7 +603,7 @@ function summarizeBatch(batch) {
     id: batch.id || batch.batch_id || batch.batchId || null,
     status: batch.status || batch.state || null,
     proofValue: batch.proof_value || batch.proofValue || batch.proof?.value || batch.proof?.status || null,
-    actionCount: batch.action_count ?? batch.actions_count ?? batch.actionCount ?? batch.actions?.length ?? null,
+    actionCount: batch.action_count ?? batch.actions_count ?? batch.actionCount ?? batch.actions?.length ?? extractBatchActions(batch).length ?? null,
     merkleRoot: batch.merkle_root || batch.merkleRoot || batch.root_hash || batch.rootHash || null,
     checkpointId: batch.checkpoint_id || batch.checkpointId || batch.checkpoint?.id || null,
     transactionHash: nonZeroHash(batch.transaction_hash || batch.transactionHash || batch.tx_hash || batch.txHash || batch.l1_tx_hash || batch.l1TxHash),
@@ -595,6 +630,14 @@ function extractItems(response) {
   if (Array.isArray(response?.data?.items)) return response.data.items;
   if (Array.isArray(response?.data?.batches)) return response.data.batches;
   if (Array.isArray(response?.data)) return response.data;
+  return [];
+}
+
+function extractBatchActions(batch) {
+  if (Array.isArray(batch?.affected_actions)) return batch.affected_actions;
+  if (Array.isArray(batch?.affectedActions)) return batch.affectedActions;
+  if (Array.isArray(batch?.actions)) return batch.actions;
+  if (Array.isArray(batch?.data?.affected_actions)) return batch.data.affected_actions;
   return [];
 }
 

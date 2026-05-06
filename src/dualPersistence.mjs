@@ -19,6 +19,7 @@ export async function createDualPersistence() {
   let serviceClient = null;
   let sessionClient = null;
   let session = null;
+  let serviceSession = null;
   let pendingEmail = null;
   let sdkError = null;
 
@@ -32,14 +33,20 @@ export async function createDualPersistence() {
         const tokens = await refreshed.sdk.wallets.refreshToken(serviceRefreshToken);
         refreshed.token = tokens.access_token;
         refreshed.sdk.setToken(tokens.access_token);
+        let active = tokens;
         try {
-          const orgTokens = await refreshed.sdk.wallets.switchOrganization(orgId);
-          refreshed.token = orgTokens.access_token;
-          refreshed.sdk.setToken(orgTokens.access_token);
+          active = await refreshed.sdk.wallets.switchOrganization(orgId);
+          refreshed.token = active.access_token;
+          refreshed.sdk.setToken(active.access_token);
         } catch {
           // Some refresh tokens are already org scoped.
         }
         serviceClient = refreshed;
+        serviceSession = {
+          orgId,
+          refreshedAt: new Date().toISOString(),
+          refreshTokenPresent: Boolean(active.refresh_token || tokens.refresh_token)
+        };
       }
     } catch (error) {
       sdkError = error;
@@ -66,6 +73,7 @@ export async function createDualPersistence() {
           configured: Boolean(serviceToken || serviceRefreshToken),
           authMode: serviceAuthMode,
           refreshTokenConfigured: Boolean(serviceRefreshToken),
+          session: serviceSession,
           writable: Boolean(serviceClient && writeMode === "event_bus"),
           error: null
         },
@@ -78,7 +86,7 @@ export async function createDualPersistence() {
         } : null,
         detail: read
           ? write
-            ? "DUAL persistence adapter is ready for event-bus writes."
+            ? "DUAL persistence adapter is ready for direct event-bus writes."
             : "DUAL passport is linked for read verification. Event-bus writes need DUAL_WRITE_MODE=event_bus."
           : sdkError
             ? `DUAL SDK unavailable: ${sdkError.message}`
@@ -95,7 +103,7 @@ export async function createDualPersistence() {
         authMode: effectiveAuthMode(),
         writeMode: effectiveWriteMode(),
         eventBusWritePath,
-        requiredAuthMode: "api_key_or_bearer",
+        requiredAuthMode: "scoped_api_key_or_bearer",
         requiredWriteMode: "event_bus",
         current: status,
         missing: ready ? [] : [
@@ -105,7 +113,7 @@ export async function createDualPersistence() {
           "scoped API key or bearer/session credential with event-bus action create permission"
         ],
         detail: ready
-          ? "DUAL event-bus write sync is enabled."
+          ? "DUAL event-bus write sync is enabled via direct server-side POST."
           : "DUAL read-link is active; event-bus write sync needs DUAL_WRITE_MODE=event_bus plus scoped API-key or bearer/session auth."
       };
     },
@@ -121,18 +129,18 @@ export async function createDualPersistence() {
           : serviceClient && serviceRefreshToken
             ? "refresh_token_service_session"
             : serviceClient
-              ? `${serviceClient.authMode}_service_account`
+              ? `${serviceAuthMode === "both" ? "api_key" : serviceAuthMode}_service_account`
               : write
-                ? `${client.authMode}_env`
+                ? `${authMode === "both" ? "api_key" : authMode}_env`
                 : null,
         serviceAccountConfigured: Boolean(serviceToken || serviceRefreshToken),
         serviceAccountRefreshConfigured: Boolean(serviceRefreshToken),
         pendingEmail: pendingEmail ? maskEmail(pendingEmail) : null,
         email: session ? maskEmail(session.email) : null,
-        orgId: session?.orgId || orgId || null,
-        authenticatedAt: session?.authenticatedAt || null,
+        orgId: session?.orgId || serviceSession?.orgId || orgId || null,
+        authenticatedAt: session?.authenticatedAt || serviceSession?.refreshedAt || null,
         detail: write
-          ? "API-key or bearer auth is active for DUAL event-bus writes."
+          ? "Scoped API-key or bearer auth is active for direct DUAL event-bus writes."
           : "Use DUAL_WRITE_MODE=event_bus with a scoped API key, or request an email code for bearer auth."
       };
     },
@@ -198,7 +206,7 @@ export async function createDualPersistence() {
       const template = await write.sdk.templates.create(agentTemplatePayload());
       const newTemplateId = template.id || template.template_id || template.templateId;
       const properties = passportProperties(passport, { lastEventId: "passport_setup" });
-      const mint = await writeAction(write, mintPayload(newTemplateId, properties, { source: "passport_setup" }));
+      const mint = await writeAction(write, mintPayload(newTemplateId, properties, { source: "passport_setup", event_type: "passport_setup", event_status: "created" }));
       const object = await findObjectForTemplate(write.sdk, newTemplateId);
       return {
         template: summarizeTemplate(template),
@@ -316,10 +324,16 @@ export async function createDualPersistence() {
 
     async probeUpdateSchemas(passport) {
       const write = requireWritable();
-      const properties = passportProperties(passport, { lastEventId: "schema_probe" });
-      const payload = updatePayload(objectId, properties, { source: "schema_probe" });
+      const properties = passportProperties(passport, { lastEventId: `api_key_probe_${Date.now()}` });
+      const payload = updatePayload(objectId, properties, { source: "api_key_execute_probe", event_type: "api_key_execute_probe", event_status: "ok" });
       const result = await writeAction(write, payload);
-      return { targetObjectId: objectId, targetTemplateId: templateId, results: [{ name: "nested_data_custom", ok: true, result: summarizeResult(result) }] };
+      return {
+        targetObjectId: objectId,
+        targetTemplateId: templateId,
+        authMode: directEventBusAuthMode(write),
+        eventBusWritePath,
+        results: [{ name: "direct_nested_data_custom", ok: true, result: summarizeResult(result) }]
+      };
     }
   };
 
@@ -349,7 +363,7 @@ export async function createDualPersistence() {
 
   function effectiveAuthMode() {
     if (sessionClient) return "bearer_email_session";
-    if (serviceClient) return `${serviceClient.authMode}_service_account`;
+    if (serviceClient) return serviceSession ? "bearer_service_account" : `${serviceClient.authMode}_service_account`;
     return authMode;
   }
 
@@ -358,22 +372,18 @@ export async function createDualPersistence() {
   }
 
   async function writeAction(write, payload) {
-    if (eventBusWritePath === "/ebus/execute" && write.sdk.eventBus?.execute) {
-      return write.sdk.eventBus.execute(payload);
-    }
     const response = await fetch(`${baseUrl}${eventBusWritePath}`, {
       method: "POST",
-      headers: authHeaders(write),
+      headers: directEventBusHeaders(write),
       body: JSON.stringify(payload)
     });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = new Error(body?.message || body?.error || `DUAL event-bus write failed with HTTP ${response.status}`);
-      error.status = response.status;
-      error.body = body;
-      throw error;
-    }
-    return body;
+    const contentType = response.headers.get("content-type") || "";
+    const body = contentType.includes("application/json") ? await response.json().catch(() => ({})) : await response.text();
+    if (response.ok) return body;
+    const error = new Error(messageFromBody(body, `DUAL event-bus write failed with HTTP ${response.status}`));
+    error.status = response.status;
+    error.body = body;
+    throw error;
   }
 
   async function recoverLatestAction(write, actionName, usedActionIds, originalError) {
@@ -392,7 +402,7 @@ export async function createDualPersistence() {
             hash: action.hash || action.integrity_hash || action.integrityHash || null,
             actionId,
             batchId: batch.id || batch.batch_id || batch.batchId || null,
-            payloadStyle: "nested_data_custom",
+            payloadStyle: "direct_nested_data_custom",
             recoveredAfterError: originalError?.message || null
           };
         }
@@ -402,13 +412,23 @@ export async function createDualPersistence() {
     }
     return null;
   }
-}
 
-function authHeaders(write) {
-  const headers = { "content-type": "application/json", accept: "application/json" };
-  if (write.authMode === "api_key" || write.authMode === "both") headers["x-api-key"] = write.token;
-  if (write.authMode === "bearer" || write.authMode === "both") headers.authorization = `Bearer ${write.token}`;
-  return headers;
+  function directEventBusAuthMode(write) {
+    if (write === sessionClient) return "bearer";
+    if (write === serviceClient && serviceSession) return "bearer";
+    if (write === serviceClient) return serviceAuthMode === "both" ? "api_key" : serviceAuthMode;
+    return authMode === "both" ? "api_key" : authMode;
+  }
+
+  function directEventBusHeaders(write) {
+    const token = write?.token || write?.sdk?.getToken?.();
+    const headers = { "content-type": "application/json", accept: "application/json" };
+    if (!token) return headers;
+    const modeName = directEventBusAuthMode(write);
+    if (modeName === "bearer") headers.authorization = `Bearer ${token}`;
+    else headers["x-api-key"] = token;
+    return headers;
+  }
 }
 
 function updatePayload(targetObjectId, properties, metadata) {
@@ -494,6 +514,7 @@ function passportProperties(passport = {}, metadata = {}) {
     policy_hash: passport.policyHash || hashJson(policy),
     daily_notional_used: String(passport.dailyNotionalUsed || 0),
     blocked_actions: passport.blockedActions || [],
+    owner_wallet: passport.ownerWallet || "",
     last_event_id: metadata.lastEventId || passport.lastEventId || "initial",
     updated_at: new Date().toISOString()
   };
@@ -539,7 +560,7 @@ function summarizeResult(result) {
       action.id, update?.id, mint?.id, result.id, data.id, inner.id
     ),
     batchId: first(result.batch_id, result.batchId, data.batch_id, data.batchId, inner.batch_id, inner.batchId, action.batch_id, action.batchId, update?.batch_id, update?.batchId, mint?.batch_id, mint?.batchId),
-    payloadStyle: "nested_data_custom"
+    payloadStyle: "direct_nested_data_custom"
   };
 }
 
@@ -575,19 +596,19 @@ function summarizeObject(object) {
   };
 }
 
-async function findObjectForTemplate(sdk, templateId) {
+async function findObjectForTemplate(sdk, targetTemplateId) {
   for (let index = 0; index < 5; index += 1) {
-    const found = await searchObjects(sdk, templateId);
+    const found = await searchObjects(sdk, targetTemplateId);
     if (found) return found;
     await new Promise((resolve) => setTimeout(resolve, 750));
   }
   return null;
 }
 
-async function searchObjects(sdk, templateId) {
+async function searchObjects(sdk, targetTemplateId) {
   for (const method of ["search", "list"]) {
     try {
-      const result = await sdk.objects[method]({ template_id: templateId, limit: 10 });
+      const result = await sdk.objects[method]({ template_id: targetTemplateId, limit: 10 });
       const items = extractItems(result);
       if (items.length) return items[0];
     } catch {
@@ -670,6 +691,11 @@ function normalizeEmail(email) {
 function maskEmail(email) {
   const [name, domain] = String(email || "").split("@");
   return name && domain ? `${name.slice(0, 2)}***@${domain}` : null;
+}
+
+function messageFromBody(body, fallback) {
+  if (typeof body === "string") return body || fallback;
+  return body?.message || body?.error || fallback;
 }
 
 function nonZeroHash(value) {

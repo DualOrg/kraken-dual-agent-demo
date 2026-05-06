@@ -9,11 +9,8 @@ export async function createDualPersistence() {
   const apiKey = process.env.DUAL_API_KEY || "";
   const authMode = process.env.DUAL_AUTH_MODE || "api_key";
   const writeMode = process.env.DUAL_WRITE_MODE || "read_only";
-  const eventBusWritePath = normalizePath(process.env.DUAL_EVENTBUS_WRITE_PATH || "/ebus/actions");
-  const serviceToken = process.env.DUAL_SERVICE_ACCOUNT_TOKEN
-    || process.env.DUAL_SERVICE_ACCOUNT_BEARER_TOKEN
-    || process.env.DUAL_BEARER_TOKEN
-    || "";
+  const eventBusWritePath = normalizePath(process.env.DUAL_EVENTBUS_WRITE_PATH || "/ebus/execute");
+  const serviceToken = process.env.DUAL_SERVICE_ACCOUNT_TOKEN || process.env.DUAL_SERVICE_ACCOUNT_BEARER_TOKEN || process.env.DUAL_BEARER_TOKEN || "";
   const serviceRefreshToken = process.env.DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN || "";
   const serviceAuthMode = process.env.DUAL_SERVICE_ACCOUNT_AUTH_MODE || "api_key";
 
@@ -53,9 +50,7 @@ export async function createDualPersistence() {
     status() {
       const read = activeReadClient();
       const write = activeWriteClient();
-      if (mode !== "dual") {
-        return { mode: "local", configured: false, available: true, writable: false, detail: "Using local DUAL passport simulator." };
-      }
+      if (mode !== "dual") return { mode: "local", configured: false, available: true, writable: false, detail: "Using local DUAL passport simulator." };
       return {
         mode: "dual",
         configured: Boolean((apiKey || serviceToken || serviceRefreshToken || sessionClient) && orgId && templateId),
@@ -137,7 +132,7 @@ export async function createDualPersistence() {
         orgId: session?.orgId || orgId || null,
         authenticatedAt: session?.authenticatedAt || null,
         detail: write
-          ? "API-key or bearer auth is active for unattended DUAL event-bus writes."
+          ? "API-key or bearer auth is active for DUAL event-bus writes."
           : "Use DUAL_WRITE_MODE=event_bus with a scoped API key, or request an email code for bearer auth."
       };
     },
@@ -273,7 +268,7 @@ export async function createDualPersistence() {
         executedCount: executed.length,
         skippedCount: queue.syncedCount,
         replayRoot: queue.rootHash,
-        pendingReplayRoot: queue.pendingRootHash,
+        pendingReplayRoot: queue.pendingReplayRoot,
         targetObjectId: queue.targetObjectId,
         targetTemplateId: queue.targetTemplateId,
         events: executed
@@ -316,7 +311,7 @@ export async function createDualPersistence() {
       const properties = passportProperties(passport, { lastEventId: "schema_probe" });
       const payload = updatePayload(objectId, properties, { source: "schema_probe" });
       const result = await writeAction(write, payload);
-      return { targetObjectId: objectId, targetTemplateId: templateId, results: [{ name: "v3_action_parameters", ok: true, result: summarizeResult(result) }] };
+      return { targetObjectId: objectId, targetTemplateId: templateId, results: [{ name: "nested_data_custom", ok: true, result: summarizeResult(result) }] };
     }
   };
 
@@ -376,35 +371,45 @@ export async function createDualPersistence() {
 
 function authHeaders(write) {
   const headers = { "content-type": "application/json", accept: "application/json" };
-  if (write.authMode === "api_key") headers["x-api-key"] = write.token;
-  else headers.authorization = `Bearer ${write.token}`;
+  if (write.authMode === "api_key" || write.authMode === "both") headers["x-api-key"] = write.token;
+  if (write.authMode === "bearer" || write.authMode === "both") headers.authorization = `Bearer ${write.token}`;
   return headers;
 }
 
 function updatePayload(targetObjectId, properties, metadata) {
   return {
-    objectId: targetObjectId,
-    action: "update",
-    actor: "kraken-dual-agent-demo",
-    parameters: {
-      objectId: targetObjectId,
-      custom: properties,
-      metadata
-    }
+    action: {
+      update: {
+        id: targetObjectId,
+        data: {
+          custom: {
+            ...properties,
+            last_event_type: metadata.event_type || "",
+            last_event_status: metadata.event_status || "",
+            last_event_hash: metadata.event_hash || ""
+          }
+        }
+      }
+    },
+    metadata
   };
 }
 
 function mintPayload(targetTemplateId, properties, metadata) {
   return {
-    templateId: targetTemplateId,
-    action: "mint",
-    actor: "kraken-dual-agent-demo",
-    parameters: {
-      templateId: targetTemplateId,
-      num: 1,
-      custom: properties,
-      metadata
-    }
+    action: {
+      mint: {
+        template_id: targetTemplateId,
+        num: 1,
+        custom: {
+          ...properties,
+          last_event_type: metadata.event_type || "",
+          last_event_status: metadata.event_status || "",
+          last_event_hash: metadata.event_hash || ""
+        }
+      }
+    },
+    metadata
   };
 }
 
@@ -477,7 +482,7 @@ function summarizeResult(result) {
     hash: result.hash || result.integrity_hash || result.integrityHash || result.state_hash || result.stateHash || null,
     actionId: result.action_id || result.actionId || result.id || null,
     batchId: result.batch_id || result.batchId || null,
-    payloadStyle: "v3_action_parameters"
+    payloadStyle: "nested_data_custom"
   };
 }
 
@@ -574,8 +579,8 @@ function rootItem(event) {
 
 function normalizePath(value) {
   const raw = String(value || "").trim();
-  if (!raw || raw === "actions") return "/ebus/actions";
-  if (raw === "execute") return "/ebus/execute";
+  if (!raw || raw === "execute") return "/ebus/execute";
+  if (raw === "actions") return "/ebus/actions";
   return raw.startsWith("/") ? raw : `/${raw}`;
 }
 

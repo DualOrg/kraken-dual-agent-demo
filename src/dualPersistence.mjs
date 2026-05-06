@@ -268,7 +268,7 @@ export async function createDualPersistence() {
         executedCount: executed.length,
         skippedCount: queue.syncedCount,
         replayRoot: queue.rootHash,
-        pendingReplayRoot: queue.pendingReplayRoot,
+        pendingReplayRoot: queue.pendingRootHash,
         targetObjectId: queue.targetObjectId,
         targetTemplateId: queue.targetTemplateId,
         events: executed
@@ -476,14 +476,44 @@ function eventMetadata(event) {
 
 function summarizeResult(result) {
   if (!result || typeof result !== "object") return result || null;
+  const data = objectOrNull(result.data) || result;
+  const inner = objectOrNull(data.result) || objectOrNull(result.result) || data;
+  const action = objectOrNull(inner.action) || objectOrNull(data.action) || objectOrNull(result.action) || inner;
+  const update = objectOrNull(action.update) || null;
+  const mint = objectOrNull(action.mint) || null;
+  const object = objectOrNull(inner.object) || objectOrNull(data.object) || objectOrNull(result.object) || null;
   return {
-    id: result.id || result.object_id || result.objectId || result.event_id || result.eventId || null,
-    status: result.status || result.state || null,
-    hash: result.hash || result.integrity_hash || result.integrityHash || result.state_hash || result.stateHash || null,
-    actionId: result.action_id || result.actionId || result.id || null,
-    batchId: result.batch_id || result.batchId || null,
+    id: first(
+      result.id, result.object_id, result.objectId, result.event_id, result.eventId,
+      data.id, data.object_id, data.objectId, data.event_id, data.eventId,
+      inner.id, inner.object_id, inner.objectId, inner.event_id, inner.eventId,
+      action.id, update?.id, mint?.id, object?.id, object?.object_id, object?.objectId
+    ),
+    status: first(result.status, result.state, data.status, data.state, inner.status, inner.state, action.status, action.state, update?.status, update?.state, mint?.status, mint?.state),
+    hash: first(
+      result.hash, result.integrity_hash, result.integrityHash, result.state_hash, result.stateHash,
+      data.hash, data.integrity_hash, data.integrityHash, data.state_hash, data.stateHash,
+      inner.hash, inner.integrity_hash, inner.integrityHash, inner.state_hash, inner.stateHash,
+      action.hash, action.integrity_hash, action.integrityHash, action.state_hash, action.stateHash,
+      object?.integrity_hash, object?.integrityHash, object?.state_hash, object?.stateHash
+    ),
+    actionId: first(
+      result.action_id, result.actionId, data.action_id, data.actionId,
+      inner.action_id, inner.actionId, action.action_id, action.actionId,
+      update?.action_id, update?.actionId, mint?.action_id, mint?.actionId,
+      action.id, update?.id, mint?.id, result.id, data.id, inner.id
+    ),
+    batchId: first(result.batch_id, result.batchId, data.batch_id, data.batchId, inner.batch_id, inner.batchId, action.batch_id, action.batchId, update?.batch_id, update?.batchId, mint?.batch_id, mint?.batchId),
     payloadStyle: "nested_data_custom"
   };
+}
+
+function first(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== "") || null;
+}
+
+function objectOrNull(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
 function summarizeTemplate(template) {

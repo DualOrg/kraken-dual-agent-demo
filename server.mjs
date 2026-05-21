@@ -17,6 +17,9 @@ const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "127.0.0.1";
 const dualPersistence = await createDualPersistence();
 const dualSessionCookieName = "__Host-dual_kraken_session";
+const operatorToken = process.env.DEMO_OPERATOR_TOKEN || process.env.DUAL_DEMO_OPERATOR_TOKEN || "";
+const publicDualWrites = parseBoolean(process.env.DEMO_PUBLIC_DUAL_WRITES || "false");
+const supportedPairs = ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"];
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -46,17 +49,17 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/health") {
     const adapter = await getAdapterStatus();
-    sendJson(res, 200, { ok: true, adapter, dual: dualPersistence.status() });
+    sendJson(res, 200, { ok: true, adapter, dual: publicDualStatus(req) });
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/dual/status") {
-    sendJson(res, 200, dualPersistence.status());
+    sendJson(res, 200, publicDualStatus(req));
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/dual/write-readiness") {
-    sendJson(res, 200, dualPersistence.writeReadiness());
+    sendJson(res, 200, publicWriteReadiness(req));
     return;
   }
 
@@ -86,19 +89,23 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/dual/replay-queue") {
     const state = await loadState();
-    sendJson(res, 200, dualPersistence.buildReplayQueue(state.passport, state.audit || []));
+    sendJson(res, 200, publicReplayQueue(req, state.passport, state.audit || []));
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/dual/replay-queue/execute") {
+    if (!canUseDualWrite(req)) {
+      sendJson(res, 403, dualWriteForbidden(req));
+      return;
+    }
     const state = await loadState();
-    const readiness = dualPersistence.writeReadiness();
+    const readiness = publicWriteReadiness(req);
     if (!readiness.ready) {
       sendJson(res, 409, {
         executed: false,
         error: "dual_write_not_ready",
         readiness,
-        replayQueue: dualPersistence.buildReplayQueue(state.passport, state.audit || [])
+        replayQueue: publicReplayQueue(req, state.passport, state.audit || [])
       });
       return;
     }
@@ -136,15 +143,21 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/proof") {
-    const proof = await buildProofBundle();
+    const proof = await buildProofBundle(req);
     sendJson(res, 200, proof);
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/proof/verify") {
-    const proof = await buildProofBundle();
+    const proof = await buildProofBundle(req);
+    const validityChecks = proof.verification.filter((check) => check.requiredFor !== "completeness");
+    const completenessChecks = proof.verification.filter((check) => check.requiredFor === "completeness");
+    const ok = validityChecks.every((check) => check.ok);
+    const complete = ok && completenessChecks.every((check) => check.ok);
     sendJson(res, 200, {
-      ok: proof.verification.every((check) => check.ok),
+      ok,
+      complete,
+      status: complete ? "complete" : ok ? "valid_with_pending_replay" : "failed",
       proofHash: proof.proofHash,
       auditRoot: proof.audit.rootHash,
       replayRoot: proof.replayQueue.rootHash,
@@ -154,12 +167,20 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/dual/template") {
+    if (!canUseDualWrite(req)) {
+      sendJson(res, 403, dualWriteForbidden(req));
+      return;
+    }
     const result = await dualPersistence.createTemplate();
     sendJson(res, 200, result);
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/dual/action-passport/setup") {
+    if (!canUseDualWrite(req)) {
+      sendJson(res, 403, dualWriteForbidden(req));
+      return;
+    }
     const body = await readBody(req);
     if (body.confirm !== "create-action-enabled-kraken-passport") {
       sendJson(res, 400, {
@@ -175,6 +196,10 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/dual/sync-passport") {
+    if (!canUseDualWrite(req)) {
+      sendJson(res, 403, dualWriteForbidden(req));
+      return;
+    }
     const state = await loadState();
     const result = await dualPersistence.syncPassport(state.passport, { source: "manual_sync" });
     sendJson(res, 200, result);
@@ -182,6 +207,10 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/dual/probe-update-schemas") {
+    if (!canUseDualWrite(req)) {
+      sendJson(res, 403, dualWriteForbidden(req));
+      return;
+    }
     const body = await readBody(req);
     if (body.confirm !== "probe-dual-update-schemas") {
       sendJson(res, 400, {
@@ -235,7 +264,7 @@ async function handleApi(req, res, url) {
       };
     });
 
-    const event = await addAudit(state,
+    const event = await addAudit(req, state,
       "policy_updated",
       "ok",
       "Policy updated",
@@ -266,7 +295,7 @@ async function handleApi(req, res, url) {
       volume: market.volume,
       source: market.source
     };
-    await addAudit(state,
+    await addAudit(req, state,
       "market_snapshot",
       "ok",
       `${pair} market snapshot`,
@@ -287,7 +316,7 @@ async function handleApi(req, res, url) {
     const proposal = createProposal(trade, policy);
     state.proposals.unshift(proposal);
     state.passport.dualObjectState = proposal.state;
-    await addAudit(state,
+    await addAudit(req, state,
       "trade_proposed",
       policy.decision === "block" ? "blocked" : "pending",
       policy.decision === "block" ? "Proposal blocked" : "Trade proposal created",
@@ -310,7 +339,7 @@ async function handleApi(req, res, url) {
     proposal.trade.approved = true;
     proposal.policy = evaluateTrade(state.passport, proposal.trade);
     state.passport.dualObjectState = "approved";
-    await addAudit(state,
+    await addAudit(req, state,
       "human_approved",
       "ok",
       "Human approval recorded",
@@ -334,7 +363,7 @@ async function handleApi(req, res, url) {
     if (policy.decision !== "allow") {
       proposal.state = policy.decision;
       state.passport.dualObjectState = "blocked";
-      await addAudit(state,
+      await addAudit(req, state,
         "execution_blocked",
         "blocked",
         "Execution blocked by DUAL",
@@ -352,7 +381,7 @@ async function handleApi(req, res, url) {
     proposal.executedAt = new Date().toISOString();
     state.passport.dailyNotionalUsed = Math.round((state.passport.dailyNotionalUsed + policy.notional) * 100) / 100;
     state.passport.dualObjectState = "executed";
-    await addAudit(state,
+    await addAudit(req, state,
       "paper_executed",
       "ok",
       "Kraken paper trade executed",
@@ -369,7 +398,7 @@ async function handleApi(req, res, url) {
     const state = await loadState();
     const trade = redTeamTrade(body.scenario, state.passport, state.market);
     const policy = evaluateTrade(state.passport, trade);
-    const event = await addAudit(state,
+    const event = await addAudit(req, state,
       "red_team_check",
       policy.decision === "block" ? "blocked" : "warning",
       `${trade.label} tested`,
@@ -486,13 +515,13 @@ function normalizePolicy(input, currentPassport) {
 }
 
 function normalizeAllowedPairs(input) {
-  const supportedPairs = new Set(["BTCUSD", "ETHUSD", "SOLUSD"]);
+  const supportedPairSet = new Set(supportedPairs);
   const values = Array.isArray(input)
     ? input
     : String(input || "").split(/[\s,]+/);
   const allowedPairs = [...new Set(values
     .map((pair) => String(pair || "").trim().toUpperCase())
-    .filter((pair) => supportedPairs.has(pair)))];
+    .filter((pair) => supportedPairSet.has(pair)))];
   if (!allowedPairs.length) {
     const error = new Error("Select at least one supported pair.");
     error.status = 400;
@@ -552,7 +581,93 @@ function describePolicy(trade, policy) {
   return `DUAL blocked action: ${policy.violations.join(" ")}`;
 }
 
-async function buildProofBundle() {
+function publicDualStatus(req) {
+  const status = dualPersistence.status();
+  const gate = dualWriteGate(req);
+  if (!status.writable || gate.allowed) {
+    return { ...status, writeGate: gate };
+  }
+  return {
+    ...status,
+    serverWritable: true,
+    writable: false,
+    writeGate: gate,
+    detail: gate.configured
+      ? "DUAL is read-linked for this request. Server-side writes require operator authorization."
+      : "DUAL is read-linked. Server-side writes are disabled until DEMO_OPERATOR_TOKEN is configured."
+  };
+}
+
+function publicWriteReadiness(req) {
+  const readiness = dualPersistence.writeReadiness();
+  const gate = dualWriteGate(req);
+  if (!readiness.ready || gate.allowed) {
+    return { ...readiness, writeGate: gate };
+  }
+  return {
+    ...readiness,
+    ready: false,
+    writeGate: gate,
+    missing: [...new Set([...(readiness.missing || []), "operator authorization"])],
+    detail: gate.configured
+      ? "DUAL write sync is available only for authenticated operator requests."
+      : "DUAL write sync is disabled for public requests until DEMO_OPERATOR_TOKEN is configured."
+  };
+}
+
+function publicReplayQueue(req, passport, audit) {
+  const queue = dualPersistence.buildReplayQueue(passport, audit);
+  return {
+    ...queue,
+    writable: Boolean(queue.writable && publicWriteReadiness(req).ready)
+  };
+}
+
+function canUseDualWrite(req) {
+  const auth = dualPersistence.authStatus();
+  return publicDualWrites || operatorAuthorized(req) || auth.authType === "email_session";
+}
+
+function dualWriteGate(req) {
+  return {
+    required: true,
+    configured: Boolean(operatorToken) || publicDualWrites,
+    allowed: canUseDualWrite(req),
+    publicWritesEnabled: publicDualWrites,
+    authHeader: "x-demo-operator-token",
+    detail: publicDualWrites
+      ? "Public DUAL writes are explicitly enabled."
+      : operatorToken
+        ? "Send x-demo-operator-token or Authorization: Bearer <token> for DUAL write endpoints."
+        : "Set DEMO_OPERATOR_TOKEN to enable authenticated DUAL write endpoints."
+  };
+}
+
+function dualWriteForbidden(req) {
+  return {
+    executed: false,
+    error: "operator_authorization_required",
+    writeGate: dualWriteGate(req),
+    detail: "This public demo can read and verify DUAL proof without an operator token, but DUAL writes are gated."
+  };
+}
+
+function operatorAuthorized(req) {
+  if (!operatorToken) return false;
+  const headerToken = String(req.headers["x-demo-operator-token"] || "");
+  const auth = String(req.headers.authorization || "");
+  const bearerToken = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  return timingSafeEqualText(headerToken, operatorToken) || timingSafeEqualText(bearerToken, operatorToken);
+}
+
+function timingSafeEqualText(left, right) {
+  if (!left || !right) return false;
+  const leftBuffer = Buffer.from(String(left));
+  const rightBuffer = Buffer.from(String(right));
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+async function buildProofBundle(req) {
   const [state, adapter] = await Promise.all([loadState(), getAdapterStatus()]);
   let dualObject = null;
   let dualTemplate = null;
@@ -574,7 +689,9 @@ async function buildProofBundle() {
   }
 
   const audit = state.audit || [];
-  const replayQueue = dualPersistence.buildReplayQueue(state.passport, audit);
+  const replayQueue = publicReplayQueue(req, state.passport, audit);
+  const dualStatus = publicDualStatus(req);
+  const writeReadiness = publicWriteReadiness(req);
   const templateFields = dualTemplate?.custom || {};
   const objectCustom = dualObject?.custom || {};
   const expectedPolicyHash = state.passport.policyHash || hashJson(policySnapshot(state.passport));
@@ -635,7 +752,7 @@ async function buildProofBundle() {
     },
     {
       id: "dual-read-link",
-      ok: Boolean(dualObject?.available && dualObject.id === dualPersistence.status().objectId),
+      ok: Boolean(dualObject?.available && dualObject.id === dualStatus.objectId),
       detail: dualObject?.available ? `DUAL object ${dualObject.id} is readable.` : "DUAL object is not readable."
     },
     {
@@ -663,6 +780,14 @@ async function buildProofBundle() {
         : `${replayQueue.pendingCount}/${replayQueue.eventCount} event-bus envelopes are pending until write auth is available.`
     },
     {
+      id: "replay-complete",
+      ok: Boolean(replayQueue.pendingCount === 0 || syncedAuditEvents === audit.length),
+      requiredFor: "completeness",
+      detail: replayQueue.pendingCount
+        ? `${replayQueue.pendingCount}/${replayQueue.eventCount} event-bus envelopes still need replay.`
+        : "No replay envelopes are pending."
+    },
+    {
       id: "dual-batch-status",
       ok: Boolean(dualBatch?.available && dualBatch.finality !== "failed"),
       detail: dualBatch?.available
@@ -677,8 +802,8 @@ async function buildProofBundle() {
     status: {
       krakenMarketData: adapter.source,
       krakenPaperExecution: adapter.krakenCliAvailable ? "kraken-cli-paper" : "simulated-paper",
-      dualMode: dualPersistence.status(),
-      writeReadiness: dualPersistence.writeReadiness()
+      dualMode: dualStatus,
+      writeReadiness
     },
     dualTemplate,
     dualObject,
@@ -725,7 +850,7 @@ async function buildProofBundle() {
     },
     caveats: [
       adapter.krakenCliAvailable ? "Kraken paper execution is CLI-backed." : "Kraken paper execution is simulated because Kraken CLI is unavailable in this runtime.",
-      dualPersistence.status().writable ? "DUAL event-bus writes are enabled." : "DUAL is read-linked; event-bus writes require DUAL_WRITE_MODE=event_bus plus scoped API-key or bearer/session auth."
+      writeReadiness.ready ? "DUAL event-bus writes are enabled for this request." : "DUAL is read-linked; event-bus writes require an authenticated operator request."
     ],
     verification
   };
@@ -743,13 +868,20 @@ function describeMarketSource(source) {
   return "Simulator";
 }
 
-async function addAudit(state, type, status, title, detail, payload = {}) {
+async function addAudit(req, state, type, status, title, detail, payload = {}) {
   const event = createAuditEvent(type, status, title, detail, payload);
   try {
-    const dualResult = await dualPersistence.recordEvent(state.passport, event);
-    event.dualSync = dualResult?.skipped
-      ? { synced: false, reason: dualResult.reason, replay: dualResult.replay || null }
-      : { synced: true, envelopeHash: dualResult?.envelopeHash || null, result: dualResult?.result || null };
+    if (canUseDualWrite(req)) {
+      const dualResult = await dualPersistence.recordEvent(state.passport, event);
+      event.dualSync = dualResult?.skipped
+        ? { synced: false, reason: dualResult.reason, replay: dualResult.replay || null }
+        : { synced: true, envelopeHash: dualResult?.envelopeHash || null, result: dualResult?.result || null };
+    } else {
+      event.dualSync = {
+        synced: false,
+        reason: "DUAL write sync is operator-gated for public demo requests."
+      };
+    }
   } catch (error) {
     event.dualSync = { synced: false, error: error.message };
   }
@@ -777,6 +909,7 @@ function arraysEqualIgnoreOrder(left, right) {
 }
 
 function restoreDualSession(req) {
+  dualPersistence.clearEmailSession?.();
   const sealed = readCookie(req.headers.cookie || "", dualSessionCookieName);
   if (!sealed) return;
   const session = unsealDualSession(sealed);

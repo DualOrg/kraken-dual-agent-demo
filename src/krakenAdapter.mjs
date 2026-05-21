@@ -9,7 +9,8 @@ const KRAKEN_PUBLIC_PAIRS = {
   BTCUSD: "XBTUSD",
   XBTUSD: "XBTUSD",
   ETHUSD: "ETHUSD",
-  SOLUSD: "SOLUSD"
+  SOLUSD: "SOLUSD",
+  DUALUSD: "DUALUSD"
 };
 
 export async function getMarket(pair, fallbackMarket = {}) {
@@ -193,7 +194,7 @@ function normalizeTicker(pair, json) {
 }
 
 function simulatedMarket(pair, seed = {}, error = null) {
-  const base = seed.price || ({ BTCUSD: 67234.1, ETHUSD: 3542.4, SOLUSD: 147.22 }[pair] || 100);
+  const base = seed.price || ({ BTCUSD: 67234.1, ETHUSD: 3542.4, SOLUSD: 147.22, DUALUSD: 0.0055 }[pair] || 100);
   const wobble = Math.sin(Date.now() / 45000 + pair.length) * 0.006;
   const price = round(base * (1 + wobble));
 
@@ -242,5 +243,7 @@ function digest(value) {
 }
 
 function round(value) {
-  return Math.round(Number(value || 0) * 100) / 100;
+  const amount = Number(value || 0);
+  const precision = Math.abs(amount) < 1 ? 1000000 : 100;
+  return Math.round(amount * precision) / precision;
 }

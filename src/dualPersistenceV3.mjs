@@ -194,6 +194,12 @@ export async function createDualPersistence() {
       return true;
     },
 
+    clearEmailSession() {
+      sessionClient = null;
+      session = null;
+      return true;
+    },
+
     async createTemplate() {
       return requireWritable().sdk.templates.create(agentTemplatePayload());
     },
@@ -225,7 +231,10 @@ export async function createDualPersistence() {
 
     buildReplayQueue(passport, audit = []) {
       const events = audit.map((event) => {
-        const properties = passportProperties(passport, { lastEventId: event.id });
+        const properties = passportProperties(passport, {
+          lastEventId: event.id,
+          updatedAt: event.timestamp
+        });
         const metadata = eventMetadata(event);
         const payload = objectId ? updatePayload(objectId, properties, metadata) : mintPayload(templateId, properties, metadata);
         const actionId = event.dualSync?.result?.actionId || null;
@@ -303,7 +312,10 @@ export async function createDualPersistence() {
     async recordEvent(passport, event) {
       const write = activeWriteClient();
       if (!activeReadClient()) return { skipped: true, reason: this.status().detail };
-      const properties = passportProperties(passport, { lastEventId: event.id });
+      const properties = passportProperties(passport, {
+        lastEventId: event.id,
+        updatedAt: event.timestamp
+      });
       const metadata = eventMetadata(event);
       const payload = objectId ? updatePayload(objectId, properties, metadata) : mintPayload(templateId, properties, metadata);
       if (!write) return { skipped: true, reason: "DUAL event-bus writes need DUAL_WRITE_MODE=event_bus plus scoped API-key or bearer/session auth.", replay: { envelope: payload, envelopeHash: hashJson(payload) } };
@@ -441,7 +453,7 @@ function agentTemplatePayload() {
 
 function passportProperties(passport = {}, metadata = {}) {
   const policy = {
-    allowedPairs: passport.allowedPairs || ["BTCUSD", "ETHUSD", "SOLUSD"],
+    allowedPairs: passport.allowedPairs || ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"],
     maxNotionalUsd: passport.maxNotionalUsd || 250,
     maxDailyNotionalUsd: passport.maxDailyNotionalUsd || 1000,
     humanApprovalRequiredAbove: passport.humanApprovalRequiredAbove || 100,
@@ -465,7 +477,7 @@ function passportProperties(passport = {}, metadata = {}) {
     daily_notional_used: String(passport.dailyNotionalUsed || 0),
     blocked_actions: passport.blockedActions || [],
     last_event_id: metadata.lastEventId || passport.lastEventId || "initial",
-    updated_at: new Date().toISOString()
+    updated_at: metadata.updatedAt || new Date().toISOString()
   };
 }
 

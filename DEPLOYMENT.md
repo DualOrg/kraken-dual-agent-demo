@@ -42,6 +42,7 @@ DUAL_AGENT_PASSPORT_OBJECT_ID=...
 DUAL_AUTH_MODE=both
 DUAL_WRITE_MODE=event_bus
 DUAL_EVENTBUS_WRITE_PATH=/ebus/execute
+DEMO_OPERATOR_TOKEN=...
 ```
 
 The runtime also needs `dual-sdk` available. If the package is not installed in the deployment, `/api/dual/status` will report the SDK as unavailable and the app should remain in local mode.
@@ -53,5 +54,8 @@ Recommended rollout:
 1. Create the DUAL template from `dual-agent-passport.schema.json`.
 2. Mint one passport object for the Kraken Market Agent.
 3. Set `DUAL_AGENT_PASSPORT_OBJECT_ID` in Vercel.
-4. Set `DUAL_WRITE_MODE=event_bus` for scoped API-key deployments.
-5. Redeploy and verify `/api/dual/status`.
+4. Set `DEMO_OPERATOR_TOKEN` so public DUAL write endpoints fail closed unless the operator sends the token.
+5. Set `DUAL_WRITE_MODE=event_bus` for scoped API-key deployments.
+6. Redeploy and verify `/api/dual/status` and `/api/proof/verify`.
+
+Without `DEMO_OPERATOR_TOKEN`, production remains read-linked for public requests even if DUAL write credentials are present. This is intentional: anonymous visitors can inspect proof and exercise local demo state, but they cannot replay events into DUAL.

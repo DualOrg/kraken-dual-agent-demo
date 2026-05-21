@@ -226,7 +226,7 @@ h2 {
 
 .market-strip {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -413,6 +413,8 @@ select {
   text-align: right;
   color: var(--text);
   font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .proof-grid {
@@ -532,6 +534,19 @@ select {
 
   .proof-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mandate-row,
+  .proof-row {
+    align-items: flex-start;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .mandate-row strong,
+  .proof-row strong {
+    text-align: left;
   }
 
   .auth-grid {

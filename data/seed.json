@@ -4,7 +4,7 @@
     "agentName": "Kraken Market Agent",
     "mode": "paper",
     "state": "active",
-    "allowedPairs": ["BTCUSD", "ETHUSD", "SOLUSD"],
+    "allowedPairs": ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"],
     "maxNotionalUsd": 250,
     "maxDailyNotionalUsd": 1000,
     "dailyNotionalUsed": 0,
@@ -19,7 +19,8 @@
   "market": {
     "BTCUSD": { "price": 67234.1, "changePct": 1.8, "volume": 1234.56 },
     "ETHUSD": { "price": 3542.4, "changePct": -0.7, "volume": 8321.11 },
-    "SOLUSD": { "price": 147.22, "changePct": 3.1, "volume": 22040.5 }
+    "SOLUSD": { "price": 147.22, "changePct": 3.1, "volume": 22040.5 },
+    "DUALUSD": { "price": 0.0055, "changePct": 4.2, "volume": 9315581.02 }
   },
   "audit": [
     {

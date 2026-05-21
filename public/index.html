@@ -17,11 +17,11 @@
           </div>
         </div>
         <nav>
-          <button class="nav-item active" data-view="command">Command</button>
-          <button class="nav-item" data-view="mandate">Mandate</button>
-          <button class="nav-item" data-view="proof">Proof</button>
-          <button class="nav-item" data-view="audit">Audit</button>
-          <button class="nav-item" data-view="redteam">Red Team</button>
+          <button class="nav-item active" data-view="command" type="button">Command</button>
+          <button class="nav-item" data-view="mandate" type="button">Mandate</button>
+          <button class="nav-item" data-view="proof" type="button">Proof</button>
+          <button class="nav-item" data-view="audit" type="button">Audit</button>
+          <button class="nav-item" data-view="redteam" type="button">Red Team</button>
         </nav>
         <div class="rail-card">
           <span>Mode</span>
@@ -62,6 +62,7 @@
                   <option>BTCUSD</option>
                   <option>ETHUSD</option>
                   <option>SOLUSD</option>
+                  <option>DUALUSD</option>
                 </select>
               </label>
               <label>
@@ -113,6 +114,10 @@
                   <label class="check-tile">
                     <input type="checkbox" name="allowedPairs" value="SOLUSD">
                     <span>SOLUSD</span>
+                  </label>
+                  <label class="check-tile">
+                    <input type="checkbox" name="allowedPairs" value="DUALUSD">
+                    <span>DUALUSD</span>
                   </label>
                 </div>
               </div>

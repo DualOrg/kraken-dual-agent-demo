@@ -9,7 +9,7 @@ const state = {
   actionPassportSetup: null
 };
 
-const pairs = ["BTCUSD", "ETHUSD", "SOLUSD"];
+const pairs = ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"];
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
 const els = {
@@ -55,6 +55,20 @@ async function init() {
 }
 
 function bindEvents() {
+  document.querySelectorAll("[data-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = {
+        command: ".trade-panel",
+        mandate: ".passport-panel",
+        proof: ".proof-panel",
+        audit: ".audit-panel",
+        redteam: ".red-panel"
+      }[button.dataset.view];
+      document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item === button));
+      document.querySelector(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+
   els.tradeForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(els.tradeForm);
@@ -185,6 +199,7 @@ async function checkHealth() {
   const health = await getJson("/api/health");
   state.health = health;
   const adapterLive = health.adapter.source === "kraken-cli" || health.adapter.source === "kraken-public-api";
+  const dualLive = isDualLive(health.dual);
   els.adapterStatus.textContent = health.adapter.source === "kraken-cli"
     ? "Kraken CLI live"
     : health.adapter.source === "kraken-public-api"
@@ -192,11 +207,11 @@ async function checkHealth() {
       : "Simulator fallback";
   els.adapterStatus.classList.toggle("live", adapterLive);
   els.adapterStatus.classList.toggle("sim", !adapterLive);
-  els.dualStatus.textContent = health.dual.available
+  els.dualStatus.textContent = dualLive
     ? health.dual.writable ? "DUAL write-sync live" : "DUAL read-linked"
-    : "DUAL not configured";
-  els.dualStatus.classList.toggle("live", health.dual.available);
-  els.dualStatus.classList.toggle("sim", !health.dual.available || !health.dual.writable);
+    : "DUAL local simulator";
+  els.dualStatus.classList.toggle("live", dualLive);
+  els.dualStatus.classList.toggle("sim", !dualLive || !health.dual.writable);
 }
 
 async function loadDualAuthStatus() {
@@ -238,7 +253,7 @@ function renderMarkets() {
           <span>${pair}</span>
           <small>${change >= 0 ? "+" : ""}${change.toFixed(2)}%</small>
         </div>
-        <strong>${money.format(Number(market.price || 0))}</strong>
+        <strong>${formatMarketPrice(market.price)}</strong>
         <small>Vol ${Number(market.volume || 0).toLocaleString()} · ${market.source || "seed"}</small>
         <div class="sparkline" aria-hidden="true"></div>
       </article>
@@ -355,7 +370,7 @@ function renderProof() {
   const rows = [
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
-    ["DUAL mode", dual?.available ? dual.writable ? "write-sync" : "read-linked" : "not configured"],
+    ["DUAL mode", isDualLive(dual) ? dual.writable ? "write-sync" : "read-linked" : "local simulator"],
     ["Write readiness", proof?.status?.writeReadiness?.ready ? "ready" : "needs write auth"],
     ["Write auth", authLabel(auth)],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
@@ -372,7 +387,7 @@ function renderProof() {
     ["Pending root", replayQueue?.pendingRootHash ? shortId(replayQueue.pendingRootHash) : "pending"],
     ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],
     ["Proof hash", proof?.proofHash ? shortId(proof.proofHash) : "pending"],
-    ["Verifier", verifier ? verifier.ok ? "all checks pass" : "checks pending" : "pending"]
+    ["Verifier", verifier ? verifier.complete ? "complete" : verifier.ok ? verifier.status.replaceAll("_", " ") : "checks pending" : "pending"]
   ];
 
   els.proofGrid.innerHTML = rows.map(([label, value]) => `
@@ -382,8 +397,9 @@ function renderProof() {
     </div>
   `).join("");
 
-  els.executeReplayButton.disabled = !auth?.writable || !(replayQueue?.pendingCount ?? replayQueue?.eventCount);
-  els.setupActionPassportButton.disabled = !auth?.writable;
+  const writeReady = Boolean(proof?.status?.writeReadiness?.ready);
+  els.executeReplayButton.disabled = !writeReady || !(replayQueue?.pendingCount ?? replayQueue?.eventCount);
+  els.setupActionPassportButton.disabled = !writeReady;
   if (auth?.authenticated) {
     els.dualAuthMessage.textContent = auth.detail;
   } else if (!els.dualAuthMessage.textContent) {
@@ -395,6 +411,10 @@ function sourceLabel(source) {
   if (source === "kraken-cli") return "Kraken CLI";
   if (source === "kraken-public-api") return "Kraken public API";
   return source || "simulator";
+}
+
+function isDualLive(dual) {
+  return dual?.mode === "dual" && Boolean(dual.available);
 }
 
 function batchProofLabel(batch) {
@@ -421,6 +441,16 @@ function shortId(value) {
   const text = String(value || "");
   if (text.length <= 16) return text || "pending";
   return `${text.slice(0, 8)}…${text.slice(-6)}`;
+}
+
+function formatMarketPrice(value) {
+  const amount = Number(value || 0);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: amount > 0 && amount < 1 ? 6 : 2,
+    maximumFractionDigits: amount > 0 && amount < 1 ? 6 : 2
+  }).format(amount);
 }
 
 async function getJson(url) {

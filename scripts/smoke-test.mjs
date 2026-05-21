@@ -13,6 +13,8 @@ assert(typeof writeReadiness.ready === "boolean", "write readiness reports a boo
 const dualAuthStatus = await get("/api/dual/auth/status");
 assert(typeof dualAuthStatus.authenticated === "boolean", "DUAL auth status reports session state");
 
+await post("/api/reset", {});
+
 const replayQueue = await get("/api/dual/replay-queue");
 assert(replayQueue.rootHash, "replay queue returns a root hash");
 assert(Array.isArray(replayQueue.events), "replay queue returns event payloads");
@@ -35,6 +37,8 @@ assert(Array.isArray(proof.verification), "proof includes verification checks");
 const proofVerify = await get("/api/proof/verify");
 assert(typeof proofVerify.ok === "boolean", "proof verifier returns an ok flag");
 assert(proofVerify.proofHash === proof.proofHash, "proof verifier checks the same proof hash");
+assert(["complete", "valid_with_pending_replay", "failed"].includes(proofVerify.status), "proof verifier reports a proof status");
+assert(typeof proofVerify.complete === "boolean", "proof verifier reports completeness separately");
 assert(Array.isArray(proofVerify.checks), "proof verifier returns checks");
 
 const proofAgain = await get("/api/proof");
@@ -44,7 +48,7 @@ let state = await get("/api/state");
 assert(state.passport.mode === "paper", "passport is paper mode");
 
 const policy = await post("/api/policy", {
-  allowedPairs: ["BTCUSD", "ETHUSD", "SOLUSD"],
+  allowedPairs: ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"],
   maxNotionalUsd: 250,
   maxDailyNotionalUsd: 1000,
   humanApprovalRequiredAbove: 100,
@@ -52,16 +56,27 @@ const policy = await post("/api/policy", {
 });
 assert(policy.policy.maxNotionalUsd === 250, "policy endpoint updates max trade");
 assert(policy.policy.allowedPairs.includes("BTCUSD"), "policy endpoint keeps BTCUSD allowed");
+assert(policy.policy.allowedPairs.includes("DUALUSD"), "policy endpoint keeps DUALUSD allowed");
 
 const market = await get("/api/market?pair=BTCUSD");
 assert(market.pair === "BTCUSD", "market endpoint returns BTCUSD");
 assert(Number(market.price) > 0, "market endpoint returns a price");
+
+const dualMarket = await get("/api/market?pair=DUALUSD");
+assert(dualMarket.pair === "DUALUSD", "market endpoint returns DUALUSD");
+assert(Number(dualMarket.price) > 0, "DUALUSD market endpoint returns a price");
 
 const proposed = await post("/api/propose", { pair: "BTCUSD", side: "buy", notional: 75 });
 assert(proposed.proposal.policy.decision === "allow", "small BTC proposal is allowed");
 
 const executed = await post("/api/execute-paper", { id: proposed.proposal.id });
 assert(executed.proposal.state === "executed", "allowed paper proposal executes");
+
+const dualProposal = await post("/api/propose", { pair: "DUALUSD", side: "buy", notional: 10 });
+assert(dualProposal.proposal.policy.decision === "allow", "small DUAL proposal is allowed");
+
+const dualExecuted = await post("/api/execute-paper", { id: dualProposal.proposal.id });
+assert(dualExecuted.proposal.state === "executed", "allowed DUAL paper proposal executes");
 
 const redTeam = await post("/api/red-team", { scenario: "leverage" });
 assert(redTeam.policy.decision === "block", "leverage red-team scenario is blocked");
@@ -80,7 +95,7 @@ async function post(path, payload) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload)
   });
-  if (!response.ok && response.status !== 409) throw new Error(`${path} returned ${response.status}`);
+  if (!response.ok && ![403, 409].includes(response.status)) throw new Error(`${path} returned ${response.status}`);
   return response.json();
 }
 

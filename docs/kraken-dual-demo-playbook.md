@@ -221,9 +221,11 @@ Call out these rows:
 - `Paper execution`: execution is simulated paper trading.
 - `DUAL mode`: currently `read-linked`.
 - `Write readiness`: ready when `DUAL_WRITE_MODE=event_bus` and write auth is configured.
+- `Write gate`: operator-authorized only after the demo operator token has been applied for the current browser tab.
 - `Mandate source`: DUAL template.
 - `DUAL object`: passport object used by the demo.
 - DUAL data links: open explicit DUAL record readback for the passport template, passport object, latest batch, latest affected actions, receipt template/object when present, and a Blockscout transaction when a finalized batch hash is available. Console detail links are opt-in because the current Console entity routes can 404.
+- Public browser trades are local paper trades. For Console-visible action logs, apply the operator token in the Proof panel before the trade. For Console-visible receipt objects, configure or create the DUAL trade receipt template before minting receipts.
 - `Policy version` and `Policy hash`: stable policy identity.
 - `DUAL batch` and `Batch proof`: DUAL batch evidence is present.
 - `Verifier`: all checks pass.

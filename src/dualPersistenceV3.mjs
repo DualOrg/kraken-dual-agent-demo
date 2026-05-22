@@ -9,7 +9,7 @@ export async function createDualPersistence() {
   const orgId = process.env.DUAL_ORG_ID || "";
   const templateId = process.env.DUAL_AGENT_PASSPORT_TEMPLATE_ID || "";
   const objectId = process.env.DUAL_AGENT_PASSPORT_OBJECT_ID || "";
-  const tradeReceiptTemplateId = process.env.DUAL_TRADE_RECEIPT_TEMPLATE_ID || "";
+  let tradeReceiptTemplateId = process.env.DUAL_TRADE_RECEIPT_TEMPLATE_ID || "";
   const baseUrl = process.env.DUAL_API_URL || "https://api-testnet.dual.network";
   const apiKey = process.env.DUAL_API_KEY || "";
   const authMode = normalizeAuthMode(process.env.DUAL_AUTH_MODE || "api_key");
@@ -55,6 +55,11 @@ export async function createDualPersistence() {
   }
 
   return {
+    configureRuntime(config = {}) {
+      if (config.tradeReceiptTemplateId) tradeReceiptTemplateId = String(config.tradeReceiptTemplateId);
+      return { tradeReceiptTemplateId: tradeReceiptTemplateId || null };
+    },
+
     status() {
       const read = activeReadClient();
       const write = activeWriteClient();
@@ -221,6 +226,7 @@ export async function createDualPersistence() {
       const write = requireWritable();
       const template = await write.sdk.templates.create(tradeReceiptTemplatePayload());
       const newTemplateId = template.id || template.template_id || template.templateId;
+      if (newTemplateId) tradeReceiptTemplateId = newTemplateId;
       return {
         template: summarizeTemplate(template),
         vercelEnv: {

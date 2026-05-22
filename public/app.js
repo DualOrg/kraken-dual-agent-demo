@@ -8,7 +8,8 @@ const state = {
   replayExecution: null,
   actionPassportSetup: null,
   tradeReceiptTemplateSetup: null,
-  tradeReceiptReplay: null
+  tradeReceiptReplay: null,
+  operatorToken: ""
 };
 
 const pairs = ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"];
@@ -31,6 +32,10 @@ const els = {
   dualAuthMessage: document.querySelector("#dualAuthMessage"),
   dualEmailAuthPanel: document.querySelector("#dualEmailAuthPanel"),
   dualLinks: document.querySelector("#dualLinks"),
+  operatorTokenInput: document.querySelector("#operatorTokenInput"),
+  operatorTokenStatus: document.querySelector("#operatorTokenStatus"),
+  applyOperatorTokenButton: document.querySelector("#applyOperatorTokenButton"),
+  clearOperatorTokenButton: document.querySelector("#clearOperatorTokenButton"),
   requestCodeButton: document.querySelector("#requestCodeButton"),
   verifyCodeButton: document.querySelector("#verifyCodeButton"),
   setupActionPassportButton: document.querySelector("#setupActionPassportButton"),
@@ -52,6 +57,9 @@ const els = {
 init();
 
 async function init() {
+  state.operatorToken = sessionStorage.getItem("kraken-dual-operator-token") || "";
+  if (els.operatorTokenInput) els.operatorTokenInput.value = state.operatorToken;
+  renderOperatorTokenStatus();
   bindEvents();
   await checkHealth();
   await loadDualAuthStatus();
@@ -95,12 +103,7 @@ function bindEvents() {
 
   els.executeButton.addEventListener("click", async () => {
     if (!state.activeProposalId) return;
-    const response = await fetch("/api/execute-paper", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: state.activeProposalId })
-    });
-    const result = await response.json();
+    const result = await postJson("/api/execute-paper", { id: state.activeProposalId });
     state.data = result.state;
     await loadProof();
     render();
@@ -150,6 +153,29 @@ function bindEvents() {
     } catch (error) {
       els.dualAuthMessage.textContent = error.message;
     }
+  });
+
+  els.applyOperatorTokenButton?.addEventListener("click", async () => {
+    state.operatorToken = els.operatorTokenInput.value.trim();
+    if (state.operatorToken) {
+      sessionStorage.setItem("kraken-dual-operator-token", state.operatorToken);
+    } else {
+      sessionStorage.removeItem("kraken-dual-operator-token");
+    }
+    renderOperatorTokenStatus();
+    await checkHealth();
+    await loadDualAuthStatus();
+    await loadProof();
+  });
+
+  els.clearOperatorTokenButton?.addEventListener("click", async () => {
+    state.operatorToken = "";
+    sessionStorage.removeItem("kraken-dual-operator-token");
+    if (els.operatorTokenInput) els.operatorTokenInput.value = "";
+    renderOperatorTokenStatus();
+    await checkHealth();
+    await loadDualAuthStatus();
+    await loadProof();
   });
 
   els.executeReplayButton.addEventListener("click", async () => {
@@ -280,7 +306,7 @@ async function loadState() {
 
 async function refreshMarkets() {
   for (const pair of pairs) {
-    const market = await getJson(`/api/market?pair=${pair}`);
+    const market = await getJson(`/api/market?pair=${pair}`, { operator: false });
     state.data.market[pair] = market;
     renderMarkets();
   }
@@ -368,7 +394,7 @@ function renderProposal() {
     <span>${proposal.state.replaceAll("_", " ")} · ${proposal.trade.side.toUpperCase()} ${proposal.trade.pair}</span>
     <strong>${money.format(policy.notional)} notional</strong>
     <p>${message}</p>
-    ${proposal.tradeReceipt ? `<small>Receipt ${shortId(proposal.tradeReceipt.id)} · ${proposal.tradeReceipt.dualSync?.synced ? "minted to DUAL" : "mint pending"}</small>` : ""}
+    ${proposal.tradeReceipt ? `<small>Receipt ${shortId(proposal.tradeReceipt.id)} · ${tradeReceiptSyncLabel(proposal.tradeReceipt)}</small>` : ""}
   `;
   els.approveButton.disabled = proposal.state !== "awaiting_approval";
   els.executeButton.disabled = proposal.state !== "approved";
@@ -429,11 +455,13 @@ function renderProof() {
     : tradeReceipts?.receiptCount != null
       ? `${tradeReceipts.syncedCount || 0} minted, ${tradeReceipts.pendingCount || 0} pending`
       : "pending";
+  const writeGate = proof?.status?.writeReadiness?.writeGate || dual?.writeGate || auth?.writeGate;
   const rows = [
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
     ["DUAL mode", isDualLive(dual) ? dual.writable ? "write-sync" : "read-linked" : "local simulator"],
     ["Write readiness", proof?.status?.writeReadiness?.ready ? "ready" : "needs write auth"],
+    ["Write gate", writeGate?.allowed ? "operator authorized" : writeGate?.configured ? "operator token required" : "not configured"],
     ["Write auth", authLabel(auth)],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
@@ -470,8 +498,11 @@ function renderProof() {
   els.setupActionPassportButton.disabled = !writeReady;
   els.setupReceiptTemplateButton.disabled = !writeReady;
   els.executeReceiptReplayButton.disabled = !writeReady || !tradeReceipts?.writable || !tradeReceipts?.pendingCount;
+  renderOperatorTokenStatus();
   if (auth?.authenticated) {
     els.dualAuthMessage.textContent = auth.detail;
+  } else if (writeGate?.allowed) {
+    els.dualAuthMessage.textContent = "Operator token accepted. DUAL write actions are enabled for this tab.";
   } else if (!els.dualAuthMessage.textContent) {
     els.dualAuthMessage.textContent = auth?.detail || "Scoped API-key auth plus the operator gate controls DUAL writes.";
   }
@@ -490,7 +521,7 @@ function renderDualLinks(links) {
     .filter((link) => link?.href)
     .map((link) => [link.id || link.href, link])).values()];
   if (!uniqueLinks.length) {
-    els.dualLinks.innerHTML = `<div class="link-empty">DUAL Console links appear when the org is configured.</div>`;
+    els.dualLinks.innerHTML = `<div class="link-empty">DUAL record links appear when proof readback data is available.</div>`;
     return;
   }
   els.dualLinks.innerHTML = uniqueLinks.map((link) => `
@@ -519,6 +550,7 @@ function batchProofLabel(batch) {
 }
 
 function authLabel(auth) {
+  if (auth?.writeGate?.allowed) return "operator token";
   if (auth?.authType === "api_key_env") return "API key";
   if (auth?.authType === "both_env") return "legacy API key";
   if (auth?.authType === "api_key_service_account") return "service API key";
@@ -530,6 +562,20 @@ function authLabel(auth) {
   if (auth?.serviceAccountConfigured) return "service account pending write mode";
   if (auth && auth.emailCodeAuthEnabled === false) return "API-key/operator gate";
   return "write auth needed";
+}
+
+function tradeReceiptSyncLabel(receipt) {
+  if (receipt?.dualSync?.synced) return "DUAL receipt object minted";
+  if (receipt?.dualSync?.error) return `DUAL mint failed: ${receipt.dualSync.error}`;
+  if (receipt?.dualSync?.reason) return `local receipt only: ${receipt.dualSync.reason}`;
+  return "DUAL mint pending";
+}
+
+function renderOperatorTokenStatus() {
+  if (!els.operatorTokenStatus) return;
+  els.operatorTokenStatus.textContent = state.operatorToken
+    ? "Operator token applied for this tab."
+    : "No operator token in this tab.";
 }
 
 function shortId(value) {
@@ -548,16 +594,16 @@ function formatMarketPrice(value) {
   }).format(amount);
 }
 
-async function getJson(url) {
-  const response = await fetch(url);
+async function getJson(url, options = {}) {
+  const response = await fetch(url, { headers: requestHeaders(options) });
   if (!response.ok) throw new Error(`GET ${url} failed`);
   return response.json();
 }
 
-async function postJson(url, payload) {
+async function postJson(url, payload, options = {}) {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: requestHeaders({ ...options, contentType: true }),
     body: JSON.stringify(payload)
   });
   const body = await response.json();
@@ -565,6 +611,15 @@ async function postJson(url, payload) {
     throw new Error(errorMessage(body, `POST ${url} failed`));
   }
   return body;
+}
+
+function requestHeaders(options = {}) {
+  const headers = {};
+  if (options.contentType) headers["content-type"] = "application/json";
+  if (options.operator !== false && state.operatorToken) {
+    headers["x-demo-operator-token"] = state.operatorToken;
+  }
+  return headers;
 }
 
 function errorMessage(body, fallback) {

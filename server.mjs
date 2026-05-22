@@ -201,6 +201,7 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/dual/status") {
+    applyDualRuntimeConfig(await loadState());
     sendJson(res, 200, publicDualStatus(req));
     return;
   }
@@ -211,7 +212,7 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/dual/auth/status") {
-    sendJson(res, 200, publicDualAuthStatus());
+    sendJson(res, 200, publicDualAuthStatus(req));
     return;
   }
 
@@ -244,6 +245,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/dual/replay-queue") {
     const state = await loadState();
+    applyDualRuntimeConfig(state);
     const durableObject = await safeReadPassportObject();
     sendJson(res, 200, publicReplayQueue(req, state.passport, state.audit || [], durableObject));
     return;
@@ -251,6 +253,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/dual/trade-receipts") {
     const state = await loadState();
+    applyDualRuntimeConfig(state);
     sendJson(res, 200, publicTradeReceiptQueue(req, state.tradeReceipts || []));
     return;
   }
@@ -267,6 +270,7 @@ async function handleApi(req, res, url) {
       return;
     }
     const state = await loadState();
+    applyDualRuntimeConfig(state);
     const readiness = publicWriteReadiness(req);
     if (!readiness.ready) {
       sendJson(res, 409, {
@@ -306,6 +310,7 @@ async function handleApi(req, res, url) {
       return;
     }
     const state = await loadState();
+    applyDualRuntimeConfig(state);
     const queue = publicTradeReceiptQueue(req, state.tradeReceipts || []);
     if (!queue.writable) {
       sendJson(res, 409, {
@@ -409,7 +414,14 @@ async function handleApi(req, res, url) {
       return;
     }
     const result = await dualPersistence.createTradeReceiptTemplate();
-    sendJson(res, 200, result);
+    const state = await loadState();
+    state.dualConfig = {
+      ...(state.dualConfig || {}),
+      tradeReceiptTemplateId: result.vercelEnv?.DUAL_TRADE_RECEIPT_TEMPLATE_ID || result.template?.id || null
+    };
+    applyDualRuntimeConfig(state);
+    await saveState(state);
+    sendJson(res, 200, { ...result, state });
     return;
   }
 
@@ -419,6 +431,7 @@ async function handleApi(req, res, url) {
       return;
     }
     const state = await loadState();
+    applyDualRuntimeConfig(state);
     const result = await dualPersistence.syncPassport(state.passport, { source: "manual_sync" });
     sendJson(res, 200, result);
     return;
@@ -438,6 +451,7 @@ async function handleApi(req, res, url) {
       return;
     }
     const state = await loadState();
+    applyDualRuntimeConfig(state);
     const result = await dualPersistence.probeUpdateSchemas(state.passport);
     sendJson(res, 200, result);
     return;
@@ -452,6 +466,7 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/policy") {
     const body = await readBody(req);
     const state = await loadState();
+    applyDualRuntimeConfig(state);
     const previousPolicy = policySnapshot(state.passport);
     const policy = normalizePolicy(body, state.passport);
     const policyVersion = Number(state.passport.policyVersion || 1) + 1;
@@ -498,7 +513,13 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/reset") {
+    const previous = await loadState();
     const state = await resetState();
+    if (previous.dualConfig) {
+      state.dualConfig = previous.dualConfig;
+      applyDualRuntimeConfig(state);
+      await saveState(state);
+    }
     sendJson(res, 200, state);
     return;
   }
@@ -541,6 +562,7 @@ async function handleApi(req, res, url) {
 }
 
 async function buildHealth(req) {
+  applyDualRuntimeConfig(await loadState());
   const adapter = await getAdapterStatus();
   const dual = publicDualStatus(req);
   return {
@@ -560,6 +582,7 @@ async function buildHealth(req) {
 
 async function readMarketSnapshot(req, pair, { recordAudit = false } = {}) {
   const state = await loadState();
+  applyDualRuntimeConfig(state);
   state.market = state.market || {};
   const market = await getMarket(pair, state.market);
   state.market[market.pair || pair] = {
@@ -584,6 +607,7 @@ async function readMarketSnapshot(req, pair, { recordAudit = false } = {}) {
 
 async function proposeTrade(req, input) {
   const state = await loadState();
+  applyDualRuntimeConfig(state);
   state.market = state.market || {};
   state.proposals = state.proposals || [];
   const pair = String(input.pair || "BTCUSD").toUpperCase();
@@ -616,6 +640,7 @@ async function proposeTrade(req, input) {
 
 async function approveTrade(req, input) {
   const state = await loadState();
+  applyDualRuntimeConfig(state);
   const id = requireProposalId(input);
   const proposal = (state.proposals || []).find((item) => item.id === id);
   if (!proposal) throw httpError("Proposal not found.", 404, "proposal_not_found");
@@ -638,6 +663,7 @@ async function approveTrade(req, input) {
 
 async function executePaperTradeProposal(req, input) {
   const state = await loadState();
+  applyDualRuntimeConfig(state);
   const id = requireProposalId(input);
   const proposal = (state.proposals || []).find((item) => item.id === id);
   if (!proposal) throw httpError("Proposal not found.", 404, "proposal_not_found");
@@ -729,6 +755,7 @@ async function proposeAndExecutePaperTrade(req, args) {
 
 async function runRedTeam(req, input) {
   const state = await loadState();
+  applyDualRuntimeConfig(state);
   state.market = state.market || {};
   const trade = redTeamTrade(input.scenario, state.passport, state.market);
   const policy = evaluateTrade(state.passport, trade);
@@ -1707,17 +1734,28 @@ function publicDualStatus(req) {
   return { ...visibleStatus, links: buildDualDataLinks({ dualStatus: visibleStatus }) };
 }
 
-function publicDualAuthStatus() {
+function applyDualRuntimeConfig(state = {}) {
+  if (typeof dualPersistence.configureRuntime !== "function") return;
+  dualPersistence.configureRuntime({
+    tradeReceiptTemplateId: state?.dualConfig?.tradeReceiptTemplateId
+  });
+}
+
+function publicDualAuthStatus(req) {
   const auth = dualPersistence.authStatus();
+  const gate = dualWriteGate(req);
   const emailDetail = emailCodeAuthEnabled
     ? "Email-code auth is enabled as an operator fallback."
     : "Email-code auth is disabled by default; this demo uses scoped API-key auth plus the operator gate.";
   return {
     ...auth,
+    writeGate: gate,
     emailCodeAuthEnabled,
     emailCodeRequired: false,
     detail: auth.authenticated
       ? auth.detail
+      : gate.allowed
+        ? "Operator token accepted for this browser request."
       : emailCodeAuthEnabled
         ? auth.detail
         : emailDetail
@@ -2185,6 +2223,7 @@ function timingSafeEqualText(left, right) {
 
 async function buildProofBundle(req) {
   const [state, adapter] = await Promise.all([loadState(), getAdapterStatus()]);
+  applyDualRuntimeConfig(state);
   let dualObject = null;
   let dualTemplate = null;
   let dualTradeReceiptTemplate = null;

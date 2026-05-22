@@ -68,7 +68,7 @@ Recommended rollout:
 8. Set any available Blockscout base/template URL. Leave Console detail-link templates unset unless the exact routes have been verified.
 9. Redeploy and verify `/api/dual/status`, `/api/dual/trade-receipts`, `/api/proof`, `/api/proof/verify`, `/api/openapi.json`, and MCP `initialize` / `tools/list` on `/mcp`.
 
-Without `DEMO_OPERATOR_TOKEN`, production remains read-linked for public requests even if DUAL write credentials are present. This is intentional: anonymous visitors can inspect proof and exercise local demo state, but they cannot replay passport events or mint trade receipts into DUAL.
+Without `DEMO_OPERATOR_TOKEN`, production remains read-linked for public requests even if DUAL write credentials are present. This is intentional: anonymous visitors can inspect proof and exercise local demo state, but they cannot replay passport events or mint trade receipts into DUAL. Operators can paste the token into the Proof panel for a session-only browser run; that is the path that creates DUAL action logs. New receipt objects also require `DUAL_TRADE_RECEIPT_TEMPLATE_ID` or a receipt template created from the Proof panel for the current server run.
 
 ## API and MCP Checks
 

@@ -34,6 +34,7 @@ assert(!JSON.stringify(writeReadiness).includes("bearer/session"), "write readin
 const dualAuthStatus = await get("/api/dual/auth/status");
 assert(typeof dualAuthStatus.authenticated === "boolean", "DUAL auth status reports session state");
 assert(dualAuthStatus.emailCodeRequired === false, "DUAL email-code auth is optional");
+assert(typeof dualAuthStatus.writeGate?.allowed === "boolean", "DUAL auth status exposes operator write gate");
 
 await post("/api/reset", {});
 

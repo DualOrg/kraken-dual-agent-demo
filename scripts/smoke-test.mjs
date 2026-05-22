@@ -24,6 +24,8 @@ assert(dualStatus.available, "DUAL persistence adapter is available");
 
 const writeReadiness = await get("/api/dual/write-readiness");
 assert(typeof writeReadiness.ready === "boolean", "write readiness reports a boolean ready state");
+assert(writeReadiness.requiredAuthMode === "api_key", "event-bus writes require API-key auth");
+assert(!JSON.stringify(writeReadiness).includes("bearer/session"), "write readiness does not require bearer/session auth");
 
 const dualAuthStatus = await get("/api/dual/auth/status");
 assert(typeof dualAuthStatus.authenticated === "boolean", "DUAL auth status reports session state");

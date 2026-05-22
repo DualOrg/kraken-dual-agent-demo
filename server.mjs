@@ -1508,7 +1508,7 @@ function dualWriteGate(req) {
     detail: publicDualWrites
       ? "Public DUAL writes are explicitly enabled."
       : operatorToken
-        ? "Send x-demo-operator-token or Authorization: Bearer <token> for DUAL write endpoints."
+        ? "Send x-demo-operator-token or Authorization: Bearer <DEMO_OPERATOR_TOKEN> for this demo's operator gate."
         : "Set DEMO_OPERATOR_TOKEN to enable authenticated DUAL write endpoints."
   };
 }

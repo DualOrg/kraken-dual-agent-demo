@@ -133,7 +133,7 @@ function bindEvents() {
     try {
       const email = els.dualAuthEmail.value;
       const code = els.dualAuthCode.value;
-      els.dualAuthMessage.textContent = "Authenticating bearer session...";
+      els.dualAuthMessage.textContent = "Authenticating DUAL operator session...";
       const result = await postJson("/api/dual/auth/verify-code", { email, code });
       els.dualAuthMessage.textContent = result.detail;
       await checkHealth();
@@ -403,7 +403,7 @@ function renderProof() {
   if (auth?.authenticated) {
     els.dualAuthMessage.textContent = auth.detail;
   } else if (!els.dualAuthMessage.textContent) {
-    els.dualAuthMessage.textContent = auth?.detail || "Scoped API-key auth or email-code auth unlocks DUAL event-bus writes.";
+    els.dualAuthMessage.textContent = auth?.detail || "Scoped API-key auth unlocks DUAL event-bus writes.";
   }
 }
 
@@ -426,10 +426,10 @@ function batchProofLabel(batch) {
 
 function authLabel(auth) {
   if (auth?.authType === "api_key_env") return "API key";
-  if (auth?.authType === "both_env") return "API key + bearer";
+  if (auth?.authType === "both_env") return "legacy API key";
   if (auth?.authType === "api_key_service_account") return "service API key";
   if (auth?.authType === "bearer_service_account") return "service bearer";
-  if (auth?.authType === "both_service_account") return "service both";
+  if (auth?.authType === "both_service_account") return "service legacy API key";
   if (auth?.authType === "bearer_env") return "bearer env";
   if (auth?.authenticated && auth.email) return `session ${auth.email}`;
   if (auth?.pendingEmail) return `code sent ${auth.pendingEmail}`;

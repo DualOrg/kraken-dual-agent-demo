@@ -7,7 +7,7 @@ export async function createDualPersistence() {
   const objectId = process.env.DUAL_AGENT_PASSPORT_OBJECT_ID || "";
   const baseUrl = process.env.DUAL_API_URL || "https://api-testnet.dual.network";
   const apiKey = process.env.DUAL_API_KEY || "";
-  const authMode = process.env.DUAL_AUTH_MODE || "api_key";
+  const authMode = normalizeAuthMode(process.env.DUAL_AUTH_MODE || "api_key");
   const writeMode = process.env.DUAL_WRITE_MODE || "read_only";
   const eventBusWritePath = normalizePath(process.env.DUAL_EVENTBUS_WRITE_PATH || "/ebus/execute");
   const serviceToken = process.env.DUAL_SERVICE_ACCOUNT_TOKEN
@@ -15,7 +15,7 @@ export async function createDualPersistence() {
     || process.env.DUAL_BEARER_TOKEN
     || "";
   const serviceRefreshToken = process.env.DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN || "";
-  const serviceAuthMode = process.env.DUAL_SERVICE_ACCOUNT_AUTH_MODE || "api_key";
+  const serviceAuthMode = normalizeAuthMode(process.env.DUAL_SERVICE_ACCOUNT_AUTH_MODE || "api_key");
 
   let DualClient = null;
   let client = null;
@@ -28,8 +28,8 @@ export async function createDualPersistence() {
   if (mode === "dual") {
     try {
       ({ DualClient } = await import("dual-sdk"));
-      if (apiKey) client = makeClient(apiKey, sdkAuthMode(authMode));
-      if (serviceToken) serviceClient = makeClient(serviceToken, sdkAuthMode(serviceAuthMode));
+      if (apiKey) client = makeClient(apiKey, authMode);
+      if (serviceToken) serviceClient = makeClient(serviceToken, serviceAuthMode);
       if (serviceRefreshToken) {
         const refreshed = makeClient("", "bearer");
         const tokens = await refreshed.sdk.wallets.refreshToken(serviceRefreshToken);
@@ -100,18 +100,18 @@ export async function createDualPersistence() {
         authMode: effectiveAuthMode(),
         writeMode: effectiveWriteMode(),
         eventBusWritePath,
-        requiredAuthMode: "api_key_or_bearer",
+        requiredAuthMode: "api_key",
         requiredWriteMode: "event_bus",
         current: status,
         missing: ready ? [] : [
           ...(status.available || DualClient ? [] : ["DUAL SDK/client availability"]),
-          ...(activeReadClient() ? [] : ["DUAL_API_KEY, service token, refresh token, or email session"]),
+          ...(activeReadClient() ? [] : ["DUAL_API_KEY with event-bus action create permission"]),
           ...(writeMode === "event_bus" ? [] : ["DUAL_WRITE_MODE=event_bus"]),
-          "scoped API key or bearer/session credential with event-bus action create permission"
+          "scoped DUAL API key with event-bus action create permission"
         ],
         detail: ready
           ? "DUAL event-bus write sync is enabled."
-          : "DUAL read-link is active; event-bus write sync needs DUAL_WRITE_MODE=event_bus plus scoped API-key or bearer/session auth."
+          : "DUAL read-link is active; event-bus write sync needs DUAL_WRITE_MODE=event_bus plus a scoped DUAL_API_KEY."
       };
     },
 
@@ -137,8 +137,8 @@ export async function createDualPersistence() {
         orgId: session?.orgId || orgId || null,
         authenticatedAt: session?.authenticatedAt || null,
         detail: write
-          ? "API-key or bearer auth is active for unattended DUAL event-bus writes."
-          : "Use DUAL_WRITE_MODE=event_bus with a scoped API key, or request an email code for bearer auth."
+          ? "Scoped API-key auth is active for unattended DUAL event-bus writes."
+          : "Use DUAL_WRITE_MODE=event_bus with a scoped DUAL_API_KEY. Email-code auth remains available for operator sessions."
       };
     },
 
@@ -147,7 +147,7 @@ export async function createDualPersistence() {
       const login = makeClient("", "bearer");
       await login.sdk.wallets.requestOtp(normalized);
       pendingEmail = normalized;
-      return { requested: true, email: maskEmail(normalized), detail: "Email code requested. Enter the code to create a bearer session." };
+      return { requested: true, email: maskEmail(normalized), detail: "Email code requested. Enter the code to create an operator session." };
     },
 
     async verifyEmailCode(email, code, options = {}) {
@@ -178,7 +178,7 @@ export async function createDualPersistence() {
         orgId: session.orgId,
         authMode: effectiveAuthMode(),
         writeMode: effectiveWriteMode(),
-        detail: "Bearer session authenticated. DUAL event-bus replay is ready if this wallet has action create permission."
+        detail: "Operator session authenticated. DUAL event-bus replay is ready if this wallet has action create permission."
       };
     },
 
@@ -318,7 +318,7 @@ export async function createDualPersistence() {
       });
       const metadata = eventMetadata(event);
       const payload = objectId ? updatePayload(objectId, properties, metadata) : mintPayload(templateId, properties, metadata);
-      if (!write) return { skipped: true, reason: "DUAL event-bus writes need DUAL_WRITE_MODE=event_bus plus scoped API-key or bearer/session auth.", replay: { envelope: payload, envelopeHash: hashJson(payload) } };
+      if (!write) return { skipped: true, reason: "DUAL event-bus writes need DUAL_WRITE_MODE=event_bus plus a scoped DUAL_API_KEY.", replay: { envelope: payload, envelopeHash: hashJson(payload) } };
       const result = await writeAction(write, payload);
       return { synced: true, envelopeHash: hashJson(payload), result: summarizeResult(result) };
     },
@@ -386,14 +386,17 @@ export async function createDualPersistence() {
   }
 }
 
-function sdkAuthMode(modeName) {
-  return modeName === "both" ? "api_key" : modeName;
+function normalizeAuthMode(modeName) {
+  const normalized = String(modeName || "api_key").toLowerCase().replace("-", "_");
+  if (normalized === "both") return "api_key";
+  if (normalized === "api_key" || normalized === "bearer") return normalized;
+  return "api_key";
 }
 
 function authHeaders(write) {
   const headers = { "content-type": "application/json", accept: "application/json" };
-  if (write.authMode === "api_key" || write.authMode === "both") headers["x-api-key"] = write.token;
-  if (write.authMode === "bearer" || write.authMode === "both") headers.authorization = `Bearer ${write.token}`;
+  if (write.authMode === "api_key") headers["x-api-key"] = write.token;
+  if (write.authMode === "bearer") headers.authorization = `Bearer ${write.token}`;
   return headers;
 }
 

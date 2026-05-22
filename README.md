@@ -65,10 +65,9 @@ DUAL_API_KEY=...
 DUAL_ORG_ID=...
 DUAL_AGENT_PASSPORT_TEMPLATE_ID=...
 DUAL_AGENT_PASSPORT_OBJECT_ID=...
-DUAL_AUTH_MODE=both
+DUAL_AUTH_MODE=api_key
 DUAL_WRITE_MODE=event_bus
 DUAL_EVENTBUS_WRITE_PATH=/ebus/execute
-DUAL_SERVICE_ACCOUNT_AUTH_MODE=both
 DUAL_SERVICE_ACCOUNT_TOKEN=...
 DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN=...
 DEMO_OPERATOR_TOKEN=...
@@ -76,11 +75,11 @@ DEMO_OPERATOR_TOKEN=...
 
 The adapter is intentionally optional. If the DUAL SDK or credentials are unavailable, the app keeps running in local simulator mode.
 
-With current DUAL testnet auth, API-key auth can link to and verify a real DUAL passport object and can also write event-bus actions when the key is scoped for event-bus action creation. Set `DUAL_WRITE_MODE=event_bus` and use the current action path `/ebus/execute`. `DUAL_AUTH_MODE=both` sends the scoped key as both `x-api-key` and `Authorization: Bearer ...` for compatibility while DUAL rolls out event-bus API-key auth. Bearer email sessions, refresh-token service sessions, and direct bearer service tokens remain supported as fallback write-auth modes.
+With current DUAL testnet auth, a scoped API key can link to and verify a real DUAL passport object and write event-bus actions. Set `DUAL_AUTH_MODE=api_key`, `DUAL_WRITE_MODE=event_bus`, and use the current action path `/ebus/execute`. The event-bus endpoint no longer needs a DUAL bearer token. The old `DUAL_AUTH_MODE=both` value is accepted as a legacy alias for `api_key` and does not cause the app to send a DUAL bearer header.
 
-The app also supports an operator email-code flow for bearer auth. A code is requested from DUAL, verified server-side, switched into the configured org, and held only in the server session. Once authenticated, new audit events write through the DUAL event bus and the replay queue can be executed into DUAL.
+The app still supports an operator email-code flow as a fallback. A code is requested from DUAL, verified server-side, switched into the configured org, and held only in the server session. Once authenticated, new audit events write through the DUAL event bus and the replay queue can be executed into DUAL.
 
-Public deployments are read-linked by default. Server-side DUAL writes are blocked unless the request is operator-authorized with `x-demo-operator-token` or `Authorization: Bearer <DEMO_OPERATOR_TOKEN>`. This keeps the public demo safe while still allowing the operator to replay events into DUAL.
+Public deployments are read-linked by default. Server-side DUAL writes are blocked unless the request passes the demo operator gate with `x-demo-operator-token` or `Authorization: Bearer <DEMO_OPERATOR_TOKEN>`. This operator gate is separate from DUAL event-bus auth and keeps the public demo safe while still allowing the operator to replay events into DUAL.
 
 Useful endpoints:
 
@@ -104,7 +103,7 @@ POST /mcp
 
 Template schema: `dual-agent-passport.schema.json`.
 
-`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, write-readiness, local audit root hash, replay queue root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` is outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has API-key or bearer/session write auth for `/ebus/execute`.
+`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, write-readiness, local audit root hash, replay queue root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` is outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has scoped API-key write auth for `/ebus/execute`.
 
 The proof bundle surfaces latest batch id, status, proof value, Merkle root, and L1 transaction hash when available. The UI shows this as first-class `DUAL batch` and `Batch proof` rows.
 

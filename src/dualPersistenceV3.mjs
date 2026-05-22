@@ -459,7 +459,19 @@ export async function createDualPersistence() {
         };
       }
       const result = await writeAction(write, payload);
-      return { synced: true, envelopeHash: hashJson(payload), result: summarizeResult(result) };
+      const summary = summarizeResult(result);
+      const affectedObject = summary.actionId
+        ? await findAffectedObjectForAction(write.sdk, summary.actionId, tradeReceiptTemplateId)
+        : null;
+      return {
+        synced: true,
+        envelopeHash: hashJson(payload),
+        result: {
+          ...summary,
+          id: summary.id || affectedObject?.id || null,
+          affectedObject: affectedObject || null
+        }
+      };
     },
 
     async probeUpdateSchemas(passport) {
@@ -679,6 +691,10 @@ function durableEventCoverage(event, durableObject = null) {
   return null;
 }
 
+function firstNonEmpty(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== "") || null;
+}
+
 function summarizeResult(result) {
   if (!result || typeof result !== "object") return result || null;
   return {
@@ -722,6 +738,62 @@ async function findObjectForTemplate(sdk, templateId) {
     await new Promise((resolve) => setTimeout(resolve, 750));
   }
   return null;
+}
+
+async function findAffectedObjectForAction(sdk, actionId, templateId) {
+  for (let index = 0; index < 8; index += 1) {
+    const action = await readActionLog(sdk, actionId);
+    const affected = extractAffectedObjects(action)
+      .find((object) => {
+        const sameTemplate = !templateId || firstNonEmpty(object?.template_id, object?.templateId) === templateId;
+        const created = firstNonEmpty(object?.change_type, object?.changeType) === "create";
+        return sameTemplate && created && firstNonEmpty(object?.id, object?.object_id, object?.objectId);
+      });
+    if (affected) {
+      return {
+        id: firstNonEmpty(affected.id, affected.object_id, affected.objectId),
+        templateId: firstNonEmpty(affected.template_id, affected.templateId),
+        integrityHash: firstNonEmpty(affected.integrity_hash, affected.integrityHash),
+        stateHash: firstNonEmpty(affected.next_state_hash, affected.nextStateHash, affected.state_hash, affected.stateHash),
+        stateChangeId: firstNonEmpty(affected.state_change_id, affected.stateChangeId)
+      };
+    }
+    if (action && ["completed", "failed"].includes(String(action.status || "").toLowerCase())) break;
+    await new Promise((resolve) => setTimeout(resolve, 750));
+  }
+  return null;
+}
+
+async function readActionLog(sdk, actionId) {
+  if (!actionId || !sdk?.eventBus) return null;
+  try {
+    if (typeof sdk.eventBus.getAction === "function") {
+      return await sdk.eventBus.getAction(actionId);
+    }
+  } catch {
+    // Fall back to listActions; SDK/API versions vary by deployment.
+  }
+  try {
+    if (typeof sdk.eventBus.listActions === "function") {
+      const result = await sdk.eventBus.listActions({ id: actionId, limit: 1 });
+      return extractItems(result)[0] || result?.action_logs?.[0] || result?.actionLogs?.[0] || null;
+    }
+  } catch {
+    // The action id is still returned even if object lookup is unavailable.
+  }
+  return null;
+}
+
+function extractAffectedObjects(action) {
+  const candidates = [
+    action?.affected_objects,
+    action?.affectedObjects,
+    action?.data?.affected_objects,
+    action?.data?.affectedObjects,
+    action?.action_logs?.[0]?.affected_objects,
+    action?.actionLogs?.[0]?.affectedObjects
+  ];
+  return candidates.find(Array.isArray) || [];
 }
 
 async function searchObjects(sdk, templateId) {

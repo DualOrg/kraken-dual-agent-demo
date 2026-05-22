@@ -210,7 +210,8 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/dual/replay-queue") {
     const state = await loadState();
-    sendJson(res, 200, publicReplayQueue(req, state.passport, state.audit || []));
+    const durableObject = await safeReadPassportObject();
+    sendJson(res, 200, publicReplayQueue(req, state.passport, state.audit || [], durableObject));
     return;
   }
 
@@ -226,12 +227,14 @@ async function handleApi(req, res, url) {
         executed: false,
         error: "dual_write_not_ready",
         readiness,
-        replayQueue: publicReplayQueue(req, state.passport, state.audit || [])
+        replayQueue: publicReplayQueue(req, state.passport, state.audit || [], await safeReadPassportObject())
       });
       return;
     }
 
-    const result = await dualPersistence.executeReplayQueue(state.passport, state.audit || []);
+    const result = await dualPersistence.executeReplayQueue(state.passport, state.audit || [], {
+      durableObject: await safeReadPassportObject()
+    });
     const syncedByEventId = new Map(result.events.map((event) => [event.eventId, event]));
     state.audit = (state.audit || []).map((event) => {
       const synced = syncedByEventId.get(event.id);
@@ -826,7 +829,7 @@ async function callMcpTool(req, name, args) {
       return readAuditForAgent(args);
     case "kraken_dual_get_replay_queue": {
       const state = await loadState();
-      return { ok: true, replayQueue: publicReplayQueue(req, state.passport, state.audit || []) };
+      return { ok: true, replayQueue: publicReplayQueue(req, state.passport, state.audit || [], await safeReadPassportObject()) };
     }
     case "kraken_dual_red_team": {
       const result = await runRedTeam(req, { scenario: args.scenario || "leverage" });
@@ -850,7 +853,7 @@ async function readMcpResource(req, uri) {
   if (uri === "kraken-dual://audit") return readAuditForAgent({ limit: 20 });
   if (uri === "kraken-dual://replay-queue") {
     const state = await loadState();
-    return { ok: true, replayQueue: publicReplayQueue(req, state.passport, state.audit || []) };
+    return { ok: true, replayQueue: publicReplayQueue(req, state.passport, state.audit || [], await safeReadPassportObject()) };
   }
   throw Object.assign(new Error(`Unknown Kraken DUAL MCP resource: ${uri}`), { code: "mcp_resource_not_found", status: 404 });
 }
@@ -1485,8 +1488,16 @@ function publicWriteReadiness(req) {
   };
 }
 
-function publicReplayQueue(req, passport, audit) {
-  const queue = dualPersistence.buildReplayQueue(passport, audit);
+async function safeReadPassportObject() {
+  try {
+    return await dualPersistence.readPassportObject();
+  } catch {
+    return null;
+  }
+}
+
+function publicReplayQueue(req, passport, audit, durableObject = null) {
+  const queue = dualPersistence.buildReplayQueue(passport, audit, { durableObject });
   return {
     ...queue,
     writable: Boolean(queue.writable && publicWriteReadiness(req).ready)
@@ -1559,7 +1570,7 @@ async function buildProofBundle(req) {
   }
 
   const audit = state.audit || [];
-  const replayQueue = publicReplayQueue(req, state.passport, audit);
+  const replayQueue = publicReplayQueue(req, state.passport, audit, dualObject);
   const dualStatus = publicDualStatus(req);
   const writeReadiness = publicWriteReadiness(req);
   const templateFields = dualTemplate?.custom || {};

@@ -229,7 +229,7 @@ export async function createDualPersistence() {
       return writeAction(write, objectId ? updatePayload(objectId, properties, metadata) : mintPayload(templateId, properties, metadata));
     },
 
-    buildReplayQueue(passport, audit = []) {
+    buildReplayQueue(passport, audit = [], options = {}) {
       const events = audit.map((event) => {
         const properties = passportProperties(passport, {
           lastEventId: event.id,
@@ -238,14 +238,19 @@ export async function createDualPersistence() {
         const metadata = eventMetadata(event);
         const payload = objectId ? updatePayload(objectId, properties, metadata) : mintPayload(templateId, properties, metadata);
         const actionId = event.dualSync?.result?.actionId || null;
+        const locallySynced = Boolean(event.dualSync?.synced && actionId);
+        const durableCoverage = locallySynced ? null : durableEventCoverage(event, options.durableObject);
         const envelope = { actionName: objectId ? "update" : "mint", properties, metadata, payload };
         return {
           eventId: event.id,
           eventType: event.type,
           eventStatus: event.status,
           eventHash: event.provenanceHash || event.id,
-          synced: Boolean(event.dualSync?.synced && actionId),
+          synced: locallySynced || Boolean(durableCoverage),
           actionId,
+          syncSource: locallySynced ? "local_audit_action_id" : durableCoverage?.reason || "pending",
+          durableEventId: durableCoverage?.durableEventId || null,
+          durableEventHash: durableCoverage?.durableEventHash || null,
           ready: Boolean(objectId || templateId),
           envelope,
           envelopeHash: hashJson(envelope)
@@ -269,9 +274,9 @@ export async function createDualPersistence() {
       };
     },
 
-    async executeReplayQueue(passport, audit = []) {
+    async executeReplayQueue(passport, audit = [], options = {}) {
       const write = requireWritable();
-      const queue = this.buildReplayQueue(passport, audit);
+      const queue = this.buildReplayQueue(passport, audit, options);
       const executed = [];
       for (const event of [...queue.events].reverse()) {
         const result = await writeAction(write, event.envelope.payload);
@@ -496,6 +501,26 @@ function eventMetadata(event) {
     event_hash: event.provenanceHash || event.id,
     event_payload: event.payload || {}
   };
+}
+
+function durableEventCoverage(event, durableObject = null) {
+  const custom = durableObject?.custom || durableObject?.data?.custom || {};
+  const durableEventId = custom.last_event_id || "";
+  if (!durableEventId) return null;
+
+  const durableEventHash = custom.last_event_hash || "";
+  const eventHash = event.provenanceHash || event.id;
+  if (durableEventId === event.id && (!durableEventHash || durableEventHash === eventHash)) {
+    return { reason: "durable_object_readback", durableEventId, durableEventHash };
+  }
+
+  const eventTime = Date.parse(event.timestamp || "");
+  const durableTime = Date.parse(custom.updated_at || durableObject.whenModified || durableObject.updatedAt || "");
+  if (Number.isFinite(eventTime) && Number.isFinite(durableTime) && durableTime > eventTime && durableEventId !== event.id) {
+    return { reason: "superseded_by_durable_object", durableEventId, durableEventHash };
+  }
+
+  return null;
 }
 
 function summarizeResult(result) {

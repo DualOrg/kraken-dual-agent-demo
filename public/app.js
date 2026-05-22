@@ -8,8 +8,7 @@ const state = {
   replayExecution: null,
   actionPassportSetup: null,
   tradeReceiptTemplateSetup: null,
-  tradeReceiptReplay: null,
-  operatorToken: ""
+  tradeReceiptReplay: null
 };
 
 const pairs = ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"];
@@ -32,10 +31,6 @@ const els = {
   dualAuthMessage: document.querySelector("#dualAuthMessage"),
   dualEmailAuthPanel: document.querySelector("#dualEmailAuthPanel"),
   dualLinks: document.querySelector("#dualLinks"),
-  operatorTokenInput: document.querySelector("#operatorTokenInput"),
-  operatorTokenStatus: document.querySelector("#operatorTokenStatus"),
-  applyOperatorTokenButton: document.querySelector("#applyOperatorTokenButton"),
-  clearOperatorTokenButton: document.querySelector("#clearOperatorTokenButton"),
   requestCodeButton: document.querySelector("#requestCodeButton"),
   verifyCodeButton: document.querySelector("#verifyCodeButton"),
   setupActionPassportButton: document.querySelector("#setupActionPassportButton"),
@@ -57,9 +52,6 @@ const els = {
 init();
 
 async function init() {
-  state.operatorToken = sessionStorage.getItem("kraken-dual-operator-token") || "";
-  if (els.operatorTokenInput) els.operatorTokenInput.value = state.operatorToken;
-  renderOperatorTokenStatus();
   bindEvents();
   await checkHealth();
   await loadDualAuthStatus();
@@ -144,7 +136,7 @@ function bindEvents() {
     try {
       const email = els.dualAuthEmail.value;
       const code = els.dualAuthCode.value;
-      els.dualAuthMessage.textContent = "Authenticating DUAL operator session...";
+      els.dualAuthMessage.textContent = "Authenticating DUAL browser session...";
       const result = await postJson("/api/dual/auth/verify-code", { email, code });
       els.dualAuthMessage.textContent = result.detail;
       await checkHealth();
@@ -153,29 +145,6 @@ function bindEvents() {
     } catch (error) {
       els.dualAuthMessage.textContent = error.message;
     }
-  });
-
-  els.applyOperatorTokenButton?.addEventListener("click", async () => {
-    state.operatorToken = els.operatorTokenInput.value.trim();
-    if (state.operatorToken) {
-      sessionStorage.setItem("kraken-dual-operator-token", state.operatorToken);
-    } else {
-      sessionStorage.removeItem("kraken-dual-operator-token");
-    }
-    renderOperatorTokenStatus();
-    await checkHealth();
-    await loadDualAuthStatus();
-    await loadProof();
-  });
-
-  els.clearOperatorTokenButton?.addEventListener("click", async () => {
-    state.operatorToken = "";
-    sessionStorage.removeItem("kraken-dual-operator-token");
-    if (els.operatorTokenInput) els.operatorTokenInput.value = "";
-    renderOperatorTokenStatus();
-    await checkHealth();
-    await loadDualAuthStatus();
-    await loadProof();
   });
 
   els.executeReplayButton.addEventListener("click", async () => {
@@ -306,7 +275,7 @@ async function loadState() {
 
 async function refreshMarkets() {
   for (const pair of pairs) {
-    const market = await getJson(`/api/market?pair=${pair}`, { operator: false });
+    const market = await getJson(`/api/market?pair=${pair}`);
     state.data.market[pair] = market;
     renderMarkets();
   }
@@ -455,13 +424,14 @@ function renderProof() {
     : tradeReceipts?.receiptCount != null
       ? `${tradeReceipts.syncedCount || 0} minted, ${tradeReceipts.pendingCount || 0} pending`
       : "pending";
-  const writeGate = proof?.status?.writeReadiness?.writeGate || dual?.writeGate || auth?.writeGate;
+  const writeReadiness = proof?.status?.writeReadiness || dual?.writeReadiness;
+  const writeGate = writeReadiness?.writeGate || dual?.writeGate || auth?.writeGate;
   const rows = [
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
     ["DUAL mode", isDualLive(dual) ? dual.writable ? "write-sync" : "read-linked" : "local simulator"],
-    ["Write readiness", proof?.status?.writeReadiness?.ready ? "ready" : "needs write auth"],
-    ["Write gate", writeGate?.allowed ? "operator authorized" : writeGate?.configured ? "operator token required" : "not configured"],
+    ["Write readiness", writeReadiness?.canWriteNow ? "ready" : writeReadiness?.persistenceReady ? "public writes disabled" : "needs DUAL write config"],
+    ["Write gate", writeGate?.allowed ? "public demo writes" : "disabled"],
     ["Write auth", authLabel(auth)],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
@@ -493,18 +463,19 @@ function renderProof() {
 
   renderDualLinks(proof?.links || state.health?.dual?.links || dual?.links || []);
 
-  const writeReady = Boolean(proof?.status?.writeReadiness?.ready);
+  const writeReady = Boolean(writeReadiness?.canWriteNow ?? proof?.status?.writeReadiness?.ready);
   els.executeReplayButton.disabled = !writeReady || !(replayQueue?.pendingCount ?? replayQueue?.eventCount);
   els.setupActionPassportButton.disabled = !writeReady;
   els.setupReceiptTemplateButton.disabled = !writeReady;
   els.executeReceiptReplayButton.disabled = !writeReady || !tradeReceipts?.writable || !tradeReceipts?.pendingCount;
-  renderOperatorTokenStatus();
   if (auth?.authenticated) {
     els.dualAuthMessage.textContent = auth.detail;
+  } else if (writeReady) {
+    els.dualAuthMessage.textContent = "Public demo DUAL writes are enabled.";
   } else if (writeGate?.allowed) {
-    els.dualAuthMessage.textContent = "Operator token accepted. DUAL write actions are enabled for this tab.";
+    els.dualAuthMessage.textContent = "Public demo write gate is open; DUAL write readiness still needs server-side config.";
   } else if (!els.dualAuthMessage.textContent) {
-    els.dualAuthMessage.textContent = auth?.detail || "Scoped API-key auth plus the operator gate controls DUAL writes.";
+    els.dualAuthMessage.textContent = auth?.detail || "Scoped API-key auth controls live DUAL writes for this public demo.";
   }
 }
 
@@ -550,7 +521,6 @@ function batchProofLabel(batch) {
 }
 
 function authLabel(auth) {
-  if (auth?.writeGate?.allowed) return "operator token";
   if (auth?.authType === "api_key_env") return "API key";
   if (auth?.authType === "both_env") return "legacy API key";
   if (auth?.authType === "api_key_service_account") return "service API key";
@@ -560,7 +530,7 @@ function authLabel(auth) {
   if (auth?.authenticated && auth.email) return `session ${auth.email}`;
   if (auth?.pendingEmail) return `code sent ${auth.pendingEmail}`;
   if (auth?.serviceAccountConfigured) return "service account pending write mode";
-  if (auth && auth.emailCodeAuthEnabled === false) return "API-key/operator gate";
+  if (auth && auth.emailCodeAuthEnabled === false) return "write auth needed";
   return "write auth needed";
 }
 
@@ -569,13 +539,6 @@ function tradeReceiptSyncLabel(receipt) {
   if (receipt?.dualSync?.error) return `DUAL mint failed: ${receipt.dualSync.error}`;
   if (receipt?.dualSync?.reason) return `local receipt only: ${receipt.dualSync.reason}`;
   return "DUAL mint pending";
-}
-
-function renderOperatorTokenStatus() {
-  if (!els.operatorTokenStatus) return;
-  els.operatorTokenStatus.textContent = state.operatorToken
-    ? "Operator token applied for this tab."
-    : "No operator token in this tab.";
 }
 
 function shortId(value) {
@@ -616,9 +579,6 @@ async function postJson(url, payload, options = {}) {
 function requestHeaders(options = {}) {
   const headers = {};
   if (options.contentType) headers["content-type"] = "application/json";
-  if (options.operator !== false && state.operatorToken) {
-    headers["x-demo-operator-token"] = state.operatorToken;
-  }
   return headers;
 }
 

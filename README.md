@@ -73,20 +73,20 @@ DUAL_SERVICE_ACCOUNT_TOKEN=...
 DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN=...
 DUAL_BLOCKSCOUT_BASE_URL=...
 DEMO_ENABLE_EMAIL_AUTH=false
-DEMO_OPERATOR_TOKEN=...
+DEMO_PUBLIC_DUAL_WRITES=true
 ```
 
 The adapter is intentionally optional. If the DUAL SDK or credentials are unavailable, the app keeps running in local simulator mode.
 
 With current DUAL testnet auth, a scoped API key can link to and verify a real DUAL passport object and write event-bus actions. Set `DUAL_AUTH_MODE=api_key`, `DUAL_WRITE_MODE=event_bus`, and use the current action path `/ebus/execute`. The event-bus endpoint no longer needs a DUAL bearer token. The old `DUAL_AUTH_MODE=both` value is accepted as a legacy alias for `api_key` and does not cause the app to send a DUAL bearer header.
 
-The app uses scoped API-key auth plus the demo operator gate as the default write path. The older DUAL email-code flow is not required for this demo and is hidden/disabled unless `DEMO_ENABLE_EMAIL_AUTH=true` is set for a private operator session fallback.
+The app uses scoped API-key auth as the default write path. The older DUAL email-code flow is not required for this demo and is hidden/disabled unless `DEMO_ENABLE_EMAIL_AUTH=true` is set for a private fallback.
 
 The proof and health payloads include explicit DUAL record links by default. These point to app-served readback routes for the current passport template, passport object, latest batch, latest affected actions, and receipt template/object when present. Console entity deep links are opt-in because the current Console detail routes can 404; set `DUAL_CONSOLE_ORG_URL_TEMPLATE`, `DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE`, `DUAL_CONSOLE_OBJECT_URL_TEMPLATE`, or `DUAL_CONSOLE_ACTION_URL_TEMPLATE` only when the target routes have been verified. Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when the deployment has a public explorer route for finalized L1 transaction hashes.
 
-Public deployments are read-linked by default. Server-side DUAL writes are blocked unless the request passes the demo operator gate with `x-demo-operator-token` or `Authorization: Bearer <DEMO_OPERATOR_TOKEN>`. The browser Proof panel includes a session-only operator token field that sends this header for the current tab; without it, trades are local paper trades and will not create DUAL action logs or receipt objects. This operator gate is separate from DUAL event-bus auth and keeps the public demo safe while still allowing the operator to replay events into DUAL.
+Public demo deployments write paper-trade evidence to DUAL by default when `DEMO_PUBLIC_DUAL_WRITES=true` and the server-side scoped DUAL API key is configured. There is no browser token step. If `DEMO_PUBLIC_DUAL_WRITES=false`, trades remain local paper trades and will not create DUAL action logs or receipt objects.
 
-Executed paper trades also create deterministic `trade_receipt` records. When `DUAL_TRADE_RECEIPT_TEMPLATE_ID` is configured, or the operator creates a receipt template from the Proof panel during the current server run, each operator-authorized executed trade can be minted as its own DUAL receipt object linked to the passport, proposal, policy hash, execution digest, and audit event. Without that template the app still creates local receipts and exposes a replay queue for later minting; the DUAL Console will not show new receipt objects until the template is configured and minting succeeds.
+Executed paper trades also create deterministic `trade_receipt` records. When `DUAL_TRADE_RECEIPT_TEMPLATE_ID` is configured, or a receipt template is created from the Proof panel during the current server run, each executed trade can be minted as its own DUAL receipt object linked to the passport, proposal, policy hash, execution digest, and audit event. Without that template the app still creates local receipts and exposes a replay queue for later minting; the DUAL Console will not show new receipt objects until the template is configured and minting succeeds.
 
 Useful endpoints:
 
@@ -118,7 +118,7 @@ POST /mcp
 
 Template schemas: `dual-agent-passport.schema.json` and `dual-trade-receipt.schema.json`.
 
-`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, trade receipt template/readiness, write-readiness, DUAL record/Blockscout link metadata, local audit root hash, replay queue root, trade receipt root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` and presentation links are outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has scoped API-key write auth for `/ebus/execute`. `/api/dual/trade-receipts/replay` mints pending executed-trade receipts into DUAL once the trade receipt template and operator write auth are active.
+`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, trade receipt template/readiness, write-readiness, DUAL record/Blockscout link metadata, local audit root hash, replay queue root, trade receipt root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` and presentation links are outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has scoped API-key write auth for `/ebus/execute`. `/api/dual/trade-receipts/replay` mints pending executed-trade receipts into DUAL once the trade receipt template and write readiness are active.
 
 The proof bundle surfaces latest batch id, status, proof value, Merkle root, and L1 transaction hash when available. The UI shows this as first-class `DUAL batch` and `Batch proof` rows.
 
@@ -128,7 +128,6 @@ The proof bundle surfaces latest batch id, status, proof value, Merkle root, and
 
 `POST /mcp` is a JSON-RPC MCP facade for agent clients. It exposes paper-only tools:
 
-- `kraken_dual_authenticate_operator`
 - `kraken_dual_get_status`
 - `kraken_dual_get_market`
 - `kraken_dual_propose_trade`
@@ -144,12 +143,7 @@ The proof bundle surfaces latest batch id, status, proof value, Merkle root, and
 
 The MCP tools support `DUALUSD` alongside `BTCUSD`, `ETHUSD`, and `SOLUSD`. Trading tools only create or execute paper proposals through the same DUAL policy checks as the UI. Public MCP intentionally does not expose live Kraken order placement or standalone DUAL replay execution.
 
-Operator-gated DUAL anchoring can be enabled for an MCP session in two ways:
-
-- call `kraken_dual_authenticate_operator` with `operator_token` set to `DEMO_OPERATOR_TOKEN`
-- send `x-demo-operator-token` or `Authorization: Bearer <DEMO_OPERATOR_TOKEN>` from an MCP client that supports custom headers
-
-Unauthenticated MCP calls still work, but paper trades are local-only and return top-level `warnings` such as `dual_anchoring_not_available`, `dual_replay_pending`, or `dual_receipts_pending`. `kraken_dual_get_status` accepts `compact: true` for a flat agent-friendly status with `canWriteNow` and `writeReason`. Tool metadata also includes `x-dual.requiresOperatorAuthForAnchoring` so clients can prompt before a call that must create DUAL evidence.
+No MCP authentication is required. When DUAL write readiness is active, paper trade proposal/execution evidence anchors to DUAL automatically. If DUAL write readiness is not active, trade responses return top-level `warnings` such as `dual_anchoring_not_available`, `dual_replay_pending`, or `dual_receipts_pending`. `kraken_dual_get_status` accepts `compact: true` for a flat agent-friendly status with `canWriteNow` and `writeReason`. Tool metadata includes `x-dual.requiresWriteReadinessForAnchoring` so clients can distinguish paper execution from DUAL anchoring.
 
 ## DUAL Object Model
 
@@ -180,7 +174,7 @@ When the DUAL receipt template is configured, these receipts can be minted one-p
 - Public demo is paper-only.
 - No Kraken API keys are required.
 - No keys should be placed in browser code, DUAL objects, screenshots, logs, or commits.
-- Public DUAL writes require an operator token; anonymous visitors can read proof and run local demo actions only.
+- Public demo DUAL writes are enabled when server-side DUAL API-key write readiness is active.
 - Live trading is intentionally out of scope for this repo until a separate private safety review.
 
 ## Build Roadmap

@@ -156,7 +156,7 @@ export async function createDualPersistence() {
         authenticatedAt: session?.authenticatedAt || null,
         detail: write
           ? "Scoped API-key auth is active for unattended DUAL event-bus writes."
-          : "Use DUAL_WRITE_MODE=event_bus with a scoped DUAL_API_KEY. Email-code auth remains available for operator sessions."
+          : "Use DUAL_WRITE_MODE=event_bus with a scoped DUAL_API_KEY. Email-code auth remains available for private browser sessions."
       };
     },
 
@@ -165,7 +165,7 @@ export async function createDualPersistence() {
       const login = makeClient("", "bearer");
       await login.sdk.wallets.requestOtp(normalized);
       pendingEmail = normalized;
-      return { requested: true, email: maskEmail(normalized), detail: "Email code requested. Enter the code to create an operator session." };
+      return { requested: true, email: maskEmail(normalized), detail: "Email code requested. Enter the code to create a private browser session." };
     },
 
     async verifyEmailCode(email, code, options = {}) {
@@ -196,7 +196,7 @@ export async function createDualPersistence() {
         orgId: session.orgId,
         authMode: effectiveAuthMode(),
         writeMode: effectiveWriteMode(),
-        detail: "Operator session authenticated. DUAL event-bus replay is ready if this wallet has action create permission."
+        detail: "Private browser session authenticated. DUAL event-bus replay is ready if this wallet has action create permission."
       };
     },
 

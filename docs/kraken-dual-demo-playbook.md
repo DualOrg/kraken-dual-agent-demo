@@ -219,13 +219,13 @@ Call out these rows:
 
 - `Kraken market`: market source is Kraken public API.
 - `Paper execution`: execution is simulated paper trading.
-- `DUAL mode`: currently `read-linked`.
-- `Write readiness`: ready when `canWriteNow=true`; the flattened reason explains whether the blocker is DUAL write config or operator authorization.
-- `Write gate`: operator-authorized only after the demo operator token has been applied for the current browser tab, supplied as a supported header, or accepted through `kraken_dual_authenticate_operator` for the current MCP session.
+- `DUAL mode`: `write-sync` when production DUAL write readiness is active, otherwise `read-linked`.
+- `Write readiness`: ready when `canWriteNow=true`; the flattened reason explains whether the blocker is DUAL write config or public demo writes being disabled.
+- `Write gate`: public demo writes are enabled by default and can be disabled with `DEMO_PUBLIC_DUAL_WRITES=false` for a read-linked rehearsal.
 - `Mandate source`: DUAL template.
 - `DUAL object`: passport object used by the demo.
 - DUAL data links: open explicit DUAL record readback for the passport template, passport object, latest batch, latest affected actions, receipt template/object when present, and a Blockscout transaction when a finalized batch hash is available. Console detail links are opt-in because the current Console entity routes can 404.
-- Public browser or unauthenticated MCP trades are local paper trades. For Console-visible action logs, apply the operator token before the trade. For Console-visible receipt objects, configure or create the DUAL trade receipt template before minting receipts.
+- Public browser and MCP trades create DUAL action logs when server-side write readiness is active. For Console-visible receipt objects, configure or create the DUAL trade receipt template before minting receipts.
 - `Policy version` and `Policy hash`: stable policy identity.
 - `DUAL batch` and `Batch proof`: DUAL batch evidence is present.
 - `Verifier`: all checks pass.
@@ -242,7 +242,7 @@ Proof interpretation:
 | Paper execution | Makes the demo safe and honest. |
 | DUAL mode | Shows whether DUAL is read-linked or write-synced. |
 | Write readiness | Shows whether unattended write credentials are available. |
-| Write auth | Makes the API-key and operator authorization dependency explicit. |
+| Write auth | Makes the scoped API-key write-readiness dependency explicit. |
 | Mandate source | Ties the agent to a DUAL template. |
 | DUAL object | Ties the app to a specific agent passport object. |
 | DUAL links | Lets the presenter leave the app and inspect the exact DUAL Console template, object, action, or Blockscout transaction. |
@@ -255,7 +255,7 @@ If challenged on whether this is "really DUAL":
 
 > "The app is not just displaying DUAL branding. It reads the passport object, mandate data, and batch evidence back from DUAL, then uses those values in the proof verifier."
 
-Email/code authentication is not part of the main demo path. The production posture is scoped API-key auth for DUAL event-bus writes plus the separate demo operator gate; email-code auth is only an opt-in fallback for private operator sessions.
+Email/code authentication is not part of the main demo path. The production posture is scoped API-key auth for DUAL event-bus writes; email-code auth is only an opt-in fallback for private browser sessions.
 
 ## 5. Show The Audit Trail
 
@@ -331,17 +331,17 @@ Current read/proof path:
 - Reads DUAL batch proof evidence.
 - Reads DUAL-linked identifiers used by the verifier.
 
-Pending write path:
+Live write path:
 
 - Policy updates are prepared as DUAL object updates.
 - Audit/provenance events are prepared as event-bus envelopes.
-- Replay execution is queued until scoped API-key write auth and the demo operator gate are available.
+- Replay execution runs when scoped API-key write auth is available; queued envelopes remain visible if write readiness is unavailable.
 
 Important distinction:
 
-> Current DUAL testnet writes use `/ebus/execute` with scoped API-key auth via `x-api-key`. The demo operator gate is separate and prevents anonymous public writes.
+> Current DUAL testnet writes use `/ebus/execute` with scoped API-key auth via `x-api-key`. The demo does not use a separate browser/MCP auth gate.
 
-For MCP demos, authenticate the session with `kraken_dual_authenticate_operator` before running trade tools that must anchor to DUAL. If the session is unauthenticated, trade tool responses include top-level warnings and the trade receipt stays local-only.
+For MCP demos, no MCP authentication is required. When write readiness is active, trade tools anchor proposal/execution evidence to DUAL automatically. If write readiness is unavailable, trade tool responses include top-level warnings and the trade receipt stays local-only.
 
 Detailed read/write map:
 
@@ -351,7 +351,7 @@ Detailed read/write map:
 | Mandate custom data | Read | Working | Provides policy state and policy hash. |
 | Template metadata | Read | Working | Shows the passport comes from a DUAL template. |
 | Sequencer batch evidence | Read | Working | Provides DUAL batch proof context. |
-| Policy updates | Write-capable | App support present | Can update passport custom data when scoped API-key write auth and operator authorization exist. |
+| Policy updates | Write-capable | App support present | Can update passport custom data when scoped API-key write auth is ready. |
 | Event-bus action envelopes | Write-capable | App support present | Ready to emit provenance/action events through `/ebus/execute`. |
 | Trade receipt mints | Write-capable | App support present | Ready to mint one DUAL receipt object per executed paper trade when `DUAL_TRADE_RECEIPT_TEMPLATE_ID` is set. |
 | Replay queue | Local pending/synced state | Working | Keeps pending writes visible instead of hiding auth failure. |
@@ -372,7 +372,7 @@ Use this explanation for technical reviewers:
 6. If allowed, the app performs a paper execution and records provenance.
 7. If blocked, the app records the blocked attempt and reason.
 8. The proof endpoint verifies that the visible state matches DUAL-linked evidence.
-9. DUAL event-bus writes run through `/ebus/execute` when scoped API-key write auth and operator authorization are available.
+9. DUAL event-bus writes run through `/ebus/execute` when scoped API-key write auth is available.
 10. Executed paper trades produce deterministic trade receipts and can mint those receipts as individual DUAL objects.
 
 ## 9. Objection Handling
@@ -393,7 +393,7 @@ Use this explanation for technical reviewers:
 | --- | --- |
 | Market card is slow or stale | Continue. The demo thesis does not depend on the exact live price. |
 | Policy check does not change state immediately | Click once, wait for the proposal status, then narrate the policy rules. |
-| Proof shows `read-linked` | Check that `DUAL_WRITE_MODE=event_bus`, `DUAL_API_URL=https://api-testnet.dual.network`, `DUAL_EVENTBUS_WRITE_PATH=/ebus/execute`, a scoped API key, and `DEMO_OPERATOR_TOKEN` are configured. |
+| Proof shows `read-linked` | Check that `DUAL_WRITE_MODE=event_bus`, `DUAL_API_URL=https://api-testnet.dual.network`, `DUAL_EVENTBUS_WRITE_PATH=/ebus/execute`, a scoped API key, and `DEMO_PUBLIC_DUAL_WRITES=true` or unset are configured. |
 | Batch proof is not finalized | Say the demo reads DUAL batch evidence, and the current state may be anchoring rather than finalized. |
 | Red-team block has old timeline entries | Focus on the newest blocked event and the explicit reason. |
 | Audience asks for real trading | Reframe: the demo is about agent governance and proof, not financial execution. |
@@ -442,7 +442,7 @@ Long close:
 - Open Proof and call out policy hash, DUAL object, batch proof, verifier.
 - Open Audit and show proposal plus execution.
 - Run Red Team oversized order.
-- Explain that write-sync depends on the current DUAL `/ebus/execute` API-key path and operator gate being configured in production.
+- Explain that write-sync depends on the current DUAL `/ebus/execute` API-key path being configured in production.
 
 ## Post-Demo Follow-Up
 

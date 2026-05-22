@@ -45,14 +45,14 @@ DUAL_WRITE_MODE=event_bus
 DUAL_EVENTBUS_WRITE_PATH=/ebus/execute
 DUAL_BLOCKSCOUT_BASE_URL=...
 DEMO_ENABLE_EMAIL_AUTH=false
-DEMO_OPERATOR_TOKEN=...
+DEMO_PUBLIC_DUAL_WRITES=true
 ```
 
 The runtime also needs `dual-sdk` available. If the package is not installed in the deployment, `/api/dual/status` will report the SDK as unavailable and the app should remain in local mode.
 
 API-key auth is suitable for linking the Vercel deployment to a real DUAL passport object and writing event-bus actions when the key is scoped for event-bus action creation. Use the current testnet host and `/ebus/execute` path. `DUAL_AUTH_MODE=api_key` sends the scoped key as `x-api-key`; `/ebus/execute` no longer needs a DUAL bearer token. Older deployments that still set `DUAL_AUTH_MODE=both` are treated as `api_key`.
 
-Email-code auth is not required for the public demo. Leave `DEMO_ENABLE_EMAIL_AUTH=false` unless you deliberately want a private browser operator fallback; the production route should be scoped API-key auth plus `DEMO_OPERATOR_TOKEN`.
+Email-code auth is not required for the public demo. Leave `DEMO_ENABLE_EMAIL_AUTH=false` unless you deliberately want a private browser fallback. The production route is scoped API-key auth plus public demo writes.
 
 The app exposes DUAL data links in `/api/health`, `/api/dual/status`, `/api/proof`, and the Proof panel. By default these links target explicit app-served record readback routes under `/api/dual/records/...`, avoiding Console detail pages that currently 404. Set `DUAL_CONSOLE_ORG_URL_TEMPLATE`, `DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE`, `DUAL_CONSOLE_OBJECT_URL_TEMPLATE`, or `DUAL_CONSOLE_ACTION_URL_TEMPLATE` only after the Console route has been verified. Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when finalized batch transaction hashes should open directly in Blockscout.
 
@@ -63,12 +63,12 @@ Recommended rollout:
 3. Set `DUAL_AGENT_PASSPORT_OBJECT_ID` in Vercel.
 4. Create the DUAL trade receipt template from `dual-trade-receipt.schema.json`.
 5. Set `DUAL_TRADE_RECEIPT_TEMPLATE_ID` in Vercel.
-6. Set `DEMO_OPERATOR_TOKEN` so public DUAL write endpoints fail closed unless the operator sends the token.
+6. Set `DEMO_PUBLIC_DUAL_WRITES=true` or leave it unset; public demo writes default to enabled when DUAL write readiness is active.
 7. Set `DUAL_WRITE_MODE=event_bus` for scoped API-key deployments.
 8. Set any available Blockscout base/template URL. Leave Console detail-link templates unset unless the exact routes have been verified.
-9. Redeploy and verify `/api/dual/status`, `/api/dual/trade-receipts`, `/api/proof`, `/api/proof/verify`, `/api/openapi.json`, and MCP `initialize` / `tools/list` on `/mcp`.
+9. Redeploy and verify `/api/dual/status`, `/api/dual/write-readiness`, `/api/dual/trade-receipts`, `/api/proof`, `/api/proof/verify`, `/api/openapi.json`, and MCP `initialize` / `tools/list` on `/mcp`.
 
-Without `DEMO_OPERATOR_TOKEN`, production remains read-linked for public requests even if DUAL write credentials are present. This is intentional: anonymous visitors can inspect proof and exercise local demo state, but they cannot replay passport events or mint trade receipts into DUAL. Operators can paste the token into the Proof panel for a session-only browser run; that is the path that creates DUAL action logs. New receipt objects also require `DUAL_TRADE_RECEIPT_TEMPLATE_ID` or a receipt template created from the Proof panel for the current server run.
+With `DEMO_PUBLIC_DUAL_WRITES=true`, production creates DUAL action logs for public paper-trade demo events whenever the server-side scoped API key is write-ready. Set `DEMO_PUBLIC_DUAL_WRITES=false` only for a read-linked rehearsal deployment. New receipt objects also require `DUAL_TRADE_RECEIPT_TEMPLATE_ID` or a receipt template created from the Proof panel for the current server run.
 
 ## API and MCP Checks
 
@@ -77,8 +77,8 @@ The public contract is:
 - HTTP API description: `GET /api/openapi.json`
 - MCP facade: `POST /mcp`
 
-The MCP surface is safe to expose for public demos because its trading tools are paper-only and its standalone DUAL tools are read/replay-queue/receipt inspection only. DUAL replay execution and trade receipt minting still require the existing operator-gated HTTP endpoints and `DEMO_OPERATOR_TOKEN`.
+The MCP surface is safe to expose for public demos because its trading tools are paper-only and its standalone DUAL tools are read/replay-queue/receipt inspection only. When DUAL write readiness is active, MCP paper-trade evidence anchors automatically through the server-side scoped API key.
 
-For MCP clients, operator anchoring is available in-band through `kraken_dual_authenticate_operator` using the same `DEMO_OPERATOR_TOKEN`. Clients that support custom headers can instead send `x-demo-operator-token` or `Authorization: Bearer <DEMO_OPERATOR_TOKEN>`. Without one of those paths, MCP trades execute locally and return top-level anchoring warnings rather than silently implying Console-visible writes.
+No MCP authentication is required for the demo. If DUAL write readiness is unavailable, MCP trades execute locally and return top-level anchoring warnings rather than silently implying Console-visible writes.
 
 For browser-based MCP hosts that send an `Origin` header from a different host, set `DEMO_MCP_ALLOWED_ORIGINS` to the comma-separated allowed origins. Server-side MCP clients normally do not need this because they do not send browser CORS origins.

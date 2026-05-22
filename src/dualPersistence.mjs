@@ -138,7 +138,7 @@ export async function createDualPersistence() {
         authenticatedAt: session?.authenticatedAt || serviceSession?.refreshedAt || null,
         detail: write
           ? "Scoped API-key auth is active for direct DUAL event-bus writes."
-          : "Use DUAL_WRITE_MODE=event_bus with a scoped DUAL_API_KEY. Email-code auth remains available for operator sessions."
+          : "Use DUAL_WRITE_MODE=event_bus with a scoped DUAL_API_KEY. Email-code auth remains available for private browser sessions."
       };
     },
 
@@ -147,7 +147,7 @@ export async function createDualPersistence() {
       const login = makeClient("", "bearer");
       await login.sdk.wallets.requestOtp(normalized);
       pendingEmail = normalized;
-      return { requested: true, email: maskEmail(normalized), detail: "Email code requested. Enter the code to create an operator session." };
+      return { requested: true, email: maskEmail(normalized), detail: "Email code requested. Enter the code to create a private browser session." };
     },
 
     async verifyEmailCode(email, code, options = {}) {
@@ -166,7 +166,7 @@ export async function createDualPersistence() {
       session = { email: normalized, orgId: orgId || null, authenticatedAt: new Date().toISOString(), refreshTokenPresent: Boolean(active.refresh_token) };
       pendingEmail = null;
       options.onSession?.({ token: active.access_token, ...session });
-      return { authenticated: true, writable: Boolean(activeWriteClient()), email: maskEmail(normalized), orgId: session.orgId, authMode: effectiveAuthMode(), writeMode: effectiveWriteMode(), detail: "Operator session authenticated. DUAL event-bus replay is ready if this wallet has action create permission." };
+      return { authenticated: true, writable: Boolean(activeWriteClient()), email: maskEmail(normalized), orgId: session.orgId, authMode: effectiveAuthMode(), writeMode: effectiveWriteMode(), detail: "Private browser session authenticated. DUAL event-bus replay is ready if this wallet has action create permission." };
     },
 
     restoreEmailSession(restored) {

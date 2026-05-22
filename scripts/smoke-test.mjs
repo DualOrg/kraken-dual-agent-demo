@@ -18,12 +18,12 @@ assert(mcpInit.serverInfo.name === "kraken-dual-agent-demo", "MCP initialize ret
 
 const mcpTools = await mcp("tools/list", {});
 const mcpToolNames = mcpTools.tools.map((tool) => tool.name);
-assert(mcpToolNames.includes("kraken_dual_authenticate_operator"), "MCP tools include operator authentication");
+assert(!mcpToolNames.some((name) => name.includes("authenticate")), "MCP tools do not require token authentication");
 assert(mcpToolNames.includes("kraken_dual_get_market"), "MCP tools include market lookup");
 assert(mcpToolNames.includes("kraken_dual_propose_and_execute_paper_trade"), "MCP tools include paper trade execution");
 assert(mcpToolNames.includes("kraken_dual_get_trade_receipts"), "MCP tools include trade receipt readback");
 const mcpTradeTool = mcpTools.tools.find((tool) => tool.name === "kraken_dual_propose_and_execute_paper_trade");
-assert(mcpTradeTool?.["x-dual"]?.requiresOperatorAuthForAnchoring === true, "MCP trade tool annotates DUAL anchoring auth");
+assert(mcpTradeTool?.["x-dual"]?.requiresWriteReadinessForAnchoring === true, "MCP trade tool annotates DUAL write-readiness dependency");
 
 const dualStatus = await get("/api/dual/status");
 assert(dualStatus.available, "DUAL persistence adapter is available");
@@ -39,7 +39,7 @@ assert(!JSON.stringify(writeReadiness).includes("bearer/session"), "write readin
 const dualAuthStatus = await get("/api/dual/auth/status");
 assert(typeof dualAuthStatus.authenticated === "boolean", "DUAL auth status reports session state");
 assert(dualAuthStatus.emailCodeRequired === false, "DUAL email-code auth is optional");
-assert(typeof dualAuthStatus.writeGate?.allowed === "boolean", "DUAL auth status exposes operator write gate");
+assert(typeof dualAuthStatus.writeGate?.allowed === "boolean", "DUAL auth status exposes demo write gate");
 
 await post("/api/reset", {});
 

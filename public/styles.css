@@ -446,23 +446,6 @@ select {
   margin-bottom: 10px;
 }
 
-.operator-grid {
-  align-items: end;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(220px, 1fr) auto auto minmax(180px, 0.7fr);
-  margin-bottom: 10px;
-  padding: 10px;
-}
-
-.operator-grid span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
 .auth-message {
   color: var(--muted);
   font-size: 12px;
@@ -631,10 +614,6 @@ select {
   }
 
   .auth-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .operator-grid {
     grid-template-columns: 1fr;
   }
 

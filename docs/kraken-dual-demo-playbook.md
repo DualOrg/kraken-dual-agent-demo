@@ -220,12 +220,12 @@ Call out these rows:
 - `Kraken market`: market source is Kraken public API.
 - `Paper execution`: execution is simulated paper trading.
 - `DUAL mode`: currently `read-linked`.
-- `Write readiness`: ready when `DUAL_WRITE_MODE=event_bus` and write auth is configured.
-- `Write gate`: operator-authorized only after the demo operator token has been applied for the current browser tab.
+- `Write readiness`: ready when `canWriteNow=true`; the flattened reason explains whether the blocker is DUAL write config or operator authorization.
+- `Write gate`: operator-authorized only after the demo operator token has been applied for the current browser tab, supplied as a supported header, or accepted through `kraken_dual_authenticate_operator` for the current MCP session.
 - `Mandate source`: DUAL template.
 - `DUAL object`: passport object used by the demo.
 - DUAL data links: open explicit DUAL record readback for the passport template, passport object, latest batch, latest affected actions, receipt template/object when present, and a Blockscout transaction when a finalized batch hash is available. Console detail links are opt-in because the current Console entity routes can 404.
-- Public browser trades are local paper trades. For Console-visible action logs, apply the operator token in the Proof panel before the trade. For Console-visible receipt objects, configure or create the DUAL trade receipt template before minting receipts.
+- Public browser or unauthenticated MCP trades are local paper trades. For Console-visible action logs, apply the operator token before the trade. For Console-visible receipt objects, configure or create the DUAL trade receipt template before minting receipts.
 - `Policy version` and `Policy hash`: stable policy identity.
 - `DUAL batch` and `Batch proof`: DUAL batch evidence is present.
 - `Verifier`: all checks pass.
@@ -340,6 +340,8 @@ Pending write path:
 Important distinction:
 
 > Current DUAL testnet writes use `/ebus/execute` with scoped API-key auth via `x-api-key`. The demo operator gate is separate and prevents anonymous public writes.
+
+For MCP demos, authenticate the session with `kraken_dual_authenticate_operator` before running trade tools that must anchor to DUAL. If the session is unauthenticated, trade tool responses include top-level warnings and the trade receipt stays local-only.
 
 Detailed read/write map:
 

@@ -46,18 +46,42 @@ const mcpServerInfo = {
   name: "kraken-dual-agent-demo",
   version: appVersion
 };
+const mcpOperatorSessions = new Map();
+const mcpOperatorSessionTtlMs = 60 * 60 * 1000;
 const tradePairSchema = { type: "string", enum: supportedPairs, default: "DUALUSD" };
 const tradeSideSchema = { type: "string", enum: ["buy", "sell"], default: "buy" };
 const tradeNotionalSchema = { type: "number", minimum: 1, default: 75 };
 const proposalIdSchema = { type: "string", pattern: "^prop-" };
 const mcpTools = [
+  mcpTool("kraken_dual_authenticate_operator", "Authenticate this MCP session for operator-gated DUAL anchoring. The token is validated in-band and never returned.", {
+    type: "object",
+    additionalProperties: false,
+    required: ["operator_token"],
+    properties: {
+      operator_token: { type: "string", minLength: 12, description: "Value of DEMO_OPERATOR_TOKEN. Do not paste into normal chat logs." }
+    }
+  }, {
+    annotations: {
+      title: "Authenticate operator",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    "x-dual": {
+      acceptsSensitiveToken: true,
+      establishesOperatorSession: true,
+      authHeaderAlternative: "Authorization: Bearer <DEMO_OPERATOR_TOKEN>"
+    }
+  }),
   mcpTool("kraken_dual_get_status", "Read demo health, paper trading mode, DUAL readiness, proof status, and latest audit summary.", {
     type: "object",
     additionalProperties: false,
     properties: {
-      include_proof: { type: "boolean", default: true }
+      include_proof: { type: "boolean", default: true },
+      compact: { type: "boolean", default: false }
     }
-  }),
+  }, { annotations: { readOnlyHint: true }, "x-dual": { requiresOperatorAuth: false } }),
   mcpTool("kraken_dual_get_market", "Read a Kraken market snapshot for an allowed paper-trading pair without placing an order.", {
     type: "object",
     additionalProperties: false,
@@ -65,8 +89,8 @@ const mcpTools = [
     properties: {
       pair: tradePairSchema
     }
-  }),
-  mcpTool("kraken_dual_propose_trade", "Create a DUAL policy-checked paper trade proposal. This does not execute a trade.", {
+  }, { annotations: { readOnlyHint: true }, "x-dual": { requiresOperatorAuth: false } }),
+  mcpTool("kraken_dual_propose_trade", "Create a DUAL policy-checked paper trade proposal. Without operator auth this records local audit only; with operator auth it also anchors to DUAL.", {
     type: "object",
     additionalProperties: false,
     required: ["pair", "side", "notional_usd"],
@@ -76,24 +100,24 @@ const mcpTools = [
       notional_usd: tradeNotionalSchema,
       approved: { type: "boolean", default: false }
     }
-  }),
-  mcpTool("kraken_dual_approve_trade", "Record human approval for a waiting paper trade proposal.", {
+  }, { annotations: { readOnlyHint: false, destructiveHint: false }, "x-dual": { requiresOperatorAuthForAnchoring: true, localOnlyWithoutAuth: true } }),
+  mcpTool("kraken_dual_approve_trade", "Record human approval for a waiting paper trade proposal. Without operator auth this approval is local-only.", {
     type: "object",
     additionalProperties: false,
     required: ["proposal_id"],
     properties: {
       proposal_id: proposalIdSchema
     }
-  }),
-  mcpTool("kraken_dual_execute_paper_trade", "Execute an existing approved proposal through the safe Kraken paper/simulator path.", {
+  }, { annotations: { readOnlyHint: false, destructiveHint: false }, "x-dual": { requiresOperatorAuthForAnchoring: true, localOnlyWithoutAuth: true } }),
+  mcpTool("kraken_dual_execute_paper_trade", "Execute an existing approved proposal through the safe Kraken paper/simulator path. Without operator auth the trade receipt is local-only.", {
     type: "object",
     additionalProperties: false,
     required: ["proposal_id"],
     properties: {
       proposal_id: proposalIdSchema
     }
-  }),
-  mcpTool("kraken_dual_propose_and_execute_paper_trade", "Create and execute a DUAL-approved paper trade in one call when policy allows it.", {
+  }, { annotations: { readOnlyHint: false, destructiveHint: false }, "x-dual": { requiresOperatorAuthForAnchoring: true, localOnlyWithoutAuth: true } }),
+  mcpTool("kraken_dual_propose_and_execute_paper_trade", "Create and execute a DUAL-approved paper trade in one call when policy allows it. Without operator auth this is local-only and returns anchoring warnings.", {
     type: "object",
     additionalProperties: false,
     required: ["pair", "side", "notional_usd"],
@@ -102,42 +126,42 @@ const mcpTools = [
       side: tradeSideSchema,
       notional_usd: tradeNotionalSchema
     }
-  }),
+  }, { annotations: { readOnlyHint: false, destructiveHint: false }, "x-dual": { requiresOperatorAuthForAnchoring: true, localOnlyWithoutAuth: true } }),
   mcpTool("kraken_dual_get_proof", "Read the portable DUAL x Kraken proof bundle.", {
     type: "object",
     additionalProperties: false,
     properties: {}
-  }),
+  }, { annotations: { readOnlyHint: true }, "x-dual": { requiresOperatorAuth: false } }),
   mcpTool("kraken_dual_verify_proof", "Verify the current proof bundle and return validity, completeness, hashes, and checks.", {
     type: "object",
     additionalProperties: false,
     properties: {}
-  }),
+  }, { annotations: { readOnlyHint: true }, "x-dual": { requiresOperatorAuth: false } }),
   mcpTool("kraken_dual_get_audit", "Read the latest local audit events and provenance hashes.", {
     type: "object",
     additionalProperties: false,
     properties: {
       limit: { type: "integer", minimum: 1, maximum: 50, default: 10 }
     }
-  }),
+  }, { annotations: { readOnlyHint: true }, "x-dual": { requiresOperatorAuth: false } }),
   mcpTool("kraken_dual_get_replay_queue", "Read the DUAL event-bus replay queue. Public MCP does not execute replay writes.", {
     type: "object",
     additionalProperties: false,
     properties: {}
-  }),
+  }, { annotations: { readOnlyHint: true }, "x-dual": { requiresOperatorAuth: false, writeExecutionExposed: false } }),
   mcpTool("kraken_dual_get_trade_receipts", "Read per-trade DUAL receipt status for executed paper trades. Public MCP does not mint receipts.", {
     type: "object",
     additionalProperties: false,
     properties: {}
-  }),
-  mcpTool("kraken_dual_red_team", "Run a safe policy-violation scenario to prove unsafe trades are blocked before execution.", {
+  }, { annotations: { readOnlyHint: true }, "x-dual": { requiresOperatorAuth: false, writeExecutionExposed: false } }),
+  mcpTool("kraken_dual_red_team", "Red-team an existing or hypothetical paper trade proposal and prove unsafe requests are blocked before execution. Use proactively before approving edge-case trades.", {
     type: "object",
     additionalProperties: false,
     required: ["scenario"],
     properties: {
       scenario: { type: "string", enum: ["oversized", "blocked_pair", "leverage", "missing_approval"], default: "leverage" }
     }
-  })
+  }, { annotations: { readOnlyHint: false, destructiveHint: false }, "x-dual": { requiresOperatorAuthForAnchoring: true, localOnlyWithoutAuth: true, proactiveUse: "Call before approving edge-case or high-risk trade requests." } })
 ];
 const mcpResources = [
   mcpResource("kraken-dual://status", "Kraken DUAL status", "Health, policy, proof, and paper-execution status."),
@@ -739,6 +763,8 @@ async function proposeAndExecutePaperTrade(req, args) {
       status: proposed.proposal.policy.decision === "needs_approval" ? "requires_approval" : "blocked",
       proposal: proposed.proposal,
       market: proposed.market,
+      writeState: publicWriteReadiness(req),
+      warnings: agentWarnings(req, proposed.state),
       summary: summarizeStateForAgent(proposed.state)
     };
   }
@@ -749,6 +775,8 @@ async function proposeAndExecutePaperTrade(req, args) {
     proposal: executed.proposal,
     result: executed.result,
     tradeReceipt: executed.tradeReceipt,
+    writeState: publicWriteReadiness(req),
+    warnings: agentWarnings(req, executed.state),
     summary: summarizeStateForAgent(executed.state)
   };
 }
@@ -794,6 +822,41 @@ function verifyProofBundle(proof) {
 
 async function buildAgentStatus(req, args = {}) {
   const [state, adapter] = await Promise.all([loadState(), getAdapterStatus()]);
+  const writeReadiness = publicWriteReadiness(req);
+  const warnings = agentWarnings(req, state);
+  if (args.compact === true) {
+    const proof = args.include_proof === false ? null : await buildProofVerification(req);
+    return {
+      ok: true,
+      compact: true,
+      app: mcpServerInfo.name,
+      version: appVersion,
+      mcp: `${requestOrigin(req)}/mcp`,
+      mode: state.passport.mode,
+      passportState: state.passport.dualObjectState || state.passport.state,
+      allowedPairs: state.passport.allowedPairs,
+      dailyNotionalUsed: state.passport.dailyNotionalUsed,
+      krakenMarketData: adapter.source,
+      paperExecutionPath: adapter.krakenCliAvailable ? "kraken-cli-paper" : "simulator",
+      canWriteNow: writeReadiness.canWriteNow,
+      writeReason: writeReadiness.reason,
+      writeDetail: writeReadiness.detail,
+      operatorAuthorized: writeReadiness.writeGate?.allowed === true,
+      dualMode: writeReadiness.mode,
+      dualObjectId: publicDualStatus(req).objectId || null,
+      tradeReceiptTemplateId: publicDualStatus(req).tradeReceiptTemplateId || null,
+      proposals: (state.proposals || []).length,
+      tradeReceipts: (state.tradeReceipts || []).length,
+      auditEvents: (state.audit || []).length,
+      warnings,
+      proof: proof ? {
+        ok: proof.ok,
+        complete: proof.complete,
+        status: proof.status,
+        proofHash: proof.proofHash
+      } : null
+    };
+  }
   const status = {
     ok: true,
     app: {
@@ -805,13 +868,77 @@ async function buildAgentStatus(req, args = {}) {
     safety: safetySummary(),
     adapter,
     dual: publicDualStatus(req),
-    writeReadiness: publicWriteReadiness(req),
+    writeReadiness,
+    warnings,
     summary: summarizeStateForAgent(state)
   };
   if (args.include_proof !== false) {
     status.proof = await buildProofVerification(req);
   }
   return status;
+}
+
+function authenticateMcpOperator(req, args = {}) {
+  if (!operatorToken) {
+    throw Object.assign(new Error("Operator token gate is not configured on this deployment."), {
+      status: 403,
+      code: "operator_gate_not_configured"
+    });
+  }
+  const supplied = String(args.operator_token || args.token || "");
+  if (!timingSafeEqualText(supplied, operatorToken)) {
+    throw Object.assign(new Error("Operator token was not accepted."), {
+      status: 403,
+      code: "operator_authorization_failed"
+    });
+  }
+  const sessionId = mcpSessionId(req);
+  const expiresAt = Date.now() + mcpOperatorSessionTtlMs;
+  cleanupMcpOperatorSessions();
+  mcpOperatorSessions.set(sessionId, { expiresAt });
+  return {
+    ok: true,
+    authenticated: true,
+    sessionId,
+    expiresAt: new Date(expiresAt).toISOString(),
+    writeState: publicWriteReadiness(req),
+    detail: "This MCP session is operator-authorized for DUAL anchoring while the server instance remains warm and the session is unexpired. The token is not returned or stored in logs."
+  };
+}
+
+function agentWarnings(req, state = {}) {
+  const warnings = [];
+  const writeState = publicWriteReadiness(req);
+  const replayQueue = state.passport ? publicReplayQueue(req, state.passport, state.audit || []) : null;
+  const receiptQueue = publicTradeReceiptQueue(req, state.tradeReceipts || []);
+
+  if (!writeState.canWriteNow) {
+    warnings.push({
+      code: "dual_anchoring_not_available",
+      severity: "warning",
+      message: "This MCP operation can run locally, but new DUAL action logs and receipt objects will not be created until operator auth is active.",
+      reason: writeState.reason
+    });
+  }
+  if (replayQueue?.pendingCount > 0) {
+    warnings.push({
+      code: "dual_replay_pending",
+      severity: "warning",
+      message: `${replayQueue.pendingCount}/${replayQueue.eventCount} DUAL event-bus envelopes are pending replay.`,
+      pendingCount: replayQueue.pendingCount,
+      eventCount: replayQueue.eventCount
+    });
+  }
+  if (receiptQueue.pendingCount > 0) {
+    warnings.push({
+      code: "dual_receipts_pending",
+      severity: "warning",
+      message: `${receiptQueue.pendingCount}/${receiptQueue.receiptCount} trade receipts are local-only until DUAL receipt minting runs.`,
+      pendingCount: receiptQueue.pendingCount,
+      receiptCount: receiptQueue.receiptCount
+    });
+  }
+  return warnings;
 }
 
 function summarizeStateForAgent(state, limit = 5) {
@@ -920,7 +1047,15 @@ async function handleMcpMethod(req, method, params) {
         prompts: {}
       },
       serverInfo: mcpServerInfo,
-      instructions: "Use the Kraken DUAL tools for paper trades only. DUAL governs approvals and audit proof; public MCP does not expose real Kraken orders or DUAL replay writes."
+      auth: {
+        type: "operator_token",
+        required: false,
+        authenticateTool: "kraken_dual_authenticate_operator",
+        headerAlternatives: ["x-demo-operator-token", "Authorization: Bearer <DEMO_OPERATOR_TOKEN>"],
+        scope: "dual_anchor",
+        detail: "Unauthenticated MCP calls are allowed but DUAL anchoring is local-only. Authenticate the MCP session before proposals/executions that must create DUAL action logs or receipt objects."
+      },
+      instructions: "Use the Kraken DUAL tools for paper trades only. DUAL governs approvals and audit proof; public MCP does not expose real Kraken orders or DUAL replay writes. Authenticate with kraken_dual_authenticate_operator when DUAL anchoring is required."
     };
   }
   if (method === "tools/list") return { tools: mcpTools };
@@ -952,6 +1087,8 @@ async function handleMcpMethod(req, method, params) {
 
 async function callMcpTool(req, name, args) {
   switch (name) {
+    case "kraken_dual_authenticate_operator":
+      return authenticateMcpOperator(req, args);
     case "kraken_dual_get_status":
       return buildAgentStatus(req, args);
     case "kraken_dual_get_market": {
@@ -965,6 +1102,8 @@ async function callMcpTool(req, name, args) {
         status: result.proposal.state,
         proposal: result.proposal,
         market: result.market,
+        writeState: publicWriteReadiness(req),
+        warnings: agentWarnings(req, result.state),
         summary: summarizeStateForAgent(result.state)
       };
     }
@@ -974,6 +1113,8 @@ async function callMcpTool(req, name, args) {
         ok: true,
         status: result.proposal.state,
         proposal: result.proposal,
+        writeState: publicWriteReadiness(req),
+        warnings: agentWarnings(req, result.state),
         summary: summarizeStateForAgent(result.state)
       };
     }
@@ -987,6 +1128,8 @@ async function callMcpTool(req, name, args) {
         policy: result.policy || result.proposal.policy,
         result: result.result || null,
         tradeReceipt: result.tradeReceipt || null,
+        writeState: publicWriteReadiness(req),
+        warnings: agentWarnings(req, result.state),
         summary: summarizeStateForAgent(result.state)
       };
     }
@@ -1014,6 +1157,8 @@ async function callMcpTool(req, name, args) {
         trade: result.trade,
         policy: result.policy,
         event: result.event,
+        writeState: publicWriteReadiness(req),
+        warnings: agentWarnings(req, result.state),
         summary: summarizeStateForAgent(result.state)
       };
     }
@@ -1086,8 +1231,8 @@ async function readAuditForAgent(args = {}) {
   };
 }
 
-function mcpTool(name, description, inputSchema) {
-  return { name, description, inputSchema };
+function mcpTool(name, description, inputSchema, options = {}) {
+  return { name, description, inputSchema, ...options };
 }
 
 function mcpResource(uri, name, description) {
@@ -1453,7 +1598,18 @@ function buildOpenApiDocument(req) {
       protocolVersion: mcpProtocolVersion,
       serverInfo: mcpServerInfo,
       tools: mcpTools.map((tool) => tool.name),
-      resources: mcpResources.map((resource) => resource.uri)
+      toolMetadata: mcpTools.map((tool) => ({
+        name: tool.name,
+        annotations: tool.annotations || {},
+        dual: tool["x-dual"] || {}
+      })),
+      resources: mcpResources.map((resource) => resource.uri),
+      auth: {
+        required: false,
+        authenticateTool: "kraken_dual_authenticate_operator",
+        headerAlternatives: ["x-demo-operator-token", "Authorization: Bearer <DEMO_OPERATOR_TOKEN>"],
+        scope: "dual_anchor"
+      }
     },
     "x-safety": safetySummary()
   };
@@ -1718,8 +1874,9 @@ function describePolicy(trade, policy) {
 function publicDualStatus(req) {
   const status = dualPersistence.status();
   const gate = dualWriteGate(req);
+  const writeState = writeAvailability(req, dualPersistence.writeReadiness(), gate);
   if (!status.writable || gate.allowed) {
-    const visibleStatus = { ...status, writeGate: gate };
+    const visibleStatus = { ...status, writeGate: gate, ...writeState };
     return { ...visibleStatus, links: buildDualDataLinks({ dualStatus: visibleStatus }) };
   }
   const visibleStatus = {
@@ -1727,6 +1884,7 @@ function publicDualStatus(req) {
     serverWritable: true,
     writable: false,
     writeGate: gate,
+    ...writeState,
     detail: gate.configured
       ? "DUAL is read-linked for this request. Server-side writes require operator authorization."
       : "DUAL is read-linked. Server-side writes are disabled until DEMO_OPERATOR_TOKEN is configured."
@@ -1784,17 +1942,43 @@ function publicFeatureStatus() {
 function publicWriteReadiness(req) {
   const readiness = dualPersistence.writeReadiness();
   const gate = dualWriteGate(req);
+  const writeState = writeAvailability(req, readiness, gate);
   if (!readiness.ready || gate.allowed) {
-    return { ...readiness, writeGate: gate };
+    return { ...readiness, writeGate: gate, ...writeState };
   }
   return {
     ...readiness,
     ready: false,
     writeGate: gate,
+    ...writeState,
     missing: [...new Set([...(readiness.missing || []), "operator authorization"])],
     detail: gate.configured
       ? "DUAL write sync is available only for authenticated operator requests."
       : "DUAL write sync is disabled for public requests until DEMO_OPERATOR_TOKEN is configured."
+  };
+}
+
+function writeAvailability(req, readiness = dualPersistence.writeReadiness(), gate = dualWriteGate(req)) {
+  const persistenceReady = Boolean(readiness.ready);
+  const canWriteNow = Boolean(persistenceReady && gate.allowed);
+  const reason = canWriteNow
+    ? "operator_authorized"
+    : !persistenceReady
+      ? "dual_write_not_ready"
+      : gate.configured
+        ? "operator_authorization_required"
+        : "operator_gate_not_configured";
+  return {
+    canWriteNow,
+    reason,
+    persistenceReady,
+    serverWritable: persistenceReady,
+    operatorAuthorized: gate.allowed,
+    detail: canWriteNow
+      ? "DUAL writes are ready for this request."
+      : !persistenceReady
+        ? readiness.detail
+        : "DUAL writes are configured server-side, but this request is missing operator authorization."
   };
 }
 
@@ -2192,7 +2376,7 @@ function dualWriteGate(req) {
     detail: publicDualWrites
       ? "Public DUAL writes are explicitly enabled."
       : operatorToken
-        ? "Send x-demo-operator-token or Authorization: Bearer <DEMO_OPERATOR_TOKEN> for this demo's operator gate."
+        ? "Send x-demo-operator-token, Authorization: Bearer <DEMO_OPERATOR_TOKEN>, or use kraken_dual_authenticate_operator for MCP sessions."
         : "Set DEMO_OPERATOR_TOKEN to enable authenticated DUAL write endpoints."
   };
 }
@@ -2211,7 +2395,23 @@ function operatorAuthorized(req) {
   const headerToken = String(req.headers["x-demo-operator-token"] || "");
   const auth = String(req.headers.authorization || "");
   const bearerToken = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
-  return timingSafeEqualText(headerToken, operatorToken) || timingSafeEqualText(bearerToken, operatorToken);
+  return timingSafeEqualText(headerToken, operatorToken)
+    || timingSafeEqualText(bearerToken, operatorToken)
+    || mcpOperatorSessionAuthorized(req);
+}
+
+function mcpOperatorSessionAuthorized(req) {
+  if (!String(req.url || "").startsWith("/mcp")) return false;
+  cleanupMcpOperatorSessions();
+  const session = mcpOperatorSessions.get(mcpSessionId(req));
+  return Boolean(session && session.expiresAt > Date.now());
+}
+
+function cleanupMcpOperatorSessions() {
+  const now = Date.now();
+  for (const [sessionId, session] of mcpOperatorSessions.entries()) {
+    if (!session?.expiresAt || session.expiresAt <= now) mcpOperatorSessions.delete(sessionId);
+  }
 }
 
 function timingSafeEqualText(left, right) {

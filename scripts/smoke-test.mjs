@@ -18,9 +18,12 @@ assert(mcpInit.serverInfo.name === "kraken-dual-agent-demo", "MCP initialize ret
 
 const mcpTools = await mcp("tools/list", {});
 const mcpToolNames = mcpTools.tools.map((tool) => tool.name);
+assert(mcpToolNames.includes("kraken_dual_authenticate_operator"), "MCP tools include operator authentication");
 assert(mcpToolNames.includes("kraken_dual_get_market"), "MCP tools include market lookup");
 assert(mcpToolNames.includes("kraken_dual_propose_and_execute_paper_trade"), "MCP tools include paper trade execution");
 assert(mcpToolNames.includes("kraken_dual_get_trade_receipts"), "MCP tools include trade receipt readback");
+const mcpTradeTool = mcpTools.tools.find((tool) => tool.name === "kraken_dual_propose_and_execute_paper_trade");
+assert(mcpTradeTool?.["x-dual"]?.requiresOperatorAuthForAnchoring === true, "MCP trade tool annotates DUAL anchoring auth");
 
 const dualStatus = await get("/api/dual/status");
 assert(dualStatus.available, "DUAL persistence adapter is available");
@@ -28,6 +31,8 @@ assert(Array.isArray(dualStatus.links), "DUAL status exposes Console/Explorer li
 
 const writeReadiness = await get("/api/dual/write-readiness");
 assert(typeof writeReadiness.ready === "boolean", "write readiness reports a boolean ready state");
+assert(typeof writeReadiness.canWriteNow === "boolean", "write readiness exposes a flattened canWriteNow state");
+assert(writeReadiness.reason, "write readiness exposes a reason");
 assert(writeReadiness.requiredAuthMode === "api_key", "event-bus writes require API-key auth");
 assert(!JSON.stringify(writeReadiness).includes("bearer/session"), "write readiness does not require bearer/session auth");
 
@@ -157,7 +162,19 @@ const mcpTrade = mcpJson(await mcp("tools/call", {
 assert(mcpTrade.status === "executed", "MCP paper trade tool executes allowed DUALUSD trade");
 assert(mcpTrade.proposal.trade.pair === "DUALUSD", "MCP trade uses DUALUSD pair");
 assert(mcpTrade.result.digest, "MCP paper trade returns execution digest");
+assert(mcpTrade.result.executionPath, "MCP paper trade returns execution path");
+assert(!Object.hasOwn(mcpTrade.result, "fallbackReason"), "MCP paper trade does not expose simulator path as fallback error");
 assert(mcpTrade.tradeReceipt?.id?.startsWith("tr-"), "MCP paper trade returns a trade receipt");
+assert(Array.isArray(mcpTrade.warnings), "MCP trade returns top-level warnings");
+assert(mcpTrade.warnings.some((warning) => warning.code === "dual_anchoring_not_available"), "MCP trade warns when DUAL anchoring is not available");
+
+const mcpCompactStatus = mcpJson(await mcp("tools/call", {
+  name: "kraken_dual_get_status",
+  arguments: { compact: true, include_proof: false }
+}));
+assert(mcpCompactStatus.compact === true, "MCP compact status returns compact flag");
+assert(typeof mcpCompactStatus.canWriteNow === "boolean", "MCP compact status flattens write state");
+assert(Array.isArray(mcpCompactStatus.warnings), "MCP compact status includes warnings");
 
 const mcpTradeReceipts = mcpJson(await mcp("tools/call", {
   name: "kraken_dual_get_trade_receipts",

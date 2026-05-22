@@ -39,6 +39,8 @@ export async function executePaperTrade(trade) {
     return {
       mode: "paper",
       source: CLI_SOURCE,
+      executionPath: "kraken-cli-paper",
+      degradation: null,
       command: `kraken ${args.join(" ")}`,
       initialized: init.ok,
       orderId: extractOrderId(result.json),
@@ -215,6 +217,8 @@ function simulatedPaperTrade(trade, error = null) {
   const payload = {
     mode: "paper",
     source: SIM_SOURCE,
+    executionPath: "simulator",
+    degradation: error?.code && error.code !== "ENOENT" ? error.message : null,
     pair: trade.pair,
     side: trade.side,
     quantity: Number(trade.quantity),
@@ -222,8 +226,7 @@ function simulatedPaperTrade(trade, error = null) {
     notional: round(Number(trade.quantity) * Number(trade.price)),
     fee: round(Number(trade.quantity) * Number(trade.price) * 0.0026),
     orderId: `paper-${crypto.randomUUID().slice(0, 8)}`,
-    timestamp: new Date().toISOString(),
-    fallbackReason: error?.message || "Kraken CLI unavailable."
+    timestamp: new Date().toISOString()
   };
 
   return {

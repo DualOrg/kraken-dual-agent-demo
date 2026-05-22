@@ -77,6 +77,8 @@ The public contract is:
 - HTTP API description: `GET /api/openapi.json`
 - MCP facade: `POST /mcp`
 
-The MCP surface is safe to expose for public demos because its trading tools are paper-only and its DUAL tools are read/replay-queue/receipt inspection only. DUAL replay execution and trade receipt minting still require the existing operator-gated HTTP endpoints and `DEMO_OPERATOR_TOKEN`.
+The MCP surface is safe to expose for public demos because its trading tools are paper-only and its standalone DUAL tools are read/replay-queue/receipt inspection only. DUAL replay execution and trade receipt minting still require the existing operator-gated HTTP endpoints and `DEMO_OPERATOR_TOKEN`.
+
+For MCP clients, operator anchoring is available in-band through `kraken_dual_authenticate_operator` using the same `DEMO_OPERATOR_TOKEN`. Clients that support custom headers can instead send `x-demo-operator-token` or `Authorization: Bearer <DEMO_OPERATOR_TOKEN>`. Without one of those paths, MCP trades execute locally and return top-level anchoring warnings rather than silently implying Console-visible writes.
 
 For browser-based MCP hosts that send an `Origin` header from a different host, set `DEMO_MCP_ALLOWED_ORIGINS` to the comma-separated allowed origins. Server-side MCP clients normally do not need this because they do not send browser CORS origins.

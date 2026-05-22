@@ -128,6 +128,7 @@ The proof bundle surfaces latest batch id, status, proof value, Merkle root, and
 
 `POST /mcp` is a JSON-RPC MCP facade for agent clients. It exposes paper-only tools:
 
+- `kraken_dual_authenticate_operator`
 - `kraken_dual_get_status`
 - `kraken_dual_get_market`
 - `kraken_dual_propose_trade`
@@ -141,7 +142,14 @@ The proof bundle surfaces latest batch id, status, proof value, Merkle root, and
 - `kraken_dual_get_trade_receipts`
 - `kraken_dual_red_team`
 
-The MCP tools support `DUALUSD` alongside `BTCUSD`, `ETHUSD`, and `SOLUSD`. Trading tools only create or execute paper proposals through the same DUAL policy checks as the UI. Public MCP intentionally does not expose live Kraken order placement or DUAL replay execution.
+The MCP tools support `DUALUSD` alongside `BTCUSD`, `ETHUSD`, and `SOLUSD`. Trading tools only create or execute paper proposals through the same DUAL policy checks as the UI. Public MCP intentionally does not expose live Kraken order placement or standalone DUAL replay execution.
+
+Operator-gated DUAL anchoring can be enabled for an MCP session in two ways:
+
+- call `kraken_dual_authenticate_operator` with `operator_token` set to `DEMO_OPERATOR_TOKEN`
+- send `x-demo-operator-token` or `Authorization: Bearer <DEMO_OPERATOR_TOKEN>` from an MCP client that supports custom headers
+
+Unauthenticated MCP calls still work, but paper trades are local-only and return top-level `warnings` such as `dual_anchoring_not_available`, `dual_replay_pending`, or `dual_receipts_pending`. `kraken_dual_get_status` accepts `compact: true` for a flat agent-friendly status with `canWriteNow` and `writeReason`. Tool metadata also includes `x-dual.requiresOperatorAuthForAnchoring` so clients can prompt before a call that must create DUAL evidence.
 
 ## DUAL Object Model
 

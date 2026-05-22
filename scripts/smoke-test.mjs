@@ -4,6 +4,8 @@ const health = await get("/api/health");
 assert(health.ok, "health endpoint returns ok");
 assert(["local", "dual"].includes(health.dual.mode), "DUAL persistence reports a known mode");
 assert(health.app.mcp === "/mcp", "health advertises MCP endpoint");
+assert(health.features.emailCodeRequired === false, "email-code auth is not required for demo writes");
+assert(Array.isArray(health.dual.links), "health exposes DUAL data links");
 
 const openapi = await get("/api/openapi.json");
 assert(openapi.openapi === "3.1.0", "OpenAPI endpoint returns a 3.1 document");
@@ -22,6 +24,7 @@ assert(mcpToolNames.includes("kraken_dual_get_trade_receipts"), "MCP tools inclu
 
 const dualStatus = await get("/api/dual/status");
 assert(dualStatus.available, "DUAL persistence adapter is available");
+assert(Array.isArray(dualStatus.links), "DUAL status exposes Console/Explorer links");
 
 const writeReadiness = await get("/api/dual/write-readiness");
 assert(typeof writeReadiness.ready === "boolean", "write readiness reports a boolean ready state");
@@ -30,6 +33,7 @@ assert(!JSON.stringify(writeReadiness).includes("bearer/session"), "write readin
 
 const dualAuthStatus = await get("/api/dual/auth/status");
 assert(typeof dualAuthStatus.authenticated === "boolean", "DUAL auth status reports session state");
+assert(dualAuthStatus.emailCodeRequired === false, "DUAL email-code auth is optional");
 
 await post("/api/reset", {});
 
@@ -57,6 +61,8 @@ assert(typeof proof.tradeReceipts.pendingCount === "number", "proof includes pen
 assert(proof.policy.hash, "proof includes policy hash");
 assert(proof.dualBatch && typeof proof.dualBatch.available === "boolean", "proof includes DUAL batch status");
 assert(Array.isArray(proof.verification), "proof includes verification checks");
+assert(Array.isArray(proof.links), "proof includes DUAL data links");
+assert(proof.links.some((link) => link.source === "console"), "proof includes a DUAL Console link");
 
 const proofVerify = await get("/api/proof/verify");
 assert(typeof proofVerify.ok === "boolean", "proof verifier returns an ok flag");

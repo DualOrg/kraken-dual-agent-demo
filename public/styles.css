@@ -434,6 +434,10 @@ select {
   gap: 8px 18px;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .auth-grid {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto minmax(140px, 0.5fr) auto;
@@ -446,6 +450,51 @@ select {
   color: var(--muted);
   font-size: 12px;
   margin-bottom: 10px;
+}
+
+.dual-links {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.dual-link,
+.link-empty {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 58px;
+  padding: 10px 12px;
+}
+
+.dual-link {
+  background: rgba(21, 157, 184, 0.1);
+  color: var(--text);
+  display: grid;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.dual-link:hover {
+  border-color: rgba(157, 249, 110, 0.46);
+  transform: translateY(-1px);
+}
+
+.dual-link.explorer {
+  background: rgba(157, 249, 110, 0.08);
+}
+
+.dual-link span,
+.link-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dual-link strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
 }
 
 .proof-row {
@@ -544,6 +593,10 @@ select {
   }
 
   .proof-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dual-links {
     grid-template-columns: 1fr;
   }
 

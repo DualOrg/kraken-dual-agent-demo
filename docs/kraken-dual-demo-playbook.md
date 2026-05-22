@@ -223,6 +223,7 @@ Call out these rows:
 - `Write readiness`: ready when `DUAL_WRITE_MODE=event_bus` and write auth is configured.
 - `Mandate source`: DUAL template.
 - `DUAL object`: passport object used by the demo.
+- DUAL data links: open the configured Console org views for templates, objects, and action logs. If a Blockscout transaction URL is configured and a finalized batch hash is present, the proof panel also links to the explorer.
 - `Policy version` and `Policy hash`: stable policy identity.
 - `DUAL batch` and `Batch proof`: DUAL batch evidence is present.
 - `Verifier`: all checks pass.
@@ -242,6 +243,7 @@ Proof interpretation:
 | Write auth | Makes the API-key and operator authorization dependency explicit. |
 | Mandate source | Ties the agent to a DUAL template. |
 | DUAL object | Ties the app to a specific agent passport object. |
+| DUAL links | Lets the presenter leave the app and inspect the underlying DUAL Console or Blockscout data. |
 | Policy hash | Makes the current mandate fingerprintable. |
 | DUAL batch | Shows DUAL batch evidence is being read. |
 | Batch proof | Shows the DUAL-side proof state visible to the app. |
@@ -250,6 +252,8 @@ Proof interpretation:
 If challenged on whether this is "really DUAL":
 
 > "The app is not just displaying DUAL branding. It reads the passport object, mandate data, and batch evidence back from DUAL, then uses those values in the proof verifier."
+
+Email/code authentication is not part of the main demo path. The production posture is scoped API-key auth for DUAL event-bus writes plus the separate demo operator gate; email-code auth is only an opt-in fallback for private operator sessions.
 
 ## 5. Show The Audit Trail
 

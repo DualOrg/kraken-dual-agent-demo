@@ -173,7 +173,7 @@
               <button id="executeReplayButton" class="secondary-button" type="button" disabled>Execute DUAL replay</button>
               <button id="executeReceiptReplayButton" class="secondary-button" type="button" disabled>Mint receipts</button>
             </div>
-            <div class="auth-grid">
+            <div class="auth-grid hidden" id="dualEmailAuthPanel">
               <label>
                 DUAL email
                 <input id="dualAuthEmail" name="dualAuthEmail" type="email" autocomplete="email" placeholder="name@example.com">
@@ -185,7 +185,8 @@
               </label>
               <button id="verifyCodeButton" class="primary-button" type="button">Authenticate</button>
             </div>
-            <p class="auth-message" id="dualAuthMessage">Scoped API-key auth unlocks DUAL event-bus writes.</p>
+            <p class="auth-message" id="dualAuthMessage">Scoped API-key auth plus the operator gate controls DUAL writes.</p>
+            <div class="dual-links" id="dualLinks" aria-label="DUAL data links"></div>
             <div class="proof-grid" id="proofGrid"></div>
           </article>
 

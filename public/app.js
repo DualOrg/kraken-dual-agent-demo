@@ -29,6 +29,8 @@ const els = {
   dualAuthEmail: document.querySelector("#dualAuthEmail"),
   dualAuthCode: document.querySelector("#dualAuthCode"),
   dualAuthMessage: document.querySelector("#dualAuthMessage"),
+  dualEmailAuthPanel: document.querySelector("#dualEmailAuthPanel"),
+  dualLinks: document.querySelector("#dualLinks"),
   requestCodeButton: document.querySelector("#requestCodeButton"),
   verifyCodeButton: document.querySelector("#verifyCodeButton"),
   setupActionPassportButton: document.querySelector("#setupActionPassportButton"),
@@ -402,6 +404,7 @@ function renderProof() {
   const proof = state.proof;
   const verifier = state.proofVerification;
   const auth = state.dualAuth;
+  renderOptionalEmailAuth();
   const dual = proof?.status?.dualMode || state.health?.dual;
   const adapter = proof?.status?.krakenMarketData || state.health?.adapter?.source || "checking";
   const dualObject = proof?.dualObject;
@@ -460,6 +463,8 @@ function renderProof() {
     </div>
   `).join("");
 
+  renderDualLinks(proof?.links || state.health?.dual?.links || dual?.links || []);
+
   const writeReady = Boolean(proof?.status?.writeReadiness?.ready);
   els.executeReplayButton.disabled = !writeReady || !(replayQueue?.pendingCount ?? replayQueue?.eventCount);
   els.setupActionPassportButton.disabled = !writeReady;
@@ -468,8 +473,32 @@ function renderProof() {
   if (auth?.authenticated) {
     els.dualAuthMessage.textContent = auth.detail;
   } else if (!els.dualAuthMessage.textContent) {
-    els.dualAuthMessage.textContent = auth?.detail || "Scoped API-key auth unlocks DUAL event-bus writes.";
+    els.dualAuthMessage.textContent = auth?.detail || "Scoped API-key auth plus the operator gate controls DUAL writes.";
   }
+}
+
+function renderOptionalEmailAuth() {
+  const enabled = Boolean(state.dualAuth?.emailCodeAuthEnabled && state.dualAuth?.enabled);
+  els.dualEmailAuthPanel?.classList.toggle("hidden", !enabled);
+  if (els.requestCodeButton) els.requestCodeButton.disabled = !enabled;
+  if (els.verifyCodeButton) els.verifyCodeButton.disabled = !enabled;
+}
+
+function renderDualLinks(links) {
+  if (!els.dualLinks) return;
+  const uniqueLinks = [...new Map((links || [])
+    .filter((link) => link?.href)
+    .map((link) => [link.id || link.href, link])).values()];
+  if (!uniqueLinks.length) {
+    els.dualLinks.innerHTML = `<div class="link-empty">DUAL Console links appear when the org is configured.</div>`;
+    return;
+  }
+  els.dualLinks.innerHTML = uniqueLinks.map((link) => `
+    <a class="dual-link ${link.source === "blockscout" ? "explorer" : ""}" href="${escapeHtml(link.href)}" target="_blank" rel="noreferrer">
+      <span>${escapeHtml(link.label || "DUAL data")}</span>
+      <strong>${escapeHtml(link.detail || "Open data")}</strong>
+    </a>
+  `).join("");
 }
 
 function sourceLabel(source) {
@@ -499,6 +528,7 @@ function authLabel(auth) {
   if (auth?.authenticated && auth.email) return `session ${auth.email}`;
   if (auth?.pendingEmail) return `code sent ${auth.pendingEmail}`;
   if (auth?.serviceAccountConfigured) return "service account pending write mode";
+  if (auth && auth.emailCodeAuthEnabled === false) return "API-key/operator gate";
   return "write auth needed";
 }
 
@@ -542,4 +572,13 @@ function errorMessage(body, fallback) {
     return body.detail.attempts.map((attempt) => `${attempt.style}: ${attempt.message}`).join(" | ");
   }
   return body?.message || body?.error || fallback;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }

@@ -23,6 +23,16 @@ const dualPersistence = await createDualPersistence();
 const dualSessionCookieName = "__Host-dual_kraken_session";
 const operatorToken = process.env.DEMO_OPERATOR_TOKEN || process.env.DUAL_DEMO_OPERATOR_TOKEN || "";
 const publicDualWrites = parseBoolean(process.env.DEMO_PUBLIC_DUAL_WRITES || "false");
+const emailCodeAuthEnabled = parseBoolean(process.env.DEMO_ENABLE_EMAIL_AUTH || "false");
+const dualConsoleBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_CONSOLE_BASE_URL || "https://console-testnet.dual.network");
+const dualBlockscoutBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_BLOCKSCOUT_BASE_URL || "");
+const dualLinkTemplates = {
+  consoleOrg: process.env.DUAL_CONSOLE_ORG_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/` : ""),
+  consoleTemplates: process.env.DUAL_CONSOLE_TEMPLATES_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/templates` : ""),
+  consoleObjects: process.env.DUAL_CONSOLE_OBJECTS_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/objects` : ""),
+  consoleActionLogs: process.env.DUAL_CONSOLE_ACTION_LOGS_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/action-logs` : ""),
+  blockscoutTransaction: process.env.DUAL_BLOCKSCOUT_TX_URL_TEMPLATE || (dualBlockscoutBaseUrl ? `${dualBlockscoutBaseUrl}/tx/{transactionHash}` : "")
+};
 const supportedPairs = ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"];
 const appVersion = "0.1.0";
 const mcpProtocolVersion = "2025-06-18";
@@ -195,11 +205,15 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/dual/auth/status") {
-    sendJson(res, 200, dualPersistence.authStatus());
+    sendJson(res, 200, publicDualAuthStatus());
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/dual/auth/request-code") {
+    if (!emailCodeAuthEnabled) {
+      sendJson(res, 403, emailAuthDisabled());
+      return;
+    }
     const body = await readBody(req);
     const result = await dualPersistence.requestEmailCode(body.email);
     sendJson(res, 200, result);
@@ -207,6 +221,10 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/dual/auth/verify-code") {
+    if (!emailCodeAuthEnabled) {
+      sendJson(res, 403, emailAuthDisabled());
+      return;
+    }
     const body = await readBody(req);
     let sessionCookie = null;
     const result = await dualPersistence.verifyEmailCode(body.email, body.code, {
@@ -512,6 +530,7 @@ async function handleApi(req, res, url) {
 
 async function buildHealth(req) {
   const adapter = await getAdapterStatus();
+  const dual = publicDualStatus(req);
   return {
     ok: true,
     app: {
@@ -521,8 +540,9 @@ async function buildHealth(req) {
       mcp: "/mcp"
     },
     safety: safetySummary(),
+    features: publicFeatureStatus(),
     adapter,
-    dual: publicDualStatus(req)
+    dual
   };
 }
 
@@ -1208,6 +1228,34 @@ function buildOpenApiDocument(req) {
       "/api/dual/write-readiness": {
         get: { summary: "Read whether DUAL writes are ready for this request.", responses: { 200: jsonResponse } }
       },
+      "/api/dual/auth/status": {
+        get: { summary: "Read scoped API-key and optional email-code auth status.", responses: { 200: jsonResponse } }
+      },
+      "/api/dual/auth/request-code": {
+        post: {
+          summary: "Request an optional DUAL email-code operator session when DEMO_ENABLE_EMAIL_AUTH=true.",
+          requestBody: requestBody({
+            type: "object",
+            required: ["email"],
+            properties: { email: { type: "string", format: "email" } }
+          }),
+          responses: { 200: jsonResponse, 400: jsonResponse, 403: jsonResponse }
+        }
+      },
+      "/api/dual/auth/verify-code": {
+        post: {
+          summary: "Verify an optional DUAL email-code operator session when DEMO_ENABLE_EMAIL_AUTH=true.",
+          requestBody: requestBody({
+            type: "object",
+            required: ["email", "code"],
+            properties: {
+              email: { type: "string", format: "email" },
+              code: { type: "string" }
+            }
+          }),
+          responses: { 200: jsonResponse, 400: jsonResponse, 403: jsonResponse }
+        }
+      },
       "/api/dual/replay-queue": {
         get: { summary: "Read DUAL event-bus replay envelopes.", responses: { 200: jsonResponse } }
       },
@@ -1578,6 +1626,17 @@ function parseBoolean(value) {
   return value === true || value === "true" || value === "on" || value === "1";
 }
 
+function normalizeExternalBaseUrl(value) {
+  const text = String(value || "").trim().replace(/\/+$/, "");
+  if (!text) return "";
+  try {
+    const url = new URL(text);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href.replace(/\/+$/, "") : "";
+  } catch {
+    return "";
+  }
+}
+
 function policySnapshot(passport) {
   return {
     allowedPairs: passport.allowedPairs,
@@ -1609,9 +1668,10 @@ function publicDualStatus(req) {
   const status = dualPersistence.status();
   const gate = dualWriteGate(req);
   if (!status.writable || gate.allowed) {
-    return { ...status, writeGate: gate };
+    const visibleStatus = { ...status, writeGate: gate };
+    return { ...visibleStatus, links: buildDualDataLinks({ dualStatus: visibleStatus }) };
   }
-  return {
+  const visibleStatus = {
     ...status,
     serverWritable: true,
     writable: false,
@@ -1619,6 +1679,42 @@ function publicDualStatus(req) {
     detail: gate.configured
       ? "DUAL is read-linked for this request. Server-side writes require operator authorization."
       : "DUAL is read-linked. Server-side writes are disabled until DEMO_OPERATOR_TOKEN is configured."
+  };
+  return { ...visibleStatus, links: buildDualDataLinks({ dualStatus: visibleStatus }) };
+}
+
+function publicDualAuthStatus() {
+  const auth = dualPersistence.authStatus();
+  const emailDetail = emailCodeAuthEnabled
+    ? "Email-code auth is enabled as an operator fallback."
+    : "Email-code auth is disabled by default; this demo uses scoped API-key auth plus the operator gate.";
+  return {
+    ...auth,
+    emailCodeAuthEnabled,
+    emailCodeRequired: false,
+    detail: auth.authenticated
+      ? auth.detail
+      : emailCodeAuthEnabled
+        ? auth.detail
+        : emailDetail
+  };
+}
+
+function emailAuthDisabled() {
+  return {
+    error: "email_auth_disabled",
+    emailCodeAuthEnabled: false,
+    emailCodeRequired: false,
+    detail: "DUAL email-code auth is not required for this demo. Use scoped API-key auth plus DEMO_OPERATOR_TOKEN for operator-gated writes."
+  };
+}
+
+function publicFeatureStatus() {
+  return {
+    emailCodeAuthEnabled,
+    emailCodeRequired: false,
+    dualConsoleLinksConfigured: Boolean(dualLinkTemplates.consoleOrg),
+    dualBlockscoutLinksConfigured: Boolean(dualLinkTemplates.blockscoutTransaction)
   };
 }
 
@@ -1662,6 +1758,114 @@ function publicTradeReceiptQueue(req, tradeReceipts = []) {
     writable: Boolean(queue.writable && publicWriteReadiness(req).ready),
     latest: (tradeReceipts || []).slice(0, 8).map(summarizeTradeReceipt)
   };
+}
+
+function buildDualDataLinks({
+  dualStatus = {},
+  dualObject = null,
+  dualTemplate = null,
+  dualTradeReceiptTemplate = null,
+  dualBatch = null,
+  replayQueue = null,
+  tradeReceipts = null
+} = {}) {
+  const orgId = firstNonEmpty(dualObject?.orgId, dualStatus?.orgId, process.env.DUAL_ORG_ID);
+  const objectId = firstNonEmpty(dualObject?.id, replayQueue?.targetObjectId, dualStatus?.objectId, process.env.DUAL_AGENT_PASSPORT_OBJECT_ID);
+  const templateId = firstNonEmpty(dualTemplate?.id, replayQueue?.targetTemplateId, dualStatus?.templateId, process.env.DUAL_AGENT_PASSPORT_TEMPLATE_ID);
+  const receiptTemplateId = firstNonEmpty(
+    dualTradeReceiptTemplate?.id,
+    tradeReceipts?.targetTemplateId,
+    dualStatus?.tradeReceiptTemplateId,
+    process.env.DUAL_TRADE_RECEIPT_TEMPLATE_ID
+  );
+  const transactionHash = firstNonEmpty(dualBatch?.transactionHash);
+  const batchId = firstNonEmpty(dualBatch?.id);
+  const links = [];
+
+  if (orgId) {
+    addDualLink(links, "console-dashboard", "DUAL Console", dualLinkTemplates.consoleOrg, { orgId }, "Open the org dashboard.");
+    addDualLink(
+      links,
+      "console-templates",
+      "Templates",
+      dualLinkTemplates.consoleTemplates,
+      { orgId, templateId, receiptTemplateId },
+      [templateId && `passport ${shortIdForLink(templateId)}`, receiptTemplateId && `receipt ${shortIdForLink(receiptTemplateId)}`]
+        .filter(Boolean)
+        .join(" / ") || "Open the template collection."
+    );
+    addDualLink(
+      links,
+      "console-objects",
+      "Objects",
+      dualLinkTemplates.consoleObjects,
+      { orgId, objectId },
+      objectId ? `passport ${shortIdForLink(objectId)}` : "Open the object collection."
+    );
+    addDualLink(
+      links,
+      "console-action-logs",
+      "Action logs",
+      dualLinkTemplates.consoleActionLogs,
+      { orgId, batchId },
+      batchId ? `latest batch ${shortIdForLink(batchId)}` : "Open the action log collection."
+    );
+  } else if (dualConsoleBaseUrl) {
+    links.push({
+      id: "console-root",
+      label: "DUAL Console",
+      href: dualConsoleBaseUrl,
+      detail: "Sign in to select an org.",
+      source: "console"
+    });
+  }
+
+  addDualLink(
+    links,
+    "blockscout-transaction",
+    "Blockscout transaction",
+    dualLinkTemplates.blockscoutTransaction,
+    { transactionHash },
+    transactionHash ? shortIdForLink(transactionHash) : ""
+  );
+
+  return links;
+}
+
+function addDualLink(links, id, label, template, values, detail) {
+  const href = renderUrlTemplate(template, values);
+  if (!href) return;
+  links.push({ id, label, href, detail, source: id.startsWith("blockscout") ? "blockscout" : "console" });
+}
+
+function renderUrlTemplate(template, values) {
+  const raw = String(template || "").trim();
+  if (!raw) return null;
+  let missingValue = false;
+  const rendered = raw.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => {
+    const value = values?.[key];
+    if (value === undefined || value === null || value === "") {
+      missingValue = true;
+      return "";
+    }
+    return encodeURIComponent(String(value));
+  });
+  if (missingValue || /\{[a-zA-Z0-9_]+\}/.test(rendered)) return null;
+  try {
+    const url = new URL(rendered);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function firstNonEmpty(...values) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") || null;
+}
+
+function shortIdForLink(value) {
+  const text = String(value || "");
+  return text.length > 14 ? `${text.slice(0, 7)}...${text.slice(-5)}` : text;
 }
 
 function canUseDualWrite(req) {
@@ -1740,6 +1944,7 @@ async function buildProofBundle(req) {
   const replayQueue = publicReplayQueue(req, state.passport, audit, dualObject);
   const tradeReceiptQueue = publicTradeReceiptQueue(req, tradeReceipts);
   const dualStatus = publicDualStatus(req);
+  const proofDualStatus = stripLinks(dualStatus);
   const writeReadiness = publicWriteReadiness(req);
   const templateFields = dualTemplate?.custom || {};
   const objectCustom = dualObject?.custom || {};
@@ -1866,7 +2071,7 @@ async function buildProofBundle(req) {
     status: {
       krakenMarketData: adapter.source,
       krakenPaperExecution: adapter.krakenCliAvailable ? "kraken-cli-paper" : "simulated-paper",
-      dualMode: dualStatus,
+      dualMode: proofDualStatus,
       writeReadiness
     },
     dualTemplate,
@@ -1935,8 +2140,23 @@ async function buildProofBundle(req) {
   return {
     generatedAt: new Date().toISOString(),
     ...payload,
+    links: buildDualDataLinks({
+      dualStatus: proofDualStatus,
+      dualObject,
+      dualTemplate,
+      dualTradeReceiptTemplate,
+      dualBatch,
+      replayQueue,
+      tradeReceipts: tradeReceiptQueue
+    }),
     proofHash: hashJson(payload)
   };
+}
+
+function stripLinks(value) {
+  if (!value || typeof value !== "object") return value;
+  const { links, ...rest } = value;
+  return rest;
 }
 
 function describeMarketSource(source) {
@@ -1987,6 +2207,7 @@ function arraysEqualIgnoreOrder(left, right) {
 
 function restoreDualSession(req) {
   dualPersistence.clearEmailSession?.();
+  if (!emailCodeAuthEnabled) return;
   const sealed = readCookie(req.headers.cookie || "", dualSessionCookieName);
   if (!sealed) return;
   const session = unsealDualSession(sealed);

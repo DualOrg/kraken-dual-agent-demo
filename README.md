@@ -71,6 +71,9 @@ DUAL_WRITE_MODE=event_bus
 DUAL_EVENTBUS_WRITE_PATH=/ebus/execute
 DUAL_SERVICE_ACCOUNT_TOKEN=...
 DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN=...
+DUAL_CONSOLE_BASE_URL=https://console-testnet.dual.network
+DUAL_BLOCKSCOUT_BASE_URL=...
+DEMO_ENABLE_EMAIL_AUTH=false
 DEMO_OPERATOR_TOKEN=...
 ```
 
@@ -78,7 +81,9 @@ The adapter is intentionally optional. If the DUAL SDK or credentials are unavai
 
 With current DUAL testnet auth, a scoped API key can link to and verify a real DUAL passport object and write event-bus actions. Set `DUAL_AUTH_MODE=api_key`, `DUAL_WRITE_MODE=event_bus`, and use the current action path `/ebus/execute`. The event-bus endpoint no longer needs a DUAL bearer token. The old `DUAL_AUTH_MODE=both` value is accepted as a legacy alias for `api_key` and does not cause the app to send a DUAL bearer header.
 
-The app still supports an operator email-code flow as a fallback. A code is requested from DUAL, verified server-side, switched into the configured org, and held only in the server session. Once authenticated, new audit events write through the DUAL event bus and the replay queue can be executed into DUAL.
+The app uses scoped API-key auth plus the demo operator gate as the default write path. The older DUAL email-code flow is not required for this demo and is hidden/disabled unless `DEMO_ENABLE_EMAIL_AUTH=true` is set for a private operator session fallback.
+
+The proof and health payloads include DUAL Console links by default using `DUAL_CONSOLE_BASE_URL` (`https://console-testnet.dual.network` unless overridden). Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when the deployment has a public explorer route for finalized L1 transaction hashes.
 
 Public deployments are read-linked by default. Server-side DUAL writes are blocked unless the request passes the demo operator gate with `x-demo-operator-token` or `Authorization: Bearer <DEMO_OPERATOR_TOKEN>`. This operator gate is separate from DUAL event-bus auth and keeps the public demo safe while still allowing the operator to replay events into DUAL.
 
@@ -110,7 +115,7 @@ POST /mcp
 
 Template schemas: `dual-agent-passport.schema.json` and `dual-trade-receipt.schema.json`.
 
-`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, trade receipt template/readiness, write-readiness, local audit root hash, replay queue root, trade receipt root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` is outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has scoped API-key write auth for `/ebus/execute`. `/api/dual/trade-receipts/replay` mints pending executed-trade receipts into DUAL once the trade receipt template and operator write auth are active.
+`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, trade receipt template/readiness, write-readiness, DUAL Console/Blockscout link metadata, local audit root hash, replay queue root, trade receipt root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` and presentation links are outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has scoped API-key write auth for `/ebus/execute`. `/api/dual/trade-receipts/replay` mints pending executed-trade receipts into DUAL once the trade receipt template and operator write auth are active.
 
 The proof bundle surfaces latest batch id, status, proof value, Merkle root, and L1 transaction hash when available. The UI shows this as first-class `DUAL batch` and `Batch proof` rows.
 

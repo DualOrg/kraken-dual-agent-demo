@@ -85,6 +85,7 @@ Public deployments are read-linked by default. Server-side DUAL writes are block
 Useful endpoints:
 
 ```text
+GET  /api/openapi.json
 GET  /api/dual/status
 GET  /api/dual/write-readiness
 GET  /api/dual/auth/status
@@ -98,6 +99,7 @@ POST /api/dual/template
 POST /api/dual/sync-passport
 GET  /api/proof
 GET  /api/proof/verify
+POST /mcp
 ```
 
 Template schema: `dual-agent-passport.schema.json`.
@@ -105,6 +107,26 @@ Template schema: `dual-agent-passport.schema.json`.
 `/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, write-readiness, local audit root hash, replay queue root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` is outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has API-key or bearer/session write auth for `/ebus/execute`.
 
 The proof bundle surfaces latest batch id, status, proof value, Merkle root, and L1 transaction hash when available. The UI shows this as first-class `DUAL batch` and `Batch proof` rows.
+
+## Agent API and MCP
+
+`GET /api/openapi.json` exposes the HTTP surface for clients that want a normal REST contract. The document also advertises the MCP endpoint, tool names, and the public safety policy.
+
+`POST /mcp` is a JSON-RPC MCP facade for agent clients. It exposes paper-only tools:
+
+- `kraken_dual_get_status`
+- `kraken_dual_get_market`
+- `kraken_dual_propose_trade`
+- `kraken_dual_approve_trade`
+- `kraken_dual_execute_paper_trade`
+- `kraken_dual_propose_and_execute_paper_trade`
+- `kraken_dual_get_proof`
+- `kraken_dual_verify_proof`
+- `kraken_dual_get_audit`
+- `kraken_dual_get_replay_queue`
+- `kraken_dual_red_team`
+
+The MCP tools support `DUALUSD` alongside `BTCUSD`, `ETHUSD`, and `SOLUSD`. Trading tools only create or execute paper proposals through the same DUAL policy checks as the UI. Public MCP intentionally does not expose live Kraken order placement or DUAL replay execution.
 
 ## DUAL Object Model
 

@@ -20,10 +20,127 @@ const dualSessionCookieName = "__Host-dual_kraken_session";
 const operatorToken = process.env.DEMO_OPERATOR_TOKEN || process.env.DUAL_DEMO_OPERATOR_TOKEN || "";
 const publicDualWrites = parseBoolean(process.env.DEMO_PUBLIC_DUAL_WRITES || "false");
 const supportedPairs = ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"];
+const appVersion = "0.1.0";
+const mcpProtocolVersion = "2025-06-18";
+const mcpServerInfo = {
+  name: "kraken-dual-agent-demo",
+  version: appVersion
+};
+const tradePairSchema = { type: "string", enum: supportedPairs, default: "DUALUSD" };
+const tradeSideSchema = { type: "string", enum: ["buy", "sell"], default: "buy" };
+const tradeNotionalSchema = { type: "number", minimum: 1, default: 75 };
+const proposalIdSchema = { type: "string", pattern: "^prop-" };
+const mcpTools = [
+  mcpTool("kraken_dual_get_status", "Read demo health, paper trading mode, DUAL readiness, proof status, and latest audit summary.", {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      include_proof: { type: "boolean", default: true }
+    }
+  }),
+  mcpTool("kraken_dual_get_market", "Read a Kraken market snapshot for an allowed paper-trading pair without placing an order.", {
+    type: "object",
+    additionalProperties: false,
+    required: ["pair"],
+    properties: {
+      pair: tradePairSchema
+    }
+  }),
+  mcpTool("kraken_dual_propose_trade", "Create a DUAL policy-checked paper trade proposal. This does not execute a trade.", {
+    type: "object",
+    additionalProperties: false,
+    required: ["pair", "side", "notional_usd"],
+    properties: {
+      pair: tradePairSchema,
+      side: tradeSideSchema,
+      notional_usd: tradeNotionalSchema,
+      approved: { type: "boolean", default: false }
+    }
+  }),
+  mcpTool("kraken_dual_approve_trade", "Record human approval for a waiting paper trade proposal.", {
+    type: "object",
+    additionalProperties: false,
+    required: ["proposal_id"],
+    properties: {
+      proposal_id: proposalIdSchema
+    }
+  }),
+  mcpTool("kraken_dual_execute_paper_trade", "Execute an existing approved proposal through the safe Kraken paper/simulator path.", {
+    type: "object",
+    additionalProperties: false,
+    required: ["proposal_id"],
+    properties: {
+      proposal_id: proposalIdSchema
+    }
+  }),
+  mcpTool("kraken_dual_propose_and_execute_paper_trade", "Create and execute a DUAL-approved paper trade in one call when policy allows it.", {
+    type: "object",
+    additionalProperties: false,
+    required: ["pair", "side", "notional_usd"],
+    properties: {
+      pair: tradePairSchema,
+      side: tradeSideSchema,
+      notional_usd: tradeNotionalSchema
+    }
+  }),
+  mcpTool("kraken_dual_get_proof", "Read the portable DUAL x Kraken proof bundle.", {
+    type: "object",
+    additionalProperties: false,
+    properties: {}
+  }),
+  mcpTool("kraken_dual_verify_proof", "Verify the current proof bundle and return validity, completeness, hashes, and checks.", {
+    type: "object",
+    additionalProperties: false,
+    properties: {}
+  }),
+  mcpTool("kraken_dual_get_audit", "Read the latest local audit events and provenance hashes.", {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      limit: { type: "integer", minimum: 1, maximum: 50, default: 10 }
+    }
+  }),
+  mcpTool("kraken_dual_get_replay_queue", "Read the DUAL event-bus replay queue. Public MCP does not execute replay writes.", {
+    type: "object",
+    additionalProperties: false,
+    properties: {}
+  }),
+  mcpTool("kraken_dual_red_team", "Run a safe policy-violation scenario to prove unsafe trades are blocked before execution.", {
+    type: "object",
+    additionalProperties: false,
+    required: ["scenario"],
+    properties: {
+      scenario: { type: "string", enum: ["oversized", "blocked_pair", "leverage", "missing_approval"], default: "leverage" }
+    }
+  })
+];
+const mcpResources = [
+  mcpResource("kraken-dual://status", "Kraken DUAL status", "Health, policy, proof, and paper-execution status."),
+  mcpResource("kraken-dual://proof", "Kraken DUAL proof", "Portable proof bundle for verifier readback."),
+  mcpResource("kraken-dual://audit", "Kraken DUAL audit", "Latest audit events and provenance hashes."),
+  mcpResource("kraken-dual://replay-queue", "Kraken DUAL replay queue", "Pending DUAL event-bus replay envelopes.")
+];
+const mcpPrompts = [
+  {
+    name: "kraken_dual_demo_brief",
+    description: "Summarize the DUAL-governed Kraken paper-trading demo for a partner or reviewer.",
+    arguments: []
+  },
+  {
+    name: "kraken_dual_next_action",
+    description: "Inspect status and return the next concrete operator step.",
+    arguments: []
+  }
+];
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+    if (url.pathname === "/mcp" || url.pathname === "/mcp/") {
+      await handleMcp(req, res);
+      return;
+    }
 
     if (url.pathname.startsWith("/api/")) {
       await handleApi(req, res, url);
@@ -47,9 +164,13 @@ server.listen(port, host, () => {
 async function handleApi(req, res, url) {
   restoreDualSession(req);
 
+  if (req.method === "GET" && (url.pathname === "/api/openapi.json" || url.pathname === "/api/v1/openapi.json")) {
+    sendJson(res, 200, buildOpenApiDocument(req), noCacheHeaders());
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/health") {
-    const adapter = await getAdapterStatus();
-    sendJson(res, 200, { ok: true, adapter, dual: publicDualStatus(req) });
+    sendJson(res, 200, await buildHealth(req));
     return;
   }
 
@@ -149,20 +270,7 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/proof/verify") {
-    const proof = await buildProofBundle(req);
-    const validityChecks = proof.verification.filter((check) => check.requiredFor !== "completeness");
-    const completenessChecks = proof.verification.filter((check) => check.requiredFor === "completeness");
-    const ok = validityChecks.every((check) => check.ok);
-    const complete = ok && completenessChecks.every((check) => check.ok);
-    sendJson(res, 200, {
-      ok,
-      complete,
-      status: complete ? "complete" : ok ? "valid_with_pending_replay" : "failed",
-      proofHash: proof.proofHash,
-      auditRoot: proof.audit.rootHash,
-      replayRoot: proof.replayQueue.rootHash,
-      checks: proof.verification
-    });
+    sendJson(res, 200, await buildProofVerification(req));
     return;
   }
 
@@ -286,132 +394,816 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/market") {
-    const state = await loadState();
     const pair = String(url.searchParams.get("pair") || "BTCUSD").toUpperCase();
-    const market = await getMarket(pair, state.market);
-    state.market[pair] = {
-      price: market.price,
-      changePct: market.changePct,
-      volume: market.volume,
-      source: market.source
-    };
-    await addAudit(req, state,
-      "market_snapshot",
-      "ok",
-      `${pair} market snapshot`,
-      `${describeMarketSource(market.source)} returned ${pair} at $${market.price}.`,
-      { pair, source: market.source, price: market.price }
-    );
-    await saveState(state);
+    const { market } = await readMarketSnapshot(req, pair, { recordAudit: true });
     sendJson(res, 200, market);
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/propose") {
     const body = await readBody(req);
-    const state = await loadState();
-    const market = await getMarket(body.pair, state.market);
-    const trade = normalizeTrade({ ...body, price: market.price });
-    const policy = evaluateTrade(state.passport, trade);
-    const proposal = createProposal(trade, policy);
-    state.proposals.unshift(proposal);
-    state.passport.dualObjectState = proposal.state;
-    await addAudit(req, state,
-      "trade_proposed",
-      policy.decision === "block" ? "blocked" : "pending",
-      policy.decision === "block" ? "Proposal blocked" : "Trade proposal created",
-      describePolicy(trade, policy),
-      { proposalId: proposal.id, trade, policy }
-    );
-    await saveState(state);
+    const { state, proposal } = await proposeTrade(req, body);
     sendJson(res, 200, { state, proposal });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/approve") {
     const body = await readBody(req);
-    const state = await loadState();
-    const proposal = state.proposals.find((item) => item.id === body.id);
-    if (!proposal) return sendJson(res, 404, { error: "proposal_not_found" });
-
-    proposal.approved = true;
-    proposal.state = "approved";
-    proposal.trade.approved = true;
-    proposal.policy = evaluateTrade(state.passport, proposal.trade);
-    state.passport.dualObjectState = "approved";
-    await addAudit(req, state,
-      "human_approved",
-      "ok",
-      "Human approval recorded",
-      `${proposal.trade.side.toUpperCase()} ${proposal.trade.quantity} ${proposal.trade.pair} approved under DUAL mandate.`,
-      { proposalId: proposal.id }
-    );
-    await saveState(state);
+    const { state, proposal } = await approveTrade(req, body);
     sendJson(res, 200, { state, proposal });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/execute-paper") {
     const body = await readBody(req);
-    const state = await loadState();
-    const proposal = state.proposals.find((item) => item.id === body.id);
-    if (!proposal) return sendJson(res, 404, { error: "proposal_not_found" });
-
-    const policy = evaluateTrade(state.passport, { ...proposal.trade, approved: proposal.approved });
-    proposal.policy = policy;
-
-    if (policy.decision !== "allow") {
-      proposal.state = policy.decision;
-      state.passport.dualObjectState = "blocked";
-      await addAudit(req, state,
-        "execution_blocked",
-        "blocked",
-        "Execution blocked by DUAL",
-        describePolicy(proposal.trade, policy),
-        { proposalId: proposal.id, policy }
-      );
-      await saveState(state);
-      sendJson(res, 409, { state, proposal, policy });
-      return;
-    }
-
-    const result = await executePaperTrade(proposal.trade);
-    proposal.result = result;
-    proposal.state = "executed";
-    proposal.executedAt = new Date().toISOString();
-    state.passport.dailyNotionalUsed = Math.round((state.passport.dailyNotionalUsed + policy.notional) * 100) / 100;
-    state.passport.dualObjectState = "executed";
-    await addAudit(req, state,
-      "paper_executed",
-      "ok",
-      "Kraken paper trade executed",
-      `${proposal.trade.side.toUpperCase()} ${proposal.trade.quantity} ${proposal.trade.pair} via ${result.source}.`,
-      { proposalId: proposal.id, resultDigest: result.digest, source: result.source }
-    );
-    await saveState(state);
-    sendJson(res, 200, { state, proposal, result });
+    const result = await executePaperTradeProposal(req, body);
+    sendJson(res, result.blocked ? 409 : 200, result);
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/red-team") {
     const body = await readBody(req);
-    const state = await loadState();
-    const trade = redTeamTrade(body.scenario, state.passport, state.market);
-    const policy = evaluateTrade(state.passport, trade);
-    const event = await addAudit(req, state,
-      "red_team_check",
-      policy.decision === "block" ? "blocked" : "warning",
-      `${trade.label} tested`,
-      describePolicy(trade, policy),
-      { scenario: body.scenario, trade, policy }
-    );
-    state.passport.dualObjectState = policy.decision === "block" ? "blocked" : state.passport.dualObjectState;
-    await saveState(state);
-    sendJson(res, 200, { state, trade, policy, event });
+    sendJson(res, 200, await runRedTeam(req, body));
     return;
   }
 
   sendJson(res, 404, { error: "not_found" });
+}
+
+async function buildHealth(req) {
+  const adapter = await getAdapterStatus();
+  return {
+    ok: true,
+    app: {
+      name: mcpServerInfo.name,
+      version: appVersion,
+      openapi: "/api/openapi.json",
+      mcp: "/mcp"
+    },
+    safety: safetySummary(),
+    adapter,
+    dual: publicDualStatus(req)
+  };
+}
+
+async function readMarketSnapshot(req, pair, { recordAudit = false } = {}) {
+  const state = await loadState();
+  state.market = state.market || {};
+  const market = await getMarket(pair, state.market);
+  state.market[market.pair || pair] = {
+    price: market.price,
+    changePct: market.changePct,
+    volume: market.volume,
+    source: market.source
+  };
+  let event = null;
+  if (recordAudit) {
+    event = await addAudit(req, state,
+      "market_snapshot",
+      "ok",
+      `${market.pair || pair} market snapshot`,
+      `${describeMarketSource(market.source)} returned ${market.pair || pair} at $${market.price}.`,
+      { pair: market.pair || pair, source: market.source, price: market.price }
+    );
+    await saveState(state);
+  }
+  return { state, market, event };
+}
+
+async function proposeTrade(req, input) {
+  const state = await loadState();
+  state.market = state.market || {};
+  state.proposals = state.proposals || [];
+  const pair = String(input.pair || "BTCUSD").toUpperCase();
+  const market = await getMarket(pair, state.market);
+  state.market[pair] = {
+    price: market.price,
+    changePct: market.changePct,
+    volume: market.volume,
+    source: market.source
+  };
+  const trade = normalizeTrade({
+    ...input,
+    notional: input.notional ?? input.notional_usd ?? input.notionalUsd,
+    price: market.price
+  });
+  const policy = evaluateTrade(state.passport, trade);
+  const proposal = createProposal(trade, policy);
+  state.proposals.unshift(proposal);
+  state.passport.dualObjectState = proposal.state;
+  const event = await addAudit(req, state,
+    "trade_proposed",
+    policy.decision === "block" ? "blocked" : "pending",
+    policy.decision === "block" ? "Proposal blocked" : "Trade proposal created",
+    describePolicy(trade, policy),
+    { proposalId: proposal.id, trade, policy }
+  );
+  await saveState(state);
+  return { state, proposal, market, event };
+}
+
+async function approveTrade(req, input) {
+  const state = await loadState();
+  const id = requireProposalId(input);
+  const proposal = (state.proposals || []).find((item) => item.id === id);
+  if (!proposal) throw httpError("Proposal not found.", 404, "proposal_not_found");
+
+  proposal.approved = true;
+  proposal.state = "approved";
+  proposal.trade.approved = true;
+  proposal.policy = evaluateTrade(state.passport, proposal.trade);
+  state.passport.dualObjectState = "approved";
+  const event = await addAudit(req, state,
+    "human_approved",
+    "ok",
+    "Human approval recorded",
+    `${proposal.trade.side.toUpperCase()} ${proposal.trade.quantity} ${proposal.trade.pair} approved under DUAL mandate.`,
+    { proposalId: proposal.id }
+  );
+  await saveState(state);
+  return { state, proposal, event };
+}
+
+async function executePaperTradeProposal(req, input) {
+  const state = await loadState();
+  const id = requireProposalId(input);
+  const proposal = (state.proposals || []).find((item) => item.id === id);
+  if (!proposal) throw httpError("Proposal not found.", 404, "proposal_not_found");
+
+  const policy = evaluateTrade(state.passport, { ...proposal.trade, approved: proposal.approved });
+  proposal.policy = policy;
+
+  if (policy.decision !== "allow") {
+    proposal.state = policy.decision === "needs_approval" ? "awaiting_approval" : policy.decision;
+    state.passport.dualObjectState = policy.decision === "needs_approval" ? "awaiting_approval" : "blocked";
+    await addAudit(req, state,
+      "execution_blocked",
+      "blocked",
+      "Execution blocked by DUAL",
+      describePolicy(proposal.trade, policy),
+      { proposalId: proposal.id, policy }
+    );
+    await saveState(state);
+    return { executed: false, blocked: true, state, proposal, policy };
+  }
+
+  const result = await executePaperTrade(proposal.trade);
+  proposal.result = result;
+  proposal.state = "executed";
+  proposal.executedAt = new Date().toISOString();
+  state.passport.dailyNotionalUsed = Math.round((state.passport.dailyNotionalUsed + policy.notional) * 100) / 100;
+  state.passport.dualObjectState = "executed";
+  await addAudit(req, state,
+    "paper_executed",
+    "ok",
+    "Kraken paper trade executed",
+    `${proposal.trade.side.toUpperCase()} ${proposal.trade.quantity} ${proposal.trade.pair} via ${result.source}.`,
+    { proposalId: proposal.id, resultDigest: result.digest, source: result.source }
+  );
+  await saveState(state);
+  return { executed: true, blocked: false, state, proposal, result };
+}
+
+async function proposeAndExecutePaperTrade(req, args) {
+  const proposed = await proposeTrade(req, normalizeMcpTradeInput(args));
+  if (proposed.proposal.policy.decision !== "allow") {
+    return {
+      ok: true,
+      executed: false,
+      status: proposed.proposal.policy.decision === "needs_approval" ? "requires_approval" : "blocked",
+      proposal: proposed.proposal,
+      market: proposed.market,
+      summary: summarizeStateForAgent(proposed.state)
+    };
+  }
+  const executed = await executePaperTradeProposal(req, { id: proposed.proposal.id });
+  return {
+    ok: true,
+    status: "executed",
+    proposal: executed.proposal,
+    result: executed.result,
+    summary: summarizeStateForAgent(executed.state)
+  };
+}
+
+async function runRedTeam(req, input) {
+  const state = await loadState();
+  state.market = state.market || {};
+  const trade = redTeamTrade(input.scenario, state.passport, state.market);
+  const policy = evaluateTrade(state.passport, trade);
+  const event = await addAudit(req, state,
+    "red_team_check",
+    policy.decision === "block" ? "blocked" : "warning",
+    `${trade.label} tested`,
+    describePolicy(trade, policy),
+    { scenario: input.scenario, trade, policy }
+  );
+  state.passport.dualObjectState = policy.decision === "block" ? "blocked" : state.passport.dualObjectState;
+  await saveState(state);
+  return { state, trade, policy, event };
+}
+
+async function buildProofVerification(req) {
+  const proof = await buildProofBundle(req);
+  return verifyProofBundle(proof);
+}
+
+function verifyProofBundle(proof) {
+  const validityChecks = proof.verification.filter((check) => check.requiredFor !== "completeness");
+  const completenessChecks = proof.verification.filter((check) => check.requiredFor === "completeness");
+  const ok = validityChecks.every((check) => check.ok);
+  const complete = ok && completenessChecks.every((check) => check.ok);
+  return {
+    ok,
+    complete,
+    status: complete ? "complete" : ok ? "valid_with_pending_replay" : "failed",
+    proofHash: proof.proofHash,
+    auditRoot: proof.audit.rootHash,
+    replayRoot: proof.replayQueue.rootHash,
+    checks: proof.verification
+  };
+}
+
+async function buildAgentStatus(req, args = {}) {
+  const [state, adapter] = await Promise.all([loadState(), getAdapterStatus()]);
+  const status = {
+    ok: true,
+    app: {
+      name: mcpServerInfo.name,
+      version: appVersion,
+      openapi: `${requestOrigin(req)}/api/openapi.json`,
+      mcp: `${requestOrigin(req)}/mcp`
+    },
+    safety: safetySummary(),
+    adapter,
+    dual: publicDualStatus(req),
+    writeReadiness: publicWriteReadiness(req),
+    summary: summarizeStateForAgent(state)
+  };
+  if (args.include_proof !== false) {
+    status.proof = await buildProofVerification(req);
+  }
+  return status;
+}
+
+function summarizeStateForAgent(state, limit = 5) {
+  const proposals = (state.proposals || []).slice(0, limit).map((proposal) => ({
+    id: proposal.id,
+    state: proposal.state,
+    pair: proposal.trade?.pair,
+    side: proposal.trade?.side,
+    quantity: proposal.trade?.quantity,
+    price: proposal.trade?.price,
+    notional: proposal.policy?.notional,
+    decision: proposal.policy?.decision,
+    approved: proposal.approved,
+    executedAt: proposal.executedAt,
+    resultDigest: proposal.result?.digest || null
+  }));
+  const audit = (state.audit || []).slice(0, limit).map((event) => ({
+    id: event.id,
+    type: event.type,
+    status: event.status,
+    title: event.title,
+    hash: event.provenanceHash || event.id,
+    dualSync: event.dualSync || null,
+    timestamp: event.timestamp
+  }));
+  return {
+    passport: {
+      id: state.passport.id,
+      agentName: state.passport.agentName,
+      mode: state.passport.mode,
+      state: state.passport.dualObjectState || state.passport.state,
+      allowedPairs: state.passport.allowedPairs,
+      dailyNotionalUsed: state.passport.dailyNotionalUsed
+    },
+    policy: policySnapshot(state.passport),
+    proposals,
+    audit: {
+      eventCount: (state.audit || []).length,
+      latest: audit
+    }
+  };
+}
+
+function safetySummary() {
+  return {
+    tradingMode: "paper",
+    liveKrakenTradingExposed: false,
+    krakenApiKeysRequired: false,
+    dualWrites: publicDualWrites ? "public_enabled_by_env" : "operator_gated",
+    exposedMcpDualWriteTools: false,
+    supportedPairs
+  };
+}
+
+async function handleMcp(req, res) {
+  let requestId = null;
+  try {
+    restoreDualSession(req);
+    assertMcpOrigin(req);
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        ...securityHeaders(),
+        ...mcpCorsHeaders(req),
+        ...mcpVersionHeaders(),
+        "access-control-allow-methods": "POST, OPTIONS",
+        "access-control-allow-headers": "content-type, authorization, mcp-protocol-version, mcp-session-id, x-demo-operator-token"
+      });
+      res.end();
+      return;
+    }
+    if (req.method !== "POST") {
+      return sendMcpResponse(req, res, mcpError(null, -32600, "MCP endpoint accepts POST requests."), 405);
+    }
+    const message = await readMcpMessage(req);
+    requestId = message?.id ?? null;
+    if (!message || message.jsonrpc !== "2.0" || !message.method) {
+      return sendMcpResponse(req, res, mcpError(requestId, -32600, "Invalid JSON-RPC request."));
+    }
+    if (message.id === undefined && message.method.startsWith("notifications/")) {
+      res.writeHead(202, { ...securityHeaders(), ...mcpCorsHeaders(req), ...mcpVersionHeaders() });
+      res.end();
+      return;
+    }
+    const result = await handleMcpMethod(req, message.method, message.params || {});
+    return sendMcpResponse(req, res, mcpResult(message.id, result));
+  } catch (error) {
+    return sendMcpResponse(req, res, mcpError(requestId, mcpJsonRpcErrorCode(error), error.message || "MCP server error.", {
+      code: error.code || "mcp_error",
+      detail: error.detail || null
+    }), error.status && error.status >= 400 ? error.status : 200);
+  }
+}
+
+async function handleMcpMethod(req, method, params) {
+  if (method === "initialize") {
+    return {
+      protocolVersion: mcpProtocolVersion,
+      capabilities: {
+        tools: {},
+        resources: {},
+        prompts: {}
+      },
+      serverInfo: mcpServerInfo,
+      instructions: "Use the Kraken DUAL tools for paper trades only. DUAL governs approvals and audit proof; public MCP does not expose real Kraken orders or DUAL replay writes."
+    };
+  }
+  if (method === "tools/list") return { tools: mcpTools };
+  if (method === "resources/list") return { resources: mcpResources };
+  if (method === "prompts/list") return { prompts: mcpPrompts };
+  if (method === "tools/call") {
+    const name = params.name;
+    const args = params.arguments || {};
+    try {
+      return mcpJsonContent(await callMcpTool(req, name, args));
+    } catch (error) {
+      return mcpToolErrorContent(error, name, args);
+    }
+  }
+  if (method === "resources/read") {
+    return {
+      contents: [
+        {
+          uri: params.uri,
+          mimeType: "application/json",
+          text: JSON.stringify(await readMcpResource(req, params.uri), null, 2)
+        }
+      ]
+    };
+  }
+  if (method === "prompts/get") return getMcpPrompt(params.name, params.arguments || {});
+  throw Object.assign(new Error(`Unsupported MCP method: ${method}`), { code: "mcp_method_not_found" });
+}
+
+async function callMcpTool(req, name, args) {
+  switch (name) {
+    case "kraken_dual_get_status":
+      return buildAgentStatus(req, args);
+    case "kraken_dual_get_market": {
+      const { market } = await readMarketSnapshot(req, requireSupportedPair(args.pair), { recordAudit: false });
+      return { ok: true, market, safety: safetySummary() };
+    }
+    case "kraken_dual_propose_trade": {
+      const result = await proposeTrade(req, normalizeMcpTradeInput(args));
+      return {
+        ok: true,
+        status: result.proposal.state,
+        proposal: result.proposal,
+        market: result.market,
+        summary: summarizeStateForAgent(result.state)
+      };
+    }
+    case "kraken_dual_approve_trade": {
+      const result = await approveTrade(req, { id: requireProposalId(args) });
+      return {
+        ok: true,
+        status: result.proposal.state,
+        proposal: result.proposal,
+        summary: summarizeStateForAgent(result.state)
+      };
+    }
+    case "kraken_dual_execute_paper_trade": {
+      const result = await executePaperTradeProposal(req, { id: requireProposalId(args) });
+      return {
+        ok: true,
+        status: result.blocked ? "blocked" : "executed",
+        executed: result.executed,
+        proposal: result.proposal,
+        policy: result.policy || result.proposal.policy,
+        result: result.result || null,
+        summary: summarizeStateForAgent(result.state)
+      };
+    }
+    case "kraken_dual_propose_and_execute_paper_trade":
+      return proposeAndExecutePaperTrade(req, args);
+    case "kraken_dual_get_proof":
+      return { ok: true, proof: await buildProofBundle(req) };
+    case "kraken_dual_verify_proof":
+      return { ok: true, verification: await buildProofVerification(req) };
+    case "kraken_dual_get_audit":
+      return readAuditForAgent(args);
+    case "kraken_dual_get_replay_queue": {
+      const state = await loadState();
+      return { ok: true, replayQueue: publicReplayQueue(req, state.passport, state.audit || []) };
+    }
+    case "kraken_dual_red_team": {
+      const result = await runRedTeam(req, { scenario: args.scenario || "leverage" });
+      return {
+        ok: true,
+        scenario: args.scenario || "leverage",
+        trade: result.trade,
+        policy: result.policy,
+        event: result.event,
+        summary: summarizeStateForAgent(result.state)
+      };
+    }
+    default:
+      throw Object.assign(new Error(`Unknown Kraken DUAL MCP tool: ${name}`), { code: "mcp_tool_not_found", status: 404 });
+  }
+}
+
+async function readMcpResource(req, uri) {
+  if (uri === "kraken-dual://status") return buildAgentStatus(req);
+  if (uri === "kraken-dual://proof") return buildProofBundle(req);
+  if (uri === "kraken-dual://audit") return readAuditForAgent({ limit: 20 });
+  if (uri === "kraken-dual://replay-queue") {
+    const state = await loadState();
+    return { ok: true, replayQueue: publicReplayQueue(req, state.passport, state.audit || []) };
+  }
+  throw Object.assign(new Error(`Unknown Kraken DUAL MCP resource: ${uri}`), { code: "mcp_resource_not_found", status: 404 });
+}
+
+function getMcpPrompt(name, args) {
+  if (name === "kraken_dual_demo_brief") {
+    return {
+      description: "Kraken DUAL demo brief",
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: "Summarize the DUAL x Kraken paper-trading demo. Keep the distinction clear: Kraken supplies market/execution rails, DUAL supplies policy, approval, audit, proof, and replay-gated persistence."
+        }
+      }]
+    };
+  }
+  if (name === "kraken_dual_next_action") {
+    return {
+      description: "Kraken DUAL next action",
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: `Inspect Kraken DUAL status and return the next concrete operator step. Target pair: ${args.pair || "DUALUSD"}. Keep public paper trading, DUAL write readiness, and proof completeness separate.`
+        }
+      }]
+    };
+  }
+  throw Object.assign(new Error(`Unknown Kraken DUAL MCP prompt: ${name}`), { code: "mcp_prompt_not_found", status: 404 });
+}
+
+async function readAuditForAgent(args = {}) {
+  const state = await loadState();
+  const limit = clampInteger(args.limit, 1, 50, 10);
+  return {
+    ok: true,
+    audit: {
+      eventCount: (state.audit || []).length,
+      latest: (state.audit || []).slice(0, limit).map((event) => ({
+        id: event.id,
+        type: event.type,
+        status: event.status,
+        title: event.title,
+        detail: event.detail,
+        hash: event.provenanceHash || event.id,
+        dualSync: event.dualSync || null,
+        timestamp: event.timestamp
+      }))
+    }
+  };
+}
+
+function mcpTool(name, description, inputSchema) {
+  return { name, description, inputSchema };
+}
+
+function mcpResource(uri, name, description) {
+  return { uri, name, description, mimeType: "application/json" };
+}
+
+async function readMcpMessage(req) {
+  try {
+    return await readBody(req);
+  } catch {
+    throw httpError("Request body must be valid JSON.", 400, "invalid_json");
+  }
+}
+
+function sendMcpResponse(req, res, payload, status = 200) {
+  res.writeHead(status, {
+    ...securityHeaders(),
+    ...mcpCorsHeaders(req),
+    ...mcpVersionHeaders(),
+    "content-type": "application/json; charset=utf-8",
+    "mcp-session-id": mcpSessionId(req)
+  });
+  res.end(JSON.stringify(payload, null, 2));
+}
+
+function mcpResult(id, result) {
+  return { jsonrpc: "2.0", id, result };
+}
+
+function mcpError(id, code, message, data = null) {
+  return { jsonrpc: "2.0", id: id ?? null, error: { code, message, data } };
+}
+
+function mcpJsonContent(data) {
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(data, null, 2)
+      }
+    ]
+  };
+}
+
+function mcpToolErrorContent(error, name, args) {
+  return {
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          ok: false,
+          tool_name: name || null,
+          error: {
+            code: error.code || "mcp_tool_failed",
+            message: error.message || "Kraken DUAL MCP tool failed.",
+            status: error.status || null,
+            detail: error.detail || null
+          },
+          retryable: [408, 429, 500, 502, 503, 504].includes(Number(error.status)),
+          arguments: redactMcpArguments(args)
+        }, null, 2)
+      }
+    ]
+  };
+}
+
+function assertMcpOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return;
+  const allowed = (process.env.DEMO_MCP_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (allowed.includes("*") || allowed.includes(origin)) return;
+  let originHost = "";
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    originHost = "";
+  }
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  if (originHost && host && originHost === host) return;
+  if (originHost.startsWith("127.0.0.1") || originHost.startsWith("localhost")) return;
+  throw httpError("MCP origin is not allowed.", 403, "mcp_origin_denied");
+}
+
+function mcpCorsHeaders(req) {
+  const origin = req.headers.origin;
+  if (!origin) return {};
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-expose-headers": "mcp-session-id, x-kraken-dual-version, x-mcp-protocol-version, x-mcp-schema-version",
+    vary: "origin"
+  };
+}
+
+function mcpVersionHeaders() {
+  return {
+    ...noCacheHeaders(),
+    "x-kraken-dual-version": appVersion,
+    "x-mcp-protocol-version": mcpProtocolVersion,
+    "x-mcp-schema-version": `${appVersion}:${mcpTools.length}`
+  };
+}
+
+function mcpJsonRpcErrorCode(error) {
+  if (error.code === "mcp_method_not_found") return -32601;
+  if (error.status === 400 || error.code === "argument_required") return -32602;
+  return -32000;
+}
+
+function mcpSessionId(req) {
+  const supplied = String(req.headers["mcp-session-id"] || "").trim();
+  if (/^[a-zA-Z0-9._:-]{4,128}$/.test(supplied)) return supplied;
+  const fingerprint = [
+    req.headers["x-forwarded-host"] || req.headers.host || "",
+    req.headers.origin || "",
+    req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "",
+    req.headers["user-agent"] || ""
+  ].join("|");
+  return `mcp-${crypto.createHash("sha256").update(fingerprint).digest("hex").slice(0, 18)}`;
+}
+
+function redactMcpArguments(args = {}) {
+  if (!args || typeof args !== "object") return {};
+  const redacted = { ...args };
+  for (const key of Object.keys(redacted)) {
+    if (/token|secret|password|api[_-]?key/i.test(key)) redacted[key] = "[REDACTED]";
+  }
+  return redacted;
+}
+
+function buildOpenApiDocument(req) {
+  const origin = requestOrigin(req) || "http://localhost:4173";
+  const jsonResponse = {
+    description: "JSON response.",
+    content: {
+      "application/json": {
+        schema: { type: "object", additionalProperties: true }
+      }
+    }
+  };
+  const requestBody = (schema) => ({
+    required: true,
+    content: { "application/json": { schema } }
+  });
+  const tradeRequestSchema = {
+    type: "object",
+    required: ["pair", "side", "notional"],
+    additionalProperties: false,
+    properties: {
+      pair: tradePairSchema,
+      side: tradeSideSchema,
+      notional: tradeNotionalSchema,
+      approved: { type: "boolean", default: false }
+    }
+  };
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "DUAL x Kraken Agent Trading Passport API",
+      version: appVersion,
+      description: "Safe paper-trading API where Kraken supplies market/execution rails and DUAL supplies policy, approval, audit, proof, and gated persistence."
+    },
+    servers: [{ url: origin }],
+    paths: {
+      "/api/health": {
+        get: { summary: "Read demo health and integration status.", responses: { 200: jsonResponse } }
+      },
+      "/api/openapi.json": {
+        get: { summary: "Read this OpenAPI description.", responses: { 200: jsonResponse } }
+      },
+      "/api/dual/status": {
+        get: { summary: "Read public DUAL adapter status and write gate state.", responses: { 200: jsonResponse } }
+      },
+      "/api/dual/write-readiness": {
+        get: { summary: "Read whether DUAL writes are ready for this request.", responses: { 200: jsonResponse } }
+      },
+      "/api/dual/replay-queue": {
+        get: { summary: "Read DUAL event-bus replay envelopes.", responses: { 200: jsonResponse } }
+      },
+      "/api/proof": {
+        get: { summary: "Read portable proof bundle.", responses: { 200: jsonResponse } }
+      },
+      "/api/proof/verify": {
+        get: { summary: "Verify current proof bundle.", responses: { 200: jsonResponse } }
+      },
+      "/api/state": {
+        get: { summary: "Read local demo state.", responses: { 200: jsonResponse } }
+      },
+      "/api/market": {
+        get: {
+          summary: "Read market data for a supported pair.",
+          parameters: [{
+            name: "pair",
+            in: "query",
+            schema: tradePairSchema,
+            required: false
+          }],
+          responses: { 200: jsonResponse }
+        }
+      },
+      "/api/policy": {
+        post: {
+          summary: "Update the local DUAL trading policy.",
+          requestBody: requestBody({
+            type: "object",
+            required: ["allowedPairs", "maxNotionalUsd", "maxDailyNotionalUsd", "humanApprovalRequiredAbove", "leverageAllowed"],
+            properties: {
+              allowedPairs: { type: "array", items: tradePairSchema },
+              maxNotionalUsd: { type: "number", minimum: 1 },
+              maxDailyNotionalUsd: { type: "number", minimum: 1 },
+              humanApprovalRequiredAbove: { type: "number", minimum: 0 },
+              leverageAllowed: { type: "boolean" }
+            }
+          }),
+          responses: { 200: jsonResponse }
+        }
+      },
+      "/api/propose": {
+        post: {
+          summary: "Create a DUAL policy-checked paper trade proposal.",
+          requestBody: requestBody(tradeRequestSchema),
+          responses: { 200: jsonResponse }
+        }
+      },
+      "/api/approve": {
+        post: {
+          summary: "Approve a waiting paper trade proposal.",
+          requestBody: requestBody({
+            type: "object",
+            required: ["id"],
+            properties: { id: proposalIdSchema }
+          }),
+          responses: { 200: jsonResponse, 404: jsonResponse }
+        }
+      },
+      "/api/execute-paper": {
+        post: {
+          summary: "Execute an approved proposal through paper/simulator rails.",
+          requestBody: requestBody({
+            type: "object",
+            required: ["id"],
+            properties: { id: proposalIdSchema }
+          }),
+          responses: { 200: jsonResponse, 409: jsonResponse, 404: jsonResponse }
+        }
+      },
+      "/api/red-team": {
+        post: {
+          summary: "Run a safe policy-violation scenario.",
+          requestBody: requestBody({
+            type: "object",
+            required: ["scenario"],
+            properties: {
+              scenario: { type: "string", enum: ["oversized", "blocked_pair", "leverage", "missing_approval"] }
+            }
+          }),
+          responses: { 200: jsonResponse }
+        }
+      },
+      "/mcp": {
+        post: {
+          summary: "MCP JSON-RPC facade for paper-trading tools, proof resources, and demo prompts.",
+          requestBody: requestBody({
+            type: "object",
+            required: ["jsonrpc", "method"],
+            properties: {
+              jsonrpc: { type: "string", const: "2.0" },
+              id: { oneOf: [{ type: "string" }, { type: "integer" }, { type: "null" }] },
+              method: { type: "string" },
+              params: { type: "object", additionalProperties: true }
+            }
+          }),
+          responses: { 200: jsonResponse, 405: jsonResponse }
+        },
+        options: {
+          summary: "MCP CORS preflight.",
+          responses: { 204: { description: "No content." } }
+        }
+      }
+    },
+    components: {
+      securitySchemes: {
+        demoOperatorToken: { type: "apiKey", in: "header", name: "x-demo-operator-token" },
+        bearerOperatorToken: { type: "http", scheme: "bearer" }
+      }
+    },
+    "x-mcp": {
+      endpoint: `${origin}/mcp`,
+      protocolVersion: mcpProtocolVersion,
+      serverInfo: mcpServerInfo,
+      tools: mcpTools.map((tool) => tool.name),
+      resources: mcpResources.map((resource) => resource.uri)
+    },
+    "x-safety": safetySummary()
+  };
 }
 
 async function serveStatic(req, res, url) {
@@ -451,6 +1243,31 @@ function sendJson(res, status, payload, headers = {}) {
   res.end(JSON.stringify(payload));
 }
 
+function securityHeaders() {
+  return {
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "permissions-policy": "camera=(), microphone=(), geolocation=()"
+  };
+}
+
+function noCacheHeaders() {
+  return {
+    "cache-control": "no-store",
+    pragma: "no-cache",
+    expires: "0"
+  };
+}
+
+function requestOrigin(req) {
+  const forwardedHost = String(req.headers["x-forwarded-host"] || "").split(",")[0].trim();
+  const host = forwardedHost || req.headers.host || "";
+  if (!host) return "";
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const proto = forwardedProto || (req.socket?.encrypted ? "https" : "http");
+  return `${proto}://${host}`;
+}
+
 function contentType(filePath) {
   return {
     ".html": "text/html; charset=utf-8",
@@ -460,6 +1277,59 @@ function contentType(filePath) {
     ".svg": "image/svg+xml",
     ".json": "application/json"
   }[extname(filePath)] || "application/octet-stream";
+}
+
+function normalizeMcpTradeInput(args = {}) {
+  return {
+    pair: requireSupportedPair(args.pair),
+    side: requireTradeSide(args.side),
+    notional: parseMcpNotional(args.notional_usd),
+    approved: Boolean(args.approved)
+  };
+}
+
+function requireSupportedPair(value) {
+  const pair = String(value || "DUALUSD").toUpperCase();
+  if (!supportedPairs.includes(pair)) {
+    throw httpError(`Unsupported pair ${pair}.`, 400, "unsupported_pair", { supportedPairs });
+  }
+  return pair;
+}
+
+function requireTradeSide(value) {
+  const side = String(value || "buy").toLowerCase();
+  if (!["buy", "sell"].includes(side)) {
+    throw httpError("side must be buy or sell.", 400, "unsupported_side");
+  }
+  return side;
+}
+
+function parseMcpNotional(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw httpError("notional_usd must be greater than zero.", 400, "invalid_notional");
+  }
+  return roundMoney(amount);
+}
+
+function requireProposalId(input = {}) {
+  const id = String(input.proposal_id || input.id || "").trim();
+  if (!id) throw httpError("proposal_id is required.", 400, "argument_required");
+  return id;
+}
+
+function clampInteger(value, min, max, fallback) {
+  const amount = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(amount)) return fallback;
+  return Math.max(min, Math.min(max, amount));
+}
+
+function httpError(message, status = 400, code = "bad_request", detail = null) {
+  const error = new Error(message);
+  error.status = status;
+  error.code = code;
+  error.detail = detail;
+  return error;
 }
 
 function normalizeTrade(input) {

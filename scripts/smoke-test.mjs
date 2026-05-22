@@ -3,6 +3,21 @@ const base = process.env.DEMO_BASE_URL || "http://localhost:4173";
 const health = await get("/api/health");
 assert(health.ok, "health endpoint returns ok");
 assert(["local", "dual"].includes(health.dual.mode), "DUAL persistence reports a known mode");
+assert(health.app.mcp === "/mcp", "health advertises MCP endpoint");
+
+const openapi = await get("/api/openapi.json");
+assert(openapi.openapi === "3.1.0", "OpenAPI endpoint returns a 3.1 document");
+assert(openapi.paths["/mcp"], "OpenAPI document advertises MCP endpoint");
+assert(openapi["x-mcp"].tools.includes("kraken_dual_propose_and_execute_paper_trade"), "OpenAPI document lists MCP trading tool");
+
+const mcpInit = await mcp("initialize", {});
+assert(mcpInit.protocolVersion === "2025-06-18", "MCP initialize returns current protocol version");
+assert(mcpInit.serverInfo.name === "kraken-dual-agent-demo", "MCP initialize returns server name");
+
+const mcpTools = await mcp("tools/list", {});
+const mcpToolNames = mcpTools.tools.map((tool) => tool.name);
+assert(mcpToolNames.includes("kraken_dual_get_market"), "MCP tools include market lookup");
+assert(mcpToolNames.includes("kraken_dual_propose_and_execute_paper_trade"), "MCP tools include paper trade execution");
 
 const dualStatus = await get("/api/dual/status");
 assert(dualStatus.available, "DUAL persistence adapter is available");
@@ -81,6 +96,37 @@ assert(dualExecuted.proposal.state === "executed", "allowed DUAL paper proposal 
 const redTeam = await post("/api/red-team", { scenario: "leverage" });
 assert(redTeam.policy.decision === "block", "leverage red-team scenario is blocked");
 
+const mcpMarket = mcpJson(await mcp("tools/call", {
+  name: "kraken_dual_get_market",
+  arguments: { pair: "DUALUSD" }
+}));
+assert(mcpMarket.market.pair === "DUALUSD", "MCP market tool returns DUALUSD");
+assert(Number(mcpMarket.market.price) > 0, "MCP market tool returns a DUALUSD price");
+
+const mcpTrade = mcpJson(await mcp("tools/call", {
+  name: "kraken_dual_propose_and_execute_paper_trade",
+  arguments: { pair: "DUALUSD", side: "buy", notional_usd: 10 }
+}));
+assert(mcpTrade.status === "executed", "MCP paper trade tool executes allowed DUALUSD trade");
+assert(mcpTrade.proposal.trade.pair === "DUALUSD", "MCP trade uses DUALUSD pair");
+assert(mcpTrade.result.digest, "MCP paper trade returns execution digest");
+
+const mcpVerify = mcpJson(await mcp("tools/call", {
+  name: "kraken_dual_verify_proof",
+  arguments: {}
+}));
+assert(typeof mcpVerify.verification.ok === "boolean", "MCP proof verifier returns ok flag");
+assert(mcpVerify.verification.proofHash, "MCP proof verifier returns proof hash");
+
+const mcpResources = await mcp("resources/list", {});
+assert(mcpResources.resources.some((resource) => resource.uri === "kraken-dual://proof"), "MCP resources include proof");
+
+const mcpBlocked = await mcp("tools/call", {
+  name: "kraken_dual_get_market",
+  arguments: { pair: "DOGEUSD" }
+});
+assert(mcpBlocked.isError, "MCP tool errors are returned as tool-level isError content");
+
 console.log("Smoke test passed");
 
 async function get(path) {
@@ -97,6 +143,24 @@ async function post(path, payload) {
   });
   if (!response.ok && ![403, 409].includes(response.status)) throw new Error(`${path} returned ${response.status}`);
   return response.json();
+}
+
+async function mcp(method, params) {
+  const response = await fetch(`${base}/mcp`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params })
+  });
+  if (!response.ok) throw new Error(`/mcp ${method} returned ${response.status}`);
+  const payload = await response.json();
+  if (payload.error) throw new Error(`/mcp ${method} error: ${payload.error.message}`);
+  return payload.result;
+}
+
+function mcpJson(result) {
+  const text = result.content?.find((item) => item.type === "text")?.text;
+  if (!text) throw new Error("MCP result did not include text JSON content");
+  return JSON.parse(text);
 }
 
 function assert(condition, message) {

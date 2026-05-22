@@ -28,8 +28,8 @@ export async function createDualPersistence() {
   if (mode === "dual") {
     try {
       ({ DualClient } = await import("dual-sdk"));
-      if (apiKey) client = makeClient(apiKey, authMode);
-      if (serviceToken) serviceClient = makeClient(serviceToken, serviceAuthMode);
+      if (apiKey) client = makeClient(apiKey, sdkAuthMode(authMode));
+      if (serviceToken) serviceClient = makeClient(serviceToken, sdkAuthMode(serviceAuthMode));
       if (serviceRefreshToken) {
         const refreshed = makeClient("", "bearer");
         const tokens = await refreshed.sdk.wallets.refreshToken(serviceRefreshToken);
@@ -359,7 +359,7 @@ export async function createDualPersistence() {
   function effectiveAuthMode() {
     if (sessionClient) return "bearer_email_session";
     if (serviceClient) return `${serviceClient.authMode}_service_account`;
-    return authMode;
+    return client?.authMode || authMode;
   }
 
   function effectiveWriteMode() {
@@ -384,6 +384,10 @@ export async function createDualPersistence() {
     }
     return body;
   }
+}
+
+function sdkAuthMode(modeName) {
+  return modeName === "both" ? "api_key" : modeName;
 }
 
 function authHeaders(write) {

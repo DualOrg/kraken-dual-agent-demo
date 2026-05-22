@@ -55,7 +55,7 @@ API-key auth is suitable for linking the Vercel deployment to a real DUAL passpo
 
 Email-code auth is not required for the public demo. Leave `DEMO_ENABLE_EMAIL_AUTH=false` unless you deliberately want a private browser operator fallback; the production route should be scoped API-key auth plus `DEMO_OPERATOR_TOKEN`.
 
-The app exposes DUAL data links in `/api/health`, `/api/dual/status`, `/api/proof`, and the Proof panel. Console links default to `https://console-testnet.dual.network/{orgId}/collections/...`; set `DUAL_CONSOLE_*_URL_TEMPLATE` values if the Console gains object/template detail routes. Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when finalized batch transaction hashes should open directly in Blockscout.
+The app exposes DUAL data links in `/api/health`, `/api/dual/status`, `/api/proof`, and the Proof panel. Console links default to explicit entity routes: `https://console-testnet.dual.network/{orgId}/collections/templates/{templateId}`, `/objects/{objectId}`, and `/action-logs/{actionId}`. Set `DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE`, `DUAL_CONSOLE_OBJECT_URL_TEMPLATE`, or `DUAL_CONSOLE_ACTION_URL_TEMPLATE` if the Console detail routes differ. Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when finalized batch transaction hashes should open directly in Blockscout.
 
 Recommended rollout:
 

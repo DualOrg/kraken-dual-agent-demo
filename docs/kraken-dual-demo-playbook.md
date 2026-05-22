@@ -223,7 +223,7 @@ Call out these rows:
 - `Write readiness`: ready when `DUAL_WRITE_MODE=event_bus` and write auth is configured.
 - `Mandate source`: DUAL template.
 - `DUAL object`: passport object used by the demo.
-- DUAL data links: open the configured Console org views for templates, objects, and action logs. If a Blockscout transaction URL is configured and a finalized batch hash is present, the proof panel also links to the explorer.
+- DUAL data links: open the explicit Console records for the passport template, passport object, receipt template/object when present, and latest DUAL action when an action id is retained. If a Blockscout transaction URL is configured and a finalized batch hash is present, the proof panel also links to the explorer.
 - `Policy version` and `Policy hash`: stable policy identity.
 - `DUAL batch` and `Batch proof`: DUAL batch evidence is present.
 - `Verifier`: all checks pass.
@@ -243,7 +243,7 @@ Proof interpretation:
 | Write auth | Makes the API-key and operator authorization dependency explicit. |
 | Mandate source | Ties the agent to a DUAL template. |
 | DUAL object | Ties the app to a specific agent passport object. |
-| DUAL links | Lets the presenter leave the app and inspect the underlying DUAL Console or Blockscout data. |
+| DUAL links | Lets the presenter leave the app and inspect the exact DUAL Console template, object, action, or Blockscout transaction. |
 | Policy hash | Makes the current mandate fingerprintable. |
 | DUAL batch | Shows DUAL batch evidence is being read. |
 | Batch proof | Shows the DUAL-side proof state visible to the app. |

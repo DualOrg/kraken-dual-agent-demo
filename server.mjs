@@ -28,9 +28,9 @@ const dualConsoleBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_CONSOLE_BAS
 const dualBlockscoutBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_BLOCKSCOUT_BASE_URL || "");
 const dualLinkTemplates = {
   consoleOrg: process.env.DUAL_CONSOLE_ORG_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/` : ""),
-  consoleTemplates: process.env.DUAL_CONSOLE_TEMPLATES_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/templates` : ""),
-  consoleObjects: process.env.DUAL_CONSOLE_OBJECTS_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/objects` : ""),
-  consoleActionLogs: process.env.DUAL_CONSOLE_ACTION_LOGS_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/action-logs` : ""),
+  consoleTemplate: process.env.DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/templates/{templateId}` : ""),
+  consoleObject: process.env.DUAL_CONSOLE_OBJECT_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/objects/{objectId}` : ""),
+  consoleAction: process.env.DUAL_CONSOLE_ACTION_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/action-logs/{actionId}` : ""),
   blockscoutTransaction: process.env.DUAL_BLOCKSCOUT_TX_URL_TEMPLATE || (dualBlockscoutBaseUrl ? `${dualBlockscoutBaseUrl}/tx/{transactionHash}` : "")
 };
 const supportedPairs = ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"];
@@ -1713,7 +1713,7 @@ function publicFeatureStatus() {
   return {
     emailCodeAuthEnabled,
     emailCodeRequired: false,
-    dualConsoleLinksConfigured: Boolean(dualLinkTemplates.consoleOrg),
+    dualConsoleLinksConfigured: Boolean(dualLinkTemplates.consoleTemplate || dualLinkTemplates.consoleObject || dualLinkTemplates.consoleAction),
     dualBlockscoutLinksConfigured: Boolean(dualLinkTemplates.blockscoutTransaction)
   };
 }
@@ -1779,36 +1779,51 @@ function buildDualDataLinks({
     process.env.DUAL_TRADE_RECEIPT_TEMPLATE_ID
   );
   const transactionHash = firstNonEmpty(dualBatch?.transactionHash);
-  const batchId = firstNonEmpty(dualBatch?.id);
+  const actionId = latestDualActionId(replayQueue, tradeReceipts);
+  const receiptObjectId = latestTradeReceiptObjectId(tradeReceipts);
   const links = [];
 
   if (orgId) {
     addDualLink(links, "console-dashboard", "DUAL Console", dualLinkTemplates.consoleOrg, { orgId }, "Open the org dashboard.");
     addDualLink(
       links,
-      "console-templates",
-      "Templates",
-      dualLinkTemplates.consoleTemplates,
-      { orgId, templateId, receiptTemplateId },
-      [templateId && `passport ${shortIdForLink(templateId)}`, receiptTemplateId && `receipt ${shortIdForLink(receiptTemplateId)}`]
-        .filter(Boolean)
-        .join(" / ") || "Open the template collection."
+      "console-template",
+      "Passport template",
+      dualLinkTemplates.consoleTemplate,
+      { orgId, templateId },
+      shortIdForLink(templateId)
     );
     addDualLink(
       links,
-      "console-objects",
-      "Objects",
-      dualLinkTemplates.consoleObjects,
+      "console-object",
+      "Passport object",
+      dualLinkTemplates.consoleObject,
       { orgId, objectId },
-      objectId ? `passport ${shortIdForLink(objectId)}` : "Open the object collection."
+      shortIdForLink(objectId)
     );
     addDualLink(
       links,
-      "console-action-logs",
-      "Action logs",
-      dualLinkTemplates.consoleActionLogs,
-      { orgId, batchId },
-      batchId ? `latest batch ${shortIdForLink(batchId)}` : "Open the action log collection."
+      "console-receipt-template",
+      "Receipt template",
+      dualLinkTemplates.consoleTemplate,
+      { orgId, templateId: receiptTemplateId },
+      shortIdForLink(receiptTemplateId)
+    );
+    addDualLink(
+      links,
+      "console-receipt-object",
+      "Receipt object",
+      dualLinkTemplates.consoleObject,
+      { orgId, objectId: receiptObjectId },
+      shortIdForLink(receiptObjectId)
+    );
+    addDualLink(
+      links,
+      "console-action",
+      "Latest DUAL action",
+      dualLinkTemplates.consoleAction,
+      { orgId, actionId },
+      shortIdForLink(actionId)
     );
   } else if (dualConsoleBaseUrl) {
     links.push({
@@ -1830,6 +1845,26 @@ function buildDualDataLinks({
   );
 
   return links;
+}
+
+function latestDualActionId(replayQueue = null, tradeReceipts = null) {
+  return firstNonEmpty(
+    replayQueue?.allEvents?.find((event) => event?.actionId)?.actionId,
+    replayQueue?.latest?.find((event) => event?.actionId)?.actionId,
+    replayQueue?.events?.find((event) => event?.actionId)?.actionId,
+    tradeReceipts?.allReceipts?.find((receipt) => receipt?.actionId)?.actionId,
+    tradeReceipts?.latest?.find((receipt) => receipt?.actionId)?.actionId,
+    tradeReceipts?.receipts?.find((receipt) => receipt?.actionId)?.actionId
+  );
+}
+
+function latestTradeReceiptObjectId(tradeReceipts = null) {
+  return firstNonEmpty(
+    tradeReceipts?.allReceipts?.find((receipt) => receipt?.objectId)?.objectId,
+    tradeReceipts?.latest?.find((receipt) => receipt?.dualObjectId || receipt?.objectId)?.dualObjectId,
+    tradeReceipts?.latest?.find((receipt) => receipt?.objectId)?.objectId,
+    tradeReceipts?.receipts?.find((receipt) => receipt?.objectId)?.objectId
+  );
 }
 
 function addDualLink(links, id, label, template, values, detail) {

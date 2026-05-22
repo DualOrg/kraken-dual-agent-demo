@@ -83,7 +83,7 @@ With current DUAL testnet auth, a scoped API key can link to and verify a real D
 
 The app uses scoped API-key auth plus the demo operator gate as the default write path. The older DUAL email-code flow is not required for this demo and is hidden/disabled unless `DEMO_ENABLE_EMAIL_AUTH=true` is set for a private operator session fallback.
 
-The proof and health payloads include DUAL Console links by default using `DUAL_CONSOLE_BASE_URL` (`https://console-testnet.dual.network` unless overridden). Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when the deployment has a public explorer route for finalized L1 transaction hashes.
+The proof and health payloads include explicit DUAL Console links by default using `DUAL_CONSOLE_BASE_URL` (`https://console-testnet.dual.network` unless overridden). The default URL templates point to the current passport template, passport object, latest receipt template/object when present, and latest DUAL action id when present. Set `DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE`, `DUAL_CONSOLE_OBJECT_URL_TEMPLATE`, or `DUAL_CONSOLE_ACTION_URL_TEMPLATE` if the Console detail routes change. Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when the deployment has a public explorer route for finalized L1 transaction hashes.
 
 Public deployments are read-linked by default. Server-side DUAL writes are blocked unless the request passes the demo operator gate with `x-demo-operator-token` or `Authorization: Bearer <DEMO_OPERATOR_TOKEN>`. This operator gate is separate from DUAL event-bus auth and keeps the public demo safe while still allowing the operator to replay events into DUAL.
 

@@ -63,6 +63,14 @@ assert(proof.dualBatch && typeof proof.dualBatch.available === "boolean", "proof
 assert(Array.isArray(proof.verification), "proof includes verification checks");
 assert(Array.isArray(proof.links), "proof includes DUAL data links");
 assert(proof.links.some((link) => link.source === "console"), "proof includes a DUAL Console link");
+const passportTemplateLink = proof.links.find((link) => link.id === "console-template");
+const passportObjectLink = proof.links.find((link) => link.id === "console-object");
+if (proof.status.dualMode?.templateId) {
+  assert(passportTemplateLink?.href?.includes(proof.status.dualMode.templateId), "proof template link targets the explicit DUAL template id");
+}
+if (proof.status.dualMode?.objectId) {
+  assert(passportObjectLink?.href?.includes(proof.status.dualMode.objectId), "proof object link targets the explicit DUAL object id");
+}
 
 const proofVerify = await get("/api/proof/verify");
 assert(typeof proofVerify.ok === "boolean", "proof verifier returns an ok flag");

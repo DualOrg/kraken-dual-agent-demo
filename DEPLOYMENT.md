@@ -39,6 +39,7 @@ DUAL_API_KEY=...
 DUAL_ORG_ID=...
 DUAL_AGENT_PASSPORT_TEMPLATE_ID=...
 DUAL_AGENT_PASSPORT_OBJECT_ID=...
+DUAL_TRADE_RECEIPT_TEMPLATE_ID=...
 DUAL_AUTH_MODE=api_key
 DUAL_WRITE_MODE=event_bus
 DUAL_EVENTBUS_WRITE_PATH=/ebus/execute
@@ -51,14 +52,16 @@ API-key auth is suitable for linking the Vercel deployment to a real DUAL passpo
 
 Recommended rollout:
 
-1. Create the DUAL template from `dual-agent-passport.schema.json`.
+1. Create the DUAL passport template from `dual-agent-passport.schema.json`.
 2. Mint one passport object for the Kraken Market Agent.
 3. Set `DUAL_AGENT_PASSPORT_OBJECT_ID` in Vercel.
-4. Set `DEMO_OPERATOR_TOKEN` so public DUAL write endpoints fail closed unless the operator sends the token.
-5. Set `DUAL_WRITE_MODE=event_bus` for scoped API-key deployments.
-6. Redeploy and verify `/api/dual/status`, `/api/proof/verify`, `/api/openapi.json`, and MCP `initialize` / `tools/list` on `/mcp`.
+4. Create the DUAL trade receipt template from `dual-trade-receipt.schema.json`.
+5. Set `DUAL_TRADE_RECEIPT_TEMPLATE_ID` in Vercel.
+6. Set `DEMO_OPERATOR_TOKEN` so public DUAL write endpoints fail closed unless the operator sends the token.
+7. Set `DUAL_WRITE_MODE=event_bus` for scoped API-key deployments.
+8. Redeploy and verify `/api/dual/status`, `/api/dual/trade-receipts`, `/api/proof/verify`, `/api/openapi.json`, and MCP `initialize` / `tools/list` on `/mcp`.
 
-Without `DEMO_OPERATOR_TOKEN`, production remains read-linked for public requests even if DUAL write credentials are present. This is intentional: anonymous visitors can inspect proof and exercise local demo state, but they cannot replay events into DUAL.
+Without `DEMO_OPERATOR_TOKEN`, production remains read-linked for public requests even if DUAL write credentials are present. This is intentional: anonymous visitors can inspect proof and exercise local demo state, but they cannot replay passport events or mint trade receipts into DUAL.
 
 ## API and MCP Checks
 
@@ -67,6 +70,6 @@ The public contract is:
 - HTTP API description: `GET /api/openapi.json`
 - MCP facade: `POST /mcp`
 
-The MCP surface is safe to expose for public demos because its trading tools are paper-only and its DUAL tools are read/replay-queue inspection only. DUAL replay execution still requires the existing operator-gated HTTP endpoint and `DEMO_OPERATOR_TOKEN`.
+The MCP surface is safe to expose for public demos because its trading tools are paper-only and its DUAL tools are read/replay-queue/receipt inspection only. DUAL replay execution and trade receipt minting still require the existing operator-gated HTTP endpoints and `DEMO_OPERATOR_TOKEN`.
 
 For browser-based MCP hosts that send an `Origin` header from a different host, set `DEMO_MCP_ALLOWED_ORIGINS` to the comma-separated allowed origins. Server-side MCP clients normally do not need this because they do not send browser CORS origins.

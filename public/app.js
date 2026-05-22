@@ -6,7 +6,9 @@ const state = {
   proofVerification: null,
   dualAuth: null,
   replayExecution: null,
-  actionPassportSetup: null
+  actionPassportSetup: null,
+  tradeReceiptTemplateSetup: null,
+  tradeReceiptReplay: null
 };
 
 const pairs = ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"];
@@ -30,7 +32,9 @@ const els = {
   requestCodeButton: document.querySelector("#requestCodeButton"),
   verifyCodeButton: document.querySelector("#verifyCodeButton"),
   setupActionPassportButton: document.querySelector("#setupActionPassportButton"),
+  setupReceiptTemplateButton: document.querySelector("#setupReceiptTemplateButton"),
   executeReplayButton: document.querySelector("#executeReplayButton"),
+  executeReceiptReplayButton: document.querySelector("#executeReceiptReplayButton"),
   exportProofButton: document.querySelector("#exportProofButton"),
   proofGrid: document.querySelector("#proofGrid"),
   policyForm: document.querySelector("#policyForm"),
@@ -96,6 +100,7 @@ function bindEvents() {
     });
     const result = await response.json();
     state.data = result.state;
+    await loadProof();
     render();
   });
 
@@ -104,6 +109,7 @@ function bindEvents() {
     state.activeProposalId = null;
     render();
     await refreshMarkets();
+    await loadProof();
   });
 
   els.exportProofButton.addEventListener("click", async () => {
@@ -153,6 +159,52 @@ function bindEvents() {
       els.dualAuthMessage.textContent = result.executed
         ? `Executed ${result.result.executedCount} DUAL event-bus writes.`
         : result.readiness?.detail || "DUAL write auth is not ready.";
+      render();
+      await loadProof();
+    } catch (error) {
+      els.dualAuthMessage.textContent = error.message;
+    }
+  });
+
+  els.setupActionPassportButton.addEventListener("click", async () => {
+    try {
+      els.dualAuthMessage.textContent = "Creating action-enabled DUAL passport...";
+      const result = await postJson("/api/dual/action-passport/setup", {
+        confirm: "create-action-enabled-kraken-passport"
+      });
+      state.actionPassportSetup = result;
+      els.dualAuthMessage.textContent = `Action passport ready: ${shortId(result.vercelEnv?.DUAL_AGENT_PASSPORT_TEMPLATE_ID || result.template?.id)}`;
+      await checkHealth();
+      await loadProof();
+    } catch (error) {
+      els.dualAuthMessage.textContent = error.message;
+    }
+  });
+
+  els.setupReceiptTemplateButton.addEventListener("click", async () => {
+    try {
+      els.dualAuthMessage.textContent = "Creating DUAL trade receipt template...";
+      const result = await postJson("/api/dual/trade-receipt-template/setup", {
+        confirm: "create-dual-trade-receipt-template"
+      });
+      state.tradeReceiptTemplateSetup = result;
+      els.dualAuthMessage.textContent = `Receipt template ready: ${shortId(result.vercelEnv?.DUAL_TRADE_RECEIPT_TEMPLATE_ID || result.template?.id)}`;
+      await checkHealth();
+      await loadProof();
+    } catch (error) {
+      els.dualAuthMessage.textContent = error.message;
+    }
+  });
+
+  els.executeReceiptReplayButton.addEventListener("click", async () => {
+    try {
+      els.dualAuthMessage.textContent = "Minting pending trade receipts into DUAL...";
+      const result = await postJson("/api/dual/trade-receipts/replay", {});
+      state.tradeReceiptReplay = result.executed ? result.result : result;
+      if (result.state) state.data = result.state;
+      els.dualAuthMessage.textContent = result.executed
+        ? `Minted ${result.result.executedCount} DUAL trade receipts.`
+        : result.detail || "DUAL trade receipt minting is not ready.";
       render();
       await loadProof();
     } catch (error) {
@@ -314,6 +366,7 @@ function renderProposal() {
     <span>${proposal.state.replaceAll("_", " ")} · ${proposal.trade.side.toUpperCase()} ${proposal.trade.pair}</span>
     <strong>${money.format(policy.notional)} notional</strong>
     <p>${message}</p>
+    ${proposal.tradeReceipt ? `<small>Receipt ${shortId(proposal.tradeReceipt.id)} · ${proposal.tradeReceipt.dualSync?.synced ? "minted to DUAL" : "mint pending"}</small>` : ""}
   `;
   els.approveButton.disabled = proposal.state !== "awaiting_approval";
   els.executeButton.disabled = proposal.state !== "approved";
@@ -355,6 +408,7 @@ function renderProof() {
   const dualTemplate = proof?.dualTemplate;
   const dualBatch = proof?.dualBatch;
   const replayQueue = proof?.replayQueue;
+  const tradeReceipts = proof?.tradeReceipts;
   const policy = proof?.policy;
   const eventBusSync = verifier?.checks?.find((check) => check.id === "dual-event-bus-sync");
   const replayExecutionLabel = state.replayExecution?.executedCount != null
@@ -367,6 +421,11 @@ function renderProof() {
   const replayQueueLabel = replayQueue?.eventCount != null
     ? `${replayQueue.pendingCount ?? replayQueue.eventCount} pending / ${replayQueue.eventCount} total`
     : "pending";
+  const receiptReplayLabel = state.tradeReceiptReplay?.executedCount != null
+    ? `${state.tradeReceiptReplay.executedCount} minted / ${state.tradeReceiptReplay.skippedCount || 0} skipped`
+    : tradeReceipts?.receiptCount != null
+      ? `${tradeReceipts.syncedCount || 0} minted, ${tradeReceipts.pendingCount || 0} pending`
+      : "pending";
   const rows = [
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
@@ -378,6 +437,9 @@ function renderProof() {
     ["Policy version", policy?.version ? `v${policy.version}` : "pending"],
     ["Policy hash", policy?.hash ? shortId(policy.hash) : "pending"],
     ["Action setup", state.actionPassportSetup?.vercelEnv ? `${shortId(state.actionPassportSetup.vercelEnv.DUAL_AGENT_PASSPORT_TEMPLATE_ID)} / ${shortId(state.actionPassportSetup.vercelEnv.DUAL_AGENT_PASSPORT_OBJECT_ID)}` : "not run"],
+    ["Receipt template", tradeReceipts?.targetTemplateId ? shortId(tradeReceipts.targetTemplateId) : state.tradeReceiptTemplateSetup?.vercelEnv ? shortId(state.tradeReceiptTemplateSetup.vercelEnv.DUAL_TRADE_RECEIPT_TEMPLATE_ID) : "not configured"],
+    ["Trade receipts", tradeReceipts?.receiptCount != null ? `${tradeReceipts.receiptCount} receipts` : "pending"],
+    ["Receipt minting", receiptReplayLabel],
     ["Replay queue", replayQueueLabel],
     ["Replay execution", replayExecutionLabel],
     ["DUAL actions", replayQueue?.syncedCount != null ? `${replayQueue.syncedCount} action ids` : "pending"],
@@ -385,6 +447,7 @@ function renderProof() {
     ["Batch proof", dualBatch?.available ? batchProofLabel(dualBatch) : "pending"],
     ["Replay root", replayQueue?.rootHash ? shortId(replayQueue.rootHash) : "pending"],
     ["Pending root", replayQueue?.pendingRootHash ? shortId(replayQueue.pendingRootHash) : "pending"],
+    ["Receipt root", tradeReceipts?.rootHash ? shortId(tradeReceipts.rootHash) : "pending"],
     ["Audit root", proof?.audit?.rootHash ? shortId(proof.audit.rootHash) : "pending"],
     ["Proof hash", proof?.proofHash ? shortId(proof.proofHash) : "pending"],
     ["Verifier", verifier ? verifier.complete ? "complete" : verifier.ok ? verifier.status.replaceAll("_", " ") : "checks pending" : "pending"]
@@ -400,6 +463,8 @@ function renderProof() {
   const writeReady = Boolean(proof?.status?.writeReadiness?.ready);
   els.executeReplayButton.disabled = !writeReady || !(replayQueue?.pendingCount ?? replayQueue?.eventCount);
   els.setupActionPassportButton.disabled = !writeReady;
+  els.setupReceiptTemplateButton.disabled = !writeReady;
+  els.executeReceiptReplayButton.disabled = !writeReady || !tradeReceipts?.writable || !tradeReceipts?.pendingCount;
   if (auth?.authenticated) {
     els.dualAuthMessage.textContent = auth.detail;
   } else if (!els.dualAuthMessage.textContent) {

@@ -48,7 +48,7 @@ The demo is intentionally paper-only. No credentials and no real funds are used.
 
 ## Current State To Say Up Front
 
-The demo is strong on DUAL readback, policy proof, passport state, batch proof, and audit evidence. The event-bus write path has moved to the current DUAL testnet action endpoint: `/ebus/actions`, with scoped API-key auth via `x-api-key`. Older `/ebus/execute` bearer/session behavior is kept as a fallback path.
+The demo is strong on DUAL readback, policy proof, passport state, per-trade receipt records, batch proof, and audit evidence. The event-bus write path uses the current `/ebus/execute` endpoint with scoped API-key auth via `x-api-key`; the endpoint no longer needs a DUAL bearer token.
 
 Presenter line:
 
@@ -77,7 +77,8 @@ What this means:
 - DUAL supplies the agent identity and mandate proof surface.
 - The local policy evaluator blocks or allows action based on the DUAL-linked mandate.
 - The proof panel shows whether the app state is consistent with DUAL readback and batch evidence.
-- Event-bus writes use the current `/ebus/actions` path with scoped API-key or bearer/session auth.
+- Event-bus writes use the current `/ebus/execute` path with scoped API-key auth.
+- Successful paper executions create deterministic trade receipts that can be minted one-per-trade into DUAL when the receipt template is configured.
 
 ## Recommended Timing
 
@@ -238,7 +239,7 @@ Proof interpretation:
 | Paper execution | Makes the demo safe and honest. |
 | DUAL mode | Shows whether DUAL is read-linked or write-synced. |
 | Write readiness | Shows whether unattended write credentials are available. |
-| Write auth | Makes the API-key or bearer/session auth dependency explicit. |
+| Write auth | Makes the API-key and operator authorization dependency explicit. |
 | Mandate source | Ties the agent to a DUAL template. |
 | DUAL object | Ties the app to a specific agent passport object. |
 | Policy hash | Makes the current mandate fingerprintable. |
@@ -278,7 +279,7 @@ What the audit trail is doing:
 
 What to say if asked about production audit durability:
 
-> "The demo already models the evidence chain. Durable unattended DUAL event-bus writes now use the current `/ebus/actions` path with a scoped API key or bearer/session credential."
+> "The demo already models the evidence chain. Durable unattended DUAL event-bus writes now use the current `/ebus/execute` path with a scoped API key. Each executed paper trade also receives a deterministic receipt that can be minted as its own DUAL object."
 
 ## 6. Run A Red-Team Check
 
@@ -328,11 +329,11 @@ Pending write path:
 
 - Policy updates are prepared as DUAL object updates.
 - Audit/provenance events are prepared as event-bus envelopes.
-- Replay execution is queued until scoped API-key or bearer/session write auth is available.
+- Replay execution is queued until scoped API-key write auth and the demo operator gate are available.
 
 Important distinction:
 
-> Current DUAL testnet writes use `/ebus/actions` with scoped API-key auth via `x-api-key`. If an older deployment still points at `/ebus/execute`, it may still require bearer/session auth.
+> Current DUAL testnet writes use `/ebus/execute` with scoped API-key auth via `x-api-key`. The demo operator gate is separate and prevents anonymous public writes.
 
 Detailed read/write map:
 
@@ -342,8 +343,9 @@ Detailed read/write map:
 | Mandate custom data | Read | Working | Provides policy state and policy hash. |
 | Template metadata | Read | Working | Shows the passport comes from a DUAL template. |
 | Sequencer batch evidence | Read | Working | Provides DUAL batch proof context. |
-| Policy updates | Write-capable | App support present | Can update passport custom data when scoped API-key or bearer/session write auth exists. |
-| Event-bus action envelopes | Write-capable | App support present | Ready to emit provenance/action events through `/ebus/actions`. |
+| Policy updates | Write-capable | App support present | Can update passport custom data when scoped API-key write auth and operator authorization exist. |
+| Event-bus action envelopes | Write-capable | App support present | Ready to emit provenance/action events through `/ebus/execute`. |
+| Trade receipt mints | Write-capable | App support present | Ready to mint one DUAL receipt object per executed paper trade when `DUAL_TRADE_RECEIPT_TEMPLATE_ID` is set. |
 | Replay queue | Local pending/synced state | Working | Keeps pending writes visible instead of hiding auth failure. |
 
 Plain-English explanation:
@@ -362,7 +364,8 @@ Use this explanation for technical reviewers:
 6. If allowed, the app performs a paper execution and records provenance.
 7. If blocked, the app records the blocked attempt and reason.
 8. The proof endpoint verifies that the visible state matches DUAL-linked evidence.
-9. DUAL event-bus writes run through `/ebus/actions` when scoped API-key or bearer/session write auth is available.
+9. DUAL event-bus writes run through `/ebus/execute` when scoped API-key write auth and operator authorization are available.
+10. Executed paper trades produce deterministic trade receipts and can mint those receipts as individual DUAL objects.
 
 ## 9. Objection Handling
 
@@ -371,7 +374,7 @@ Use this explanation for technical reviewers:
 | Is this using real Kraken funds? | No. It uses Kraken public market data and paper execution. That is intentional for demo safety. |
 | Is this just a mock UI? | No. The proof panel reads DUAL-linked object, mandate, and batch evidence. Execution is paper, but the governance/proof path is real. |
 | Why does it say `read-linked`? | Because this deployment has not enabled `DUAL_WRITE_MODE=event_bus` or does not have a write-capable key installed. |
-| Why use an API key now? | Current DUAL testnet event-bus writes use `/ebus/actions` with scoped API-key auth via `x-api-key`; `/ebus/execute` remains the older bearer/session path. |
+| Why use an API key now? | Current DUAL testnet event-bus writes use `/ebus/execute` with scoped API-key auth via `x-api-key`; the endpoint no longer needs a bearer token. |
 | What is the user benefit? | Agent actions become bounded, explainable, and auditable instead of being opaque calls from a model to a tool. |
 | What is the developer benefit? | The policy and proof layer can sit around an app without putting exchange credentials in the browser. |
 | What is the DUAL platform feedback? | Provide a least-privilege service credential or service-session path accepted by event-bus write endpoints. |
@@ -382,14 +385,14 @@ Use this explanation for technical reviewers:
 | --- | --- |
 | Market card is slow or stale | Continue. The demo thesis does not depend on the exact live price. |
 | Policy check does not change state immediately | Click once, wait for the proposal status, then narrate the policy rules. |
-| Proof shows `read-linked` | Check that `DUAL_WRITE_MODE=event_bus`, `DUAL_API_URL=https://api-testnet.dual.network`, `DUAL_EVENTBUS_WRITE_PATH=/ebus/actions`, and a scoped API key are configured. |
+| Proof shows `read-linked` | Check that `DUAL_WRITE_MODE=event_bus`, `DUAL_API_URL=https://api-testnet.dual.network`, `DUAL_EVENTBUS_WRITE_PATH=/ebus/execute`, a scoped API key, and `DEMO_OPERATOR_TOKEN` are configured. |
 | Batch proof is not finalized | Say the demo reads DUAL batch evidence, and the current state may be anchoring rather than finalized. |
 | Red-team block has old timeline entries | Focus on the newest blocked event and the explicit reason. |
 | Audience asks for real trading | Reframe: the demo is about agent governance and proof, not financial execution. |
 
 ## 11. Score And Remaining Gap
 
-Current DUAL demo score: `9.7/10`.
+Current DUAL demo score: `9.4/10` as a public demo. It reaches the 9.8 target once the DUAL trade receipt template is live in production and a receipt replay is verified against DUAL readback.
 
 Why it is high:
 
@@ -403,7 +406,8 @@ Why it is high:
 Remaining `0.3`:
 
 - Production needs a scoped event-bus API key installed in Vercel with `DUAL_WRITE_MODE=event_bus`.
-- The app should move from `read-linked` to durable `write-synced` using the current `/ebus/actions` path.
+- The app should move from `read-linked` to durable `write-synced` using the current `/ebus/execute` path.
+- Per-trade receipt minting should be shown after `DUAL_TRADE_RECEIPT_TEMPLATE_ID` is configured.
 - Finalized L1 proof status should be shown as a first-class row once available, distinct from anchoring/proof-success batch state.
 
 ## 12. Close The Demo
@@ -430,7 +434,7 @@ Long close:
 - Open Proof and call out policy hash, DUAL object, batch proof, verifier.
 - Open Audit and show proposal plus execution.
 - Run Red Team oversized order.
-- Explain that write-sync depends on the current DUAL `/ebus/actions` API-key path being configured in production.
+- Explain that write-sync depends on the current DUAL `/ebus/execute` API-key path and operator gate being configured in production.
 
 ## Post-Demo Follow-Up
 
@@ -439,7 +443,7 @@ Send these points after the demo:
 - Live demo URL: <https://kraken-dual-agent-demo.vercel.app/>
 - The app is paper-only and uses no real funds.
 - DUAL readback and proof surfaces are live.
-- The remaining deployment ask is a least-privilege API key accepted by the DUAL `/ebus/actions` write endpoint.
+- The remaining deployment ask is a least-privilege API key accepted by the DUAL `/ebus/execute` write endpoint plus a configured DUAL trade receipt template.
 - The reusable pattern is agent passport plus mandate plus proof, not trading-specific logic.
 
 ## One-Page Recap
@@ -448,4 +452,4 @@ The Kraken DUAL demo is a concrete example of governed AI-agent execution. The a
 
 The proof bundle turns the demo from a UI into an evidence story. It shows the DUAL object, policy hash, mandate source, batch proof, and verifier state. The audit trail shows the sequence of events. The red-team controls show that boundaries are enforceable.
 
-The remaining deployment gap is installing a scoped API key and enabling `DUAL_WRITE_MODE=event_bus` against `https://api-testnet.dual.network/ebus/actions`. Once configured, the demo can move from `read-linked` to fully `write-synced` without relying on a human browser session.
+The remaining deployment gap is installing a scoped API key, enabling `DUAL_WRITE_MODE=event_bus` against `https://api-testnet.dual.network/ebus/execute`, and setting `DUAL_TRADE_RECEIPT_TEMPLATE_ID`. Once configured, the demo can move from `read-linked` to fully `write-synced` with one DUAL receipt object per executed paper trade.

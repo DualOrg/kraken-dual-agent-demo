@@ -8,6 +8,10 @@ import { loadState, resetState, saveState, createAuditEvent, createProposal } fr
 import { evaluateTrade, redTeamTrade, roundMoney, roundQty } from "./src/policy.mjs";
 import { executePaperTrade, getAdapterStatus, getMarket } from "./src/krakenAdapter.mjs";
 import { createDualPersistence } from "./src/dualPersistenceV3.mjs";
+import {
+  createTradeReceipt,
+  summarizeTradeReceipt
+} from "./src/tradeReceipts.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = __dirname;
@@ -105,6 +109,11 @@ const mcpTools = [
     additionalProperties: false,
     properties: {}
   }),
+  mcpTool("kraken_dual_get_trade_receipts", "Read per-trade DUAL receipt status for executed paper trades. Public MCP does not mint receipts.", {
+    type: "object",
+    additionalProperties: false,
+    properties: {}
+  }),
   mcpTool("kraken_dual_red_team", "Run a safe policy-violation scenario to prove unsafe trades are blocked before execution.", {
     type: "object",
     additionalProperties: false,
@@ -118,7 +127,8 @@ const mcpResources = [
   mcpResource("kraken-dual://status", "Kraken DUAL status", "Health, policy, proof, and paper-execution status."),
   mcpResource("kraken-dual://proof", "Kraken DUAL proof", "Portable proof bundle for verifier readback."),
   mcpResource("kraken-dual://audit", "Kraken DUAL audit", "Latest audit events and provenance hashes."),
-  mcpResource("kraken-dual://replay-queue", "Kraken DUAL replay queue", "Pending DUAL event-bus replay envelopes.")
+  mcpResource("kraken-dual://replay-queue", "Kraken DUAL replay queue", "Pending DUAL event-bus replay envelopes."),
+  mcpResource("kraken-dual://trade-receipts", "Kraken DUAL trade receipts", "Per-trade DUAL receipt minting status.")
 ];
 const mcpPrompts = [
   {
@@ -215,6 +225,12 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/dual/trade-receipts") {
+    const state = await loadState();
+    sendJson(res, 200, publicTradeReceiptQueue(req, state.tradeReceipts || []));
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/dual/replay-queue/execute") {
     if (!canUseDualWrite(req)) {
       sendJson(res, 403, dualWriteForbidden(req));
@@ -248,6 +264,49 @@ async function handleApi(req, res, url) {
           result: synced.result
         }
       };
+    });
+    await saveState(state);
+    sendJson(res, 200, { executed: true, state, result });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/dual/trade-receipts/replay") {
+    if (!canUseDualWrite(req)) {
+      sendJson(res, 403, dualWriteForbidden(req));
+      return;
+    }
+    const state = await loadState();
+    const queue = publicTradeReceiptQueue(req, state.tradeReceipts || []);
+    if (!queue.writable) {
+      sendJson(res, 409, {
+        executed: false,
+        error: "dual_trade_receipt_minting_not_ready",
+        tradeReceiptQueue: queue,
+        detail: queue.ready
+          ? "DUAL trade receipt replay needs authenticated write auth."
+          : "Set DUAL_TRADE_RECEIPT_TEMPLATE_ID before replaying trade receipts."
+      });
+      return;
+    }
+
+    const result = await dualPersistence.executeTradeReceiptReplayQueue(state.tradeReceipts || []);
+    const syncedByReceiptId = new Map(result.receipts.map((receipt) => [receipt.receiptId, receipt]));
+    state.tradeReceipts = (state.tradeReceipts || []).map((receipt) => {
+      const synced = syncedByReceiptId.get(receipt.id);
+      if (!synced) return receipt;
+      return {
+        ...receipt,
+        dualSync: {
+          synced: true,
+          envelopeHash: synced.envelopeHash,
+          replayedAt: new Date().toISOString(),
+          result: synced.result
+        }
+      };
+    });
+    state.proposals = (state.proposals || []).map((proposal) => {
+      const receipt = (state.tradeReceipts || []).find((item) => item.proposalId === proposal.id);
+      return receipt ? { ...proposal, tradeReceipt: summarizeTradeReceipt(receipt) } : proposal;
     });
     await saveState(state);
     sendJson(res, 200, { executed: true, state, result });
@@ -302,6 +361,24 @@ async function handleApi(req, res, url) {
     }
     const state = await loadState();
     const result = await dualPersistence.createActionEnabledPassport(state.passport);
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/dual/trade-receipt-template/setup") {
+    if (!canUseDualWrite(req)) {
+      sendJson(res, 403, dualWriteForbidden(req));
+      return;
+    }
+    const body = await readBody(req);
+    if (body.confirm !== "create-dual-trade-receipt-template") {
+      sendJson(res, 400, {
+        error: "confirmation_required",
+        message: "Send confirm=create-dual-trade-receipt-template to create the DUAL trade receipt template."
+      });
+      return;
+    }
+    const result = await dualPersistence.createTradeReceiptTemplate();
     sendJson(res, 200, result);
     return;
   }
@@ -556,15 +633,43 @@ async function executePaperTradeProposal(req, input) {
   proposal.executedAt = new Date().toISOString();
   state.passport.dailyNotionalUsed = Math.round((state.passport.dailyNotionalUsed + policy.notional) * 100) / 100;
   state.passport.dualObjectState = "executed";
-  await addAudit(req, state,
+  const event = await addAudit(req, state,
     "paper_executed",
     "ok",
     "Kraken paper trade executed",
     `${proposal.trade.side.toUpperCase()} ${proposal.trade.quantity} ${proposal.trade.pair} via ${result.source}.`,
-    { proposalId: proposal.id, resultDigest: result.digest, source: result.source }
+    {
+      proposalId: proposal.id,
+      trade: proposal.trade,
+      policy,
+      resultDigest: result.digest,
+      source: result.source
+    }
   );
+  const receipt = createTradeReceipt(state.passport, proposal, event, result);
+  receipt.dualSync = await syncTradeReceipt(req, receipt);
+  state.tradeReceipts = state.tradeReceipts || [];
+  state.tradeReceipts.unshift(receipt);
+  proposal.tradeReceipt = summarizeTradeReceipt(receipt);
   await saveState(state);
-  return { executed: true, blocked: false, state, proposal, result };
+  return { executed: true, blocked: false, state, proposal, result, tradeReceipt: summarizeTradeReceipt(receipt) };
+}
+
+async function syncTradeReceipt(req, receipt) {
+  if (!canUseDualWrite(req)) {
+    return {
+      synced: false,
+      reason: "DUAL trade receipt minting is operator-gated for public demo requests."
+    };
+  }
+  try {
+    const dualResult = await dualPersistence.recordTradeReceipt(receipt);
+    return dualResult?.skipped
+      ? { synced: false, reason: dualResult.reason, replay: dualResult.replay || null }
+      : { synced: true, envelopeHash: dualResult?.envelopeHash || null, result: dualResult?.result || null };
+  } catch (error) {
+    return { synced: false, error: error.message };
+  }
 }
 
 async function proposeAndExecutePaperTrade(req, args) {
@@ -585,6 +690,7 @@ async function proposeAndExecutePaperTrade(req, args) {
     status: "executed",
     proposal: executed.proposal,
     result: executed.result,
+    tradeReceipt: executed.tradeReceipt,
     summary: summarizeStateForAgent(executed.state)
   };
 }
@@ -661,7 +767,8 @@ function summarizeStateForAgent(state, limit = 5) {
     decision: proposal.policy?.decision,
     approved: proposal.approved,
     executedAt: proposal.executedAt,
-    resultDigest: proposal.result?.digest || null
+    resultDigest: proposal.result?.digest || null,
+    tradeReceipt: proposal.tradeReceipt || null
   }));
   const audit = (state.audit || []).slice(0, limit).map((event) => ({
     id: event.id,
@@ -683,6 +790,10 @@ function summarizeStateForAgent(state, limit = 5) {
     },
     policy: policySnapshot(state.passport),
     proposals,
+    tradeReceipts: {
+      receiptCount: (state.tradeReceipts || []).length,
+      latest: (state.tradeReceipts || []).slice(0, limit).map(summarizeTradeReceipt)
+    },
     audit: {
       eventCount: (state.audit || []).length,
       latest: audit
@@ -816,6 +927,7 @@ async function callMcpTool(req, name, args) {
         proposal: result.proposal,
         policy: result.policy || result.proposal.policy,
         result: result.result || null,
+        tradeReceipt: result.tradeReceipt || null,
         summary: summarizeStateForAgent(result.state)
       };
     }
@@ -830,6 +942,10 @@ async function callMcpTool(req, name, args) {
     case "kraken_dual_get_replay_queue": {
       const state = await loadState();
       return { ok: true, replayQueue: publicReplayQueue(req, state.passport, state.audit || [], await safeReadPassportObject()) };
+    }
+    case "kraken_dual_get_trade_receipts": {
+      const state = await loadState();
+      return { ok: true, tradeReceiptQueue: publicTradeReceiptQueue(req, state.tradeReceipts || []) };
     }
     case "kraken_dual_red_team": {
       const result = await runRedTeam(req, { scenario: args.scenario || "leverage" });
@@ -854,6 +970,10 @@ async function readMcpResource(req, uri) {
   if (uri === "kraken-dual://replay-queue") {
     const state = await loadState();
     return { ok: true, replayQueue: publicReplayQueue(req, state.passport, state.audit || [], await safeReadPassportObject()) };
+  }
+  if (uri === "kraken-dual://trade-receipts") {
+    const state = await loadState();
+    return { ok: true, tradeReceiptQueue: publicTradeReceiptQueue(req, state.tradeReceipts || []) };
   }
   throw Object.assign(new Error(`Unknown Kraken DUAL MCP resource: ${uri}`), { code: "mcp_resource_not_found", status: 404 });
 }
@@ -1090,6 +1210,37 @@ function buildOpenApiDocument(req) {
       },
       "/api/dual/replay-queue": {
         get: { summary: "Read DUAL event-bus replay envelopes.", responses: { 200: jsonResponse } }
+      },
+      "/api/dual/replay-queue/execute": {
+        post: { summary: "Execute pending DUAL event-bus replay envelopes. Requires operator authorization.", responses: { 200: jsonResponse, 403: jsonResponse, 409: jsonResponse } }
+      },
+      "/api/dual/trade-receipts": {
+        get: { summary: "Read per-trade DUAL receipt minting status.", responses: { 200: jsonResponse } }
+      },
+      "/api/dual/trade-receipts/replay": {
+        post: { summary: "Mint pending executed-trade receipts into DUAL. Requires operator authorization.", responses: { 200: jsonResponse, 403: jsonResponse, 409: jsonResponse } }
+      },
+      "/api/dual/trade-receipt-template/setup": {
+        post: {
+          summary: "Create a DUAL trade receipt template. Requires operator authorization.",
+          requestBody: requestBody({
+            type: "object",
+            required: ["confirm"],
+            properties: { confirm: { type: "string", const: "create-dual-trade-receipt-template" } }
+          }),
+          responses: { 200: jsonResponse, 400: jsonResponse, 403: jsonResponse }
+        }
+      },
+      "/api/dual/action-passport/setup": {
+        post: {
+          summary: "Create an action-enabled DUAL agent passport template and passport object. Requires operator authorization.",
+          requestBody: requestBody({
+            type: "object",
+            required: ["confirm"],
+            properties: { confirm: { type: "string", const: "create-action-enabled-kraken-passport" } }
+          }),
+          responses: { 200: jsonResponse, 400: jsonResponse, 403: jsonResponse }
+        }
       },
       "/api/proof": {
         get: { summary: "Read portable proof bundle.", responses: { 200: jsonResponse } }
@@ -1504,6 +1655,15 @@ function publicReplayQueue(req, passport, audit, durableObject = null) {
   };
 }
 
+function publicTradeReceiptQueue(req, tradeReceipts = []) {
+  const queue = dualPersistence.buildTradeReceiptQueue(tradeReceipts);
+  return {
+    ...queue,
+    writable: Boolean(queue.writable && publicWriteReadiness(req).ready),
+    latest: (tradeReceipts || []).slice(0, 8).map(summarizeTradeReceipt)
+  };
+}
+
 function canUseDualWrite(req) {
   const auth = dualPersistence.authStatus();
   return publicDualWrites || operatorAuthorized(req) || auth.authType === "email_session";
@@ -1552,6 +1712,7 @@ async function buildProofBundle(req) {
   const [state, adapter] = await Promise.all([loadState(), getAdapterStatus()]);
   let dualObject = null;
   let dualTemplate = null;
+  let dualTradeReceiptTemplate = null;
   let dualBatch = null;
   try {
     dualObject = await dualPersistence.readPassportObject();
@@ -1564,13 +1725,20 @@ async function buildProofBundle(req) {
     dualTemplate = { available: false, error: error.message };
   }
   try {
+    dualTradeReceiptTemplate = await dualPersistence.readTradeReceiptTemplate();
+  } catch (error) {
+    dualTradeReceiptTemplate = { available: false, error: error.message };
+  }
+  try {
     dualBatch = await dualPersistence.readLatestBatchProof();
   } catch (error) {
     dualBatch = { available: false, error: error.message };
   }
 
   const audit = state.audit || [];
+  const tradeReceipts = state.tradeReceipts || [];
   const replayQueue = publicReplayQueue(req, state.passport, audit, dualObject);
+  const tradeReceiptQueue = publicTradeReceiptQueue(req, tradeReceipts);
   const dualStatus = publicDualStatus(req);
   const writeReadiness = publicWriteReadiness(req);
   const templateFields = dualTemplate?.custom || {};
@@ -1669,6 +1837,21 @@ async function buildProofBundle(req) {
         : "No replay envelopes are pending."
     },
     {
+      id: "dual-trade-receipts",
+      ok: Boolean(tradeReceiptQueue.rootHash),
+      detail: tradeReceiptQueue.receiptCount
+        ? `${tradeReceiptQueue.syncedCount}/${tradeReceiptQueue.receiptCount} executed trade receipts are minted to DUAL.`
+        : "No executed trade receipts are present in local demo state."
+    },
+    {
+      id: "trade-receipts-complete",
+      ok: Boolean(tradeReceiptQueue.pendingCount === 0),
+      requiredFor: "completeness",
+      detail: tradeReceiptQueue.pendingCount
+        ? `${tradeReceiptQueue.pendingCount}/${tradeReceiptQueue.receiptCount} trade receipts still need DUAL minting.`
+        : "No trade receipt mints are pending."
+    },
+    {
       id: "dual-batch-status",
       ok: Boolean(dualBatch?.available && dualBatch.finality !== "failed"),
       detail: dualBatch?.available
@@ -1688,6 +1871,7 @@ async function buildProofBundle(req) {
     },
     dualTemplate,
     dualObject,
+    dualTradeReceiptTemplate,
     dualBatch,
     replayQueue: {
       ready: replayQueue.ready,
@@ -1700,6 +1884,18 @@ async function buildProofBundle(req) {
       targetObjectId: replayQueue.targetObjectId,
       latest: replayQueue.allEvents.slice(0, 8),
       pending: replayQueue.events.slice(0, 8)
+    },
+    tradeReceipts: {
+      ready: tradeReceiptQueue.ready,
+      writable: tradeReceiptQueue.writable,
+      receiptCount: tradeReceiptQueue.receiptCount,
+      syncedCount: tradeReceiptQueue.syncedCount,
+      pendingCount: tradeReceiptQueue.pendingCount,
+      rootHash: tradeReceiptQueue.rootHash,
+      pendingRootHash: tradeReceiptQueue.pendingRootHash,
+      targetTemplateId: tradeReceiptQueue.targetTemplateId,
+      latest: tradeReceipts.slice(0, 8).map(summarizeTradeReceipt),
+      pending: tradeReceiptQueue.receipts.slice(0, 8)
     },
     passport: {
       id: state.passport.id,

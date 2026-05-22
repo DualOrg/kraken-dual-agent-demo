@@ -126,7 +126,8 @@ nav {
 }
 
 .primary-button:disabled,
-.secondary-button:disabled {
+.secondary-button:disabled,
+.ghost-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -292,6 +293,10 @@ h2 {
   grid-column: span 2;
 }
 
+.proof-panel .panel-header {
+  flex-wrap: wrap;
+}
+
 .panel-header {
   align-items: flex-start;
   margin-bottom: 14px;
@@ -334,6 +339,12 @@ select {
   display: block;
   margin-top: 6px;
   font-size: 18px;
+}
+
+.proposal-card small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
 }
 
 .proposal-card.allowed {

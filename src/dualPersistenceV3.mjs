@@ -1,10 +1,15 @@
 import crypto from "node:crypto";
+import {
+  tradeReceiptMetadata,
+  tradeReceiptProperties
+} from "./tradeReceipts.mjs";
 
 export async function createDualPersistence() {
   const mode = process.env.DUAL_PERSISTENCE_MODE || "local";
   const orgId = process.env.DUAL_ORG_ID || "";
   const templateId = process.env.DUAL_AGENT_PASSPORT_TEMPLATE_ID || "";
   const objectId = process.env.DUAL_AGENT_PASSPORT_OBJECT_ID || "";
+  const tradeReceiptTemplateId = process.env.DUAL_TRADE_RECEIPT_TEMPLATE_ID || "";
   const baseUrl = process.env.DUAL_API_URL || "https://api-testnet.dual.network";
   const apiKey = process.env.DUAL_API_KEY || "";
   const authMode = normalizeAuthMode(process.env.DUAL_AUTH_MODE || "api_key");
@@ -64,6 +69,14 @@ export async function createDualPersistence() {
         orgId: orgId || null,
         templateId: templateId || null,
         objectId: objectId || null,
+        tradeReceiptTemplateId: tradeReceiptTemplateId || null,
+        tradeReceipts: {
+          configured: Boolean(tradeReceiptTemplateId),
+          writable: Boolean(write && tradeReceiptTemplateId),
+          detail: tradeReceiptTemplateId
+            ? "Per-trade DUAL receipt minting is configured."
+            : "Set DUAL_TRADE_RECEIPT_TEMPLATE_ID to mint one DUAL receipt object per executed trade."
+        },
         authMode: effectiveAuthMode(),
         writeMode: effectiveWriteMode(),
         eventBusWritePath,
@@ -204,6 +217,19 @@ export async function createDualPersistence() {
       return requireWritable().sdk.templates.create(agentTemplatePayload());
     },
 
+    async createTradeReceiptTemplate() {
+      const write = requireWritable();
+      const template = await write.sdk.templates.create(tradeReceiptTemplatePayload());
+      const newTemplateId = template.id || template.template_id || template.templateId;
+      return {
+        template: summarizeTemplate(template),
+        vercelEnv: {
+          DUAL_TRADE_RECEIPT_TEMPLATE_ID: newTemplateId
+        },
+        next: "Update Vercel production env vars with DUAL_TRADE_RECEIPT_TEMPLATE_ID, redeploy, then replay pending trade receipts."
+      };
+    },
+
     async createActionEnabledPassport(passport) {
       const write = requireWritable();
       const template = await write.sdk.templates.create(agentTemplatePayload());
@@ -227,6 +253,74 @@ export async function createDualPersistence() {
       const write = requireWritable();
       const properties = passportProperties(passport, metadata);
       return writeAction(write, objectId ? updatePayload(objectId, properties, metadata) : mintPayload(templateId, properties, metadata));
+    },
+
+    buildTradeReceiptQueue(tradeReceipts = []) {
+      const receipts = tradeReceipts.map((receipt) => {
+        const properties = tradeReceiptProperties(receipt);
+        const metadata = tradeReceiptMetadata(receipt);
+        const payload = tradeReceiptTemplateId ? mintPayload(tradeReceiptTemplateId, properties, metadata) : null;
+        const result = receipt.dualSync?.result || {};
+        const actionId = result.actionId || null;
+        const objectId = result.id || receipt.dualObjectId || null;
+        const locallySynced = Boolean(receipt.dualSync?.synced && (actionId || objectId));
+        const envelope = payload ? { actionName: "mint", properties, metadata, payload } : null;
+        return {
+          receiptId: receipt.id,
+          proposalId: receipt.proposalId,
+          pair: receipt.pair,
+          notionalUsd: receipt.notionalUsd,
+          receiptHash: receipt.receiptHash,
+          eventId: receipt.eventId,
+          eventHash: receipt.eventHash,
+          synced: locallySynced,
+          actionId,
+          objectId,
+          syncSource: locallySynced ? "local_receipt_action_id" : receipt.dualSync?.reason || "pending",
+          ready: Boolean(tradeReceiptTemplateId),
+          envelope,
+          envelopeHash: envelope ? hashJson(envelope) : null
+        };
+      });
+      const pending = receipts.filter((receipt) => !receipt.synced);
+      return {
+        ready: Boolean(tradeReceiptTemplateId),
+        writable: Boolean(activeWriteClient() && tradeReceiptTemplateId),
+        targetTemplateId: tradeReceiptTemplateId || null,
+        authMode: effectiveAuthMode(),
+        writeMode: effectiveWriteMode(),
+        receiptCount: receipts.length,
+        syncedCount: receipts.length - pending.length,
+        pendingCount: pending.length,
+        rootHash: hashJson(receipts.map(tradeReceiptRootItem)),
+        pendingRootHash: hashJson(pending.map(tradeReceiptRootItem)),
+        receipts: pending,
+        allReceipts: receipts
+      };
+    },
+
+    async executeTradeReceiptReplayQueue(tradeReceipts = []) {
+      const write = requireWritable();
+      const queue = this.buildTradeReceiptQueue(tradeReceipts);
+      if (!tradeReceiptTemplateId) {
+        const error = new Error("DUAL_TRADE_RECEIPT_TEMPLATE_ID is required before trade receipts can be minted.");
+        error.status = 409;
+        throw error;
+      }
+      const executed = [];
+      for (const receipt of [...queue.receipts].reverse()) {
+        const result = await writeAction(write, receipt.envelope.payload);
+        executed.push({ ...receipt, result: summarizeResult(result) });
+      }
+      return {
+        executed: true,
+        executedCount: executed.length,
+        skippedCount: queue.syncedCount,
+        receiptRoot: queue.rootHash,
+        pendingReceiptRoot: queue.pendingRootHash,
+        targetTemplateId: queue.targetTemplateId,
+        receipts: executed
+      };
     },
 
     buildReplayQueue(passport, audit = [], options = {}) {
@@ -306,6 +400,17 @@ export async function createDualPersistence() {
       return { available: true, ...summarizeTemplate(await read.sdk.templates.get(templateId)) };
     },
 
+    async readTradeReceiptTemplate() {
+      const read = activeReadClient();
+      if (!read || !tradeReceiptTemplateId) {
+        return {
+          available: false,
+          reason: tradeReceiptTemplateId ? this.status().detail : "Set DUAL_TRADE_RECEIPT_TEMPLATE_ID."
+        };
+      }
+      return { available: true, ...summarizeTemplate(await read.sdk.templates.get(tradeReceiptTemplateId)) };
+    },
+
     async readLatestBatchProof() {
       const read = activeReadClient();
       if (!read?.sdk?.sequencer?.listBatches) return { available: false, reason: "DUAL sequencer batch API is unavailable in this SDK/runtime." };
@@ -324,6 +429,29 @@ export async function createDualPersistence() {
       const metadata = eventMetadata(event);
       const payload = objectId ? updatePayload(objectId, properties, metadata) : mintPayload(templateId, properties, metadata);
       if (!write) return { skipped: true, reason: "DUAL event-bus writes need DUAL_WRITE_MODE=event_bus plus a scoped DUAL_API_KEY.", replay: { envelope: payload, envelopeHash: hashJson(payload) } };
+      const result = await writeAction(write, payload);
+      return { synced: true, envelopeHash: hashJson(payload), result: summarizeResult(result) };
+    },
+
+    async recordTradeReceipt(receipt) {
+      const write = activeWriteClient();
+      if (!activeReadClient()) return { skipped: true, reason: this.status().detail };
+      if (!tradeReceiptTemplateId) {
+        return {
+          skipped: true,
+          reason: "Set DUAL_TRADE_RECEIPT_TEMPLATE_ID to mint per-trade DUAL receipt objects."
+        };
+      }
+      const properties = tradeReceiptProperties(receipt);
+      const metadata = tradeReceiptMetadata(receipt);
+      const payload = mintPayload(tradeReceiptTemplateId, properties, metadata);
+      if (!write) {
+        return {
+          skipped: true,
+          reason: "DUAL trade receipt minting needs DUAL_WRITE_MODE=event_bus plus a scoped DUAL_API_KEY.",
+          replay: { envelope: payload, envelopeHash: hashJson(payload) }
+        };
+      }
       const result = await writeAction(write, payload);
       return { synced: true, envelopeHash: hashJson(payload), result: summarizeResult(result) };
     },
@@ -458,6 +586,26 @@ function agentTemplatePayload() {
     actions: [
       { name: "mint", alias: "issue_kraken_agent_passport" },
       { name: "update", alias: "record_kraken_agent_event" }
+    ],
+    public_access: { custom: Object.keys(custom) }
+  };
+}
+
+function tradeReceiptTemplatePayload() {
+  const custom = tradeReceiptProperties({});
+  return {
+    name: `io.dual.kraken.trade_receipt.action_enabled.${Date.now()}`,
+    description: "One DUAL receipt object per Kraken paper trade execution.",
+    organization_id: process.env.DUAL_ORG_ID || undefined,
+    object: {
+      metadata: {
+        name: "Kraken Paper Trade Receipt",
+        description: "A minted receipt for a DUAL-governed Kraken paper trade, linked to the agent passport, proposal, policy hash, execution digest, and audit event."
+      },
+      custom
+    },
+    actions: [
+      { name: "mint", alias: "mint_kraken_trade_receipt" }
     ],
     public_access: { custom: Object.keys(custom) }
   };
@@ -623,6 +771,18 @@ function rootItem(event) {
     eventHash: event.eventHash,
     actionId: event.actionId,
     envelopeHash: event.envelopeHash
+  };
+}
+
+function tradeReceiptRootItem(receipt) {
+  return {
+    receiptId: receipt.receiptId,
+    receiptHash: receipt.receiptHash,
+    proposalId: receipt.proposalId,
+    eventId: receipt.eventId,
+    actionId: receipt.actionId,
+    objectId: receipt.objectId,
+    envelopeHash: receipt.envelopeHash
   };
 }
 

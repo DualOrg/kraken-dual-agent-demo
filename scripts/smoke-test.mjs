@@ -18,6 +18,7 @@ const mcpTools = await mcp("tools/list", {});
 const mcpToolNames = mcpTools.tools.map((tool) => tool.name);
 assert(mcpToolNames.includes("kraken_dual_get_market"), "MCP tools include market lookup");
 assert(mcpToolNames.includes("kraken_dual_propose_and_execute_paper_trade"), "MCP tools include paper trade execution");
+assert(mcpToolNames.includes("kraken_dual_get_trade_receipts"), "MCP tools include trade receipt readback");
 
 const dualStatus = await get("/api/dual/status");
 assert(dualStatus.available, "DUAL persistence adapter is available");
@@ -38,6 +39,10 @@ assert(Array.isArray(replayQueue.events), "replay queue returns event payloads")
 assert(typeof replayQueue.pendingCount === "number", "replay queue reports pending event count");
 assert(typeof replayQueue.syncedCount === "number", "replay queue reports synced event count");
 
+const initialTradeReceipts = await get("/api/dual/trade-receipts");
+assert(initialTradeReceipts.rootHash, "trade receipt queue returns a root hash");
+assert(initialTradeReceipts.receiptCount === 0, "reset state starts with no trade receipts");
+
 const replayExecution = await post("/api/dual/replay-queue/execute", {});
 assert(typeof replayExecution.executed === "boolean", "replay execution reports whether writes ran");
 
@@ -47,6 +52,8 @@ assert(proof.audit.rootHash, "proof endpoint returns an audit root");
 assert(typeof proof.status.writeReadiness.ready === "boolean", "proof includes write readiness");
 assert(proof.replayQueue.rootHash, "proof includes replay queue root");
 assert(typeof proof.replayQueue.pendingCount === "number", "proof includes pending replay count");
+assert(proof.tradeReceipts.rootHash, "proof includes trade receipt root");
+assert(typeof proof.tradeReceipts.pendingCount === "number", "proof includes pending trade receipt count");
 assert(proof.policy.hash, "proof includes policy hash");
 assert(proof.dualBatch && typeof proof.dualBatch.available === "boolean", "proof includes DUAL batch status");
 assert(Array.isArray(proof.verification), "proof includes verification checks");
@@ -88,12 +95,19 @@ assert(proposed.proposal.policy.decision === "allow", "small BTC proposal is all
 
 const executed = await post("/api/execute-paper", { id: proposed.proposal.id });
 assert(executed.proposal.state === "executed", "allowed paper proposal executes");
+assert(executed.tradeReceipt?.id?.startsWith("tr-"), "paper execution creates a deterministic trade receipt");
 
 const dualProposal = await post("/api/propose", { pair: "DUALUSD", side: "buy", notional: 10 });
 assert(dualProposal.proposal.policy.decision === "allow", "small DUAL proposal is allowed");
 
 const dualExecuted = await post("/api/execute-paper", { id: dualProposal.proposal.id });
 assert(dualExecuted.proposal.state === "executed", "allowed DUAL paper proposal executes");
+assert(dualExecuted.tradeReceipt?.pair === "DUALUSD", "DUAL paper execution creates a DUALUSD trade receipt");
+
+const tradeReceipts = await get("/api/dual/trade-receipts");
+assert(tradeReceipts.receiptCount >= 2, "trade receipt queue includes executed paper trades");
+assert(tradeReceipts.pendingCount >= 0, "trade receipt queue reports pending mints");
+assert(tradeReceipts.latest[0]?.id?.startsWith("tr-"), "trade receipt queue exposes latest receipt summaries");
 
 const redTeam = await post("/api/red-team", { scenario: "leverage" });
 assert(redTeam.policy.decision === "block", "leverage red-team scenario is blocked");
@@ -112,6 +126,13 @@ const mcpTrade = mcpJson(await mcp("tools/call", {
 assert(mcpTrade.status === "executed", "MCP paper trade tool executes allowed DUALUSD trade");
 assert(mcpTrade.proposal.trade.pair === "DUALUSD", "MCP trade uses DUALUSD pair");
 assert(mcpTrade.result.digest, "MCP paper trade returns execution digest");
+assert(mcpTrade.tradeReceipt?.id?.startsWith("tr-"), "MCP paper trade returns a trade receipt");
+
+const mcpTradeReceipts = mcpJson(await mcp("tools/call", {
+  name: "kraken_dual_get_trade_receipts",
+  arguments: {}
+}));
+assert(mcpTradeReceipts.tradeReceiptQueue.receiptCount >= 3, "MCP trade receipt tool returns executed receipts");
 
 const mcpVerify = mcpJson(await mcp("tools/call", {
   name: "kraken_dual_verify_proof",

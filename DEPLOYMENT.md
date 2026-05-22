@@ -54,7 +54,7 @@ API-key auth is suitable for linking the Vercel deployment to a real DUAL passpo
 
 Email-code auth is not required for the public demo. Leave `DEMO_ENABLE_EMAIL_AUTH=false` unless you deliberately want a private browser fallback. The production route is scoped API-key auth plus public demo writes.
 
-The app exposes DUAL data links in `/api/health`, `/api/dual/status`, `/api/proof`, and the Proof panel. By default these links target explicit app-served record readback routes under `/api/dual/records/...`, avoiding Console detail pages that currently 404. Set `DUAL_CONSOLE_ORG_URL_TEMPLATE`, `DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE`, `DUAL_CONSOLE_OBJECT_URL_TEMPLATE`, or `DUAL_CONSOLE_ACTION_URL_TEMPLATE` only after the Console route has been verified. Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when finalized batch transaction hashes should open directly in Blockscout.
+The app exposes DUAL data links in `/api/health`, `/api/dual/status`, `/api/proof`, and the Proof panel. By default, template and object cards open DUAL Console collection pages with the explicit entity id in the URL, action cards open Blockscout when an action hash is present, and each card keeps an app-served `Data` target under `/api/dual/records/...` for verified readback. Blockscout defaults to `https://explorer-test-v2.dual.network`; override `DUAL_BLOCKSCOUT_BASE_URL`, `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE`, or `DUAL_BLOCKSCOUT_ACTION_URL_TEMPLATE` only if the explorer route changes. Override Console URL templates only after the target route has been verified.
 
 Recommended rollout:
 
@@ -65,7 +65,7 @@ Recommended rollout:
 5. Set `DUAL_TRADE_RECEIPT_TEMPLATE_ID` in Vercel.
 6. Set `DEMO_PUBLIC_DUAL_WRITES=true` or leave it unset; public demo writes default to enabled when DUAL write readiness is active.
 7. Set `DUAL_WRITE_MODE=event_bus` for scoped API-key deployments.
-8. Set any available Blockscout base/template URL. Leave Console detail-link templates unset unless the exact routes have been verified.
+8. Verify the default Console and Blockscout links, then override the URL templates only if DUAL changes the route shape.
 9. Redeploy and verify `/api/dual/status`, `/api/dual/write-readiness`, `/api/dual/trade-receipts`, `/api/proof`, `/api/proof/verify`, `/api/openapi.json`, and MCP `initialize` / `tools/list` on `/mcp`.
 
 With `DEMO_PUBLIC_DUAL_WRITES=true`, production creates DUAL action logs for public paper-trade demo events whenever the server-side scoped API key is write-ready. Set `DEMO_PUBLIC_DUAL_WRITES=false` only for a read-linked rehearsal deployment. New receipt objects also require `DUAL_TRADE_RECEIPT_TEMPLATE_ID` or a receipt template created from the Proof panel for the current server run.

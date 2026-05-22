@@ -496,11 +496,37 @@ function renderDualLinks(links) {
     return;
   }
   els.dualLinks.innerHTML = uniqueLinks.map((link) => `
-    <a class="dual-link ${link.source === "blockscout" ? "explorer" : ""}" href="${escapeHtml(link.href)}" target="_blank" rel="noreferrer">
-      <span>${escapeHtml(link.label || "DUAL data")}</span>
-      <strong>${escapeHtml(link.detail || "Open data")}</strong>
-    </a>
+    <div class="dual-link ${dualLinkSourceClass(link.source)}">
+      <a class="dual-link-main" href="${escapeHtml(link.href)}" target="_blank" rel="noreferrer">
+        <span>${escapeHtml(link.label || "DUAL data")}</span>
+        <strong>${escapeHtml(link.detail || "Open data")}</strong>
+      </a>
+      ${renderDualLinkTargets(link.targets)}
+    </div>
   `).join("");
+}
+
+function renderDualLinkTargets(targets = []) {
+  const uniqueTargets = [...new Map((targets || [])
+    .filter((target) => target?.href)
+    .map((target) => [`${target.label || target.source}:${target.href}`, target])).values()];
+  if (!uniqueTargets.length) return "";
+  return `
+    <div class="dual-link-targets">
+      ${uniqueTargets.map((target) => `
+        <a class="dual-link-target ${dualLinkSourceClass(target.source)}" href="${escapeHtml(target.href)}" target="_blank" rel="noreferrer">
+          ${escapeHtml(target.label || "Open")}
+        </a>
+      `).join("")}
+    </div>
+  `;
+}
+
+function dualLinkSourceClass(source) {
+  if (source === "blockscout") return "explorer";
+  if (source === "dual-record") return "record";
+  if (source === "console") return "console";
+  return "";
 }
 
 function sourceLabel(source) {

@@ -77,21 +77,33 @@ const hasDualRecordIds = Boolean(
   || proof.dualBatch?.affectedActions?.length
 );
 if (hasDualRecordIds) {
-  assert(proof.links.some((link) => link.source === "dual-record"), "proof includes explicit DUAL record links");
+  assert(proof.links.some((link) => link.source === "dual-record" || targetHref(link, "dual-record")), "proof includes explicit DUAL record links");
 }
 if (proof.status.dualMode?.templateId) {
-  assert(passportTemplateLink?.href?.includes(proof.status.dualMode.templateId), "proof template link targets the explicit DUAL template id");
-  const templateRecord = await get(passportTemplateLink.href);
+  const templateRecordHref = targetHref(passportTemplateLink, "dual-record");
+  const templateConsoleHref = targetHref(passportTemplateLink, "console") || passportTemplateLink?.href;
+  assert(templateConsoleHref?.includes(proof.status.dualMode.templateId), "proof template link targets the explicit DUAL template id in Console");
+  assert(templateRecordHref?.includes(proof.status.dualMode.templateId), "proof template link keeps explicit DUAL data readback");
+  const templateRecord = await get(templateRecordHref);
   assert(templateRecord.id === proof.status.dualMode.templateId, "template record link resolves without relying on Console routes");
 }
 if (proof.status.dualMode?.objectId) {
-  assert(passportObjectLink?.href?.includes(proof.status.dualMode.objectId), "proof object link targets the explicit DUAL object id");
-  const objectRecord = await get(passportObjectLink.href);
+  const objectRecordHref = targetHref(passportObjectLink, "dual-record");
+  const objectConsoleHref = targetHref(passportObjectLink, "console") || passportObjectLink?.href;
+  assert(objectConsoleHref?.includes(proof.status.dualMode.objectId), "proof object link targets the explicit DUAL object id in Console");
+  assert(objectRecordHref?.includes(proof.status.dualMode.objectId), "proof object link keeps explicit DUAL data readback");
+  const objectRecord = await get(objectRecordHref);
   assert(objectRecord.id === proof.status.dualMode.objectId, "object record link resolves without relying on Console routes");
 }
 const batchRecordLink = proof.links.find((link) => link.id === "dual-record-batch");
 if (proof.dualBatch?.id) {
-  assert(batchRecordLink?.href?.includes(proof.dualBatch.id), "proof batch link targets the explicit DUAL batch id");
+  const batchDataHref = targetHref(batchRecordLink, "dual-record") || batchRecordLink?.href;
+  assert(batchDataHref?.includes(proof.dualBatch.id), "proof batch link targets the explicit DUAL batch id");
+}
+const actionWithHash = proof.links.find((link) => link.id?.startsWith("dual-record-action-") && targetHref(link, "blockscout"));
+if (proof.dualBatch?.affectedActions?.some((action) => action?.hash)) {
+  const actionBlockscoutHref = targetHref(actionWithHash, "blockscout") || actionWithHash?.href;
+  assert(actionBlockscoutHref?.includes("explorer-test-v2.dual.network/tx/"), "proof action links include Blockscout transaction targets");
 }
 
 const proofVerify = await get("/api/proof/verify");
@@ -199,6 +211,10 @@ const mcpBlocked = await mcp("tools/call", {
 assert(mcpBlocked.isError, "MCP tool errors are returned as tool-level isError content");
 
 console.log("Smoke test passed");
+
+function targetHref(link, source) {
+  return link?.targets?.find((target) => target.source === source)?.href || null;
+}
 
 async function get(path) {
   const response = await fetch(`${base}${path}`);

@@ -469,10 +469,8 @@ select {
 
 .dual-link {
   background: rgba(21, 157, 184, 0.1);
-  color: var(--text);
   display: grid;
-  gap: 4px;
-  text-decoration: none;
+  gap: 8px;
 }
 
 .dual-link:hover {
@@ -480,21 +478,74 @@ select {
   transform: translateY(-1px);
 }
 
+.dual-link.console {
+  background: rgba(21, 157, 184, 0.12);
+}
+
 .dual-link.explorer {
   background: rgba(157, 249, 110, 0.08);
 }
 
-.dual-link span,
+.dual-link.record {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.dual-link-main {
+  color: var(--text);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  text-decoration: none;
+}
+
+.dual-link-main:hover strong {
+  color: var(--accent);
+}
+
+.dual-link-main span,
 .link-empty {
   color: var(--muted);
   font-size: 12px;
 }
 
-.dual-link strong {
+.dual-link-main strong {
   color: var(--text);
   font-size: 13px;
   font-weight: 650;
   overflow-wrap: anywhere;
+}
+
+.dual-link-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dual-link-target {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 7px;
+  text-decoration: none;
+}
+
+.dual-link-target:hover {
+  border-color: rgba(157, 249, 110, 0.46);
+  color: var(--text);
+}
+
+.dual-link-target.console {
+  background: rgba(21, 157, 184, 0.14);
+}
+
+.dual-link-target.explorer {
+  background: rgba(157, 249, 110, 0.12);
+}
+
+.dual-link-target.record {
+  background: rgba(255, 255, 255, 0.055);
 }
 
 .proof-row {

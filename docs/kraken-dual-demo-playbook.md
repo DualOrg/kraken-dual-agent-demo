@@ -224,7 +224,7 @@ Call out these rows:
 - `Write gate`: public demo writes are enabled by default and can be disabled with `DEMO_PUBLIC_DUAL_WRITES=false` for a read-linked rehearsal.
 - `Mandate source`: DUAL template.
 - `DUAL object`: passport object used by the demo.
-- DUAL data links: open explicit DUAL record readback for the passport template, passport object, latest batch, latest affected actions, receipt template/object when present, and a Blockscout transaction when a finalized batch hash is available. Console detail links are opt-in because the current Console entity routes can 404.
+- DUAL data links: template and object values open DUAL Console collection pages with the explicit entity id in the URL, action hash values open Blockscout when available, and the `Data` target opens the app's verified DUAL readback route for the same template, object, batch, action, or receipt.
 - Public browser and MCP trades create DUAL action logs when server-side write readiness is active. For Console-visible receipt objects, configure or create the DUAL trade receipt template before minting receipts.
 - `Policy version` and `Policy hash`: stable policy identity.
 - `DUAL batch` and `Batch proof`: DUAL batch evidence is present.

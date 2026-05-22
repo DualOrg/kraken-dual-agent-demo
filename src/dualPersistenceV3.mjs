@@ -564,11 +564,13 @@ function mintPayload(targetTemplateId, properties, metadata) {
       mint: {
         template_id: targetTemplateId,
         num: 1,
-        custom: {
-          ...properties,
-          last_event_type: metadata.event_type || "",
-          last_event_status: metadata.event_status || "",
-          last_event_hash: metadata.event_hash || ""
+        data: {
+          custom: {
+            ...properties,
+            last_event_type: metadata.event_type || "",
+            last_event_status: metadata.event_status || "",
+            last_event_hash: metadata.event_hash || ""
+          }
         }
       }
     },
@@ -685,7 +687,7 @@ function summarizeResult(result) {
     hash: result.hash || result.integrity_hash || result.integrityHash || result.state_hash || result.stateHash || null,
     actionId: result.action_id || result.actionId || result.id || null,
     batchId: result.batch_id || result.batchId || null,
-    payloadStyle: "nested_data_custom"
+    payloadStyle: "direct_data_custom"
   };
 }
 

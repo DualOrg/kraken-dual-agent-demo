@@ -43,7 +43,6 @@ DUAL_TRADE_RECEIPT_TEMPLATE_ID=...
 DUAL_AUTH_MODE=api_key
 DUAL_WRITE_MODE=event_bus
 DUAL_EVENTBUS_WRITE_PATH=/ebus/execute
-DUAL_CONSOLE_BASE_URL=https://console-testnet.dual.network
 DUAL_BLOCKSCOUT_BASE_URL=...
 DEMO_ENABLE_EMAIL_AUTH=false
 DEMO_OPERATOR_TOKEN=...
@@ -55,7 +54,7 @@ API-key auth is suitable for linking the Vercel deployment to a real DUAL passpo
 
 Email-code auth is not required for the public demo. Leave `DEMO_ENABLE_EMAIL_AUTH=false` unless you deliberately want a private browser operator fallback; the production route should be scoped API-key auth plus `DEMO_OPERATOR_TOKEN`.
 
-The app exposes DUAL data links in `/api/health`, `/api/dual/status`, `/api/proof`, and the Proof panel. Console links default to explicit entity routes: `https://console-testnet.dual.network/{orgId}/collections/templates/{templateId}`, `/objects/{objectId}`, and `/action-logs/{actionId}`. Set `DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE`, `DUAL_CONSOLE_OBJECT_URL_TEMPLATE`, or `DUAL_CONSOLE_ACTION_URL_TEMPLATE` if the Console detail routes differ. Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when finalized batch transaction hashes should open directly in Blockscout.
+The app exposes DUAL data links in `/api/health`, `/api/dual/status`, `/api/proof`, and the Proof panel. By default these links target explicit app-served record readback routes under `/api/dual/records/...`, avoiding Console detail pages that currently 404. Set `DUAL_CONSOLE_ORG_URL_TEMPLATE`, `DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE`, `DUAL_CONSOLE_OBJECT_URL_TEMPLATE`, or `DUAL_CONSOLE_ACTION_URL_TEMPLATE` only after the Console route has been verified. Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when finalized batch transaction hashes should open directly in Blockscout.
 
 Recommended rollout:
 
@@ -66,7 +65,7 @@ Recommended rollout:
 5. Set `DUAL_TRADE_RECEIPT_TEMPLATE_ID` in Vercel.
 6. Set `DEMO_OPERATOR_TOKEN` so public DUAL write endpoints fail closed unless the operator sends the token.
 7. Set `DUAL_WRITE_MODE=event_bus` for scoped API-key deployments.
-8. Set `DUAL_CONSOLE_BASE_URL=https://console-testnet.dual.network` and any available Blockscout base/template URL.
+8. Set any available Blockscout base/template URL. Leave Console detail-link templates unset unless the exact routes have been verified.
 9. Redeploy and verify `/api/dual/status`, `/api/dual/trade-receipts`, `/api/proof`, `/api/proof/verify`, `/api/openapi.json`, and MCP `initialize` / `tools/list` on `/mcp`.
 
 Without `DEMO_OPERATOR_TOKEN`, production remains read-linked for public requests even if DUAL write credentials are present. This is intentional: anonymous visitors can inspect proof and exercise local demo state, but they cannot replay passport events or mint trade receipts into DUAL.

@@ -71,7 +71,6 @@ DUAL_WRITE_MODE=event_bus
 DUAL_EVENTBUS_WRITE_PATH=/ebus/execute
 DUAL_SERVICE_ACCOUNT_TOKEN=...
 DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN=...
-DUAL_CONSOLE_BASE_URL=https://console-testnet.dual.network
 DUAL_BLOCKSCOUT_BASE_URL=...
 DEMO_ENABLE_EMAIL_AUTH=false
 DEMO_OPERATOR_TOKEN=...
@@ -83,7 +82,7 @@ With current DUAL testnet auth, a scoped API key can link to and verify a real D
 
 The app uses scoped API-key auth plus the demo operator gate as the default write path. The older DUAL email-code flow is not required for this demo and is hidden/disabled unless `DEMO_ENABLE_EMAIL_AUTH=true` is set for a private operator session fallback.
 
-The proof and health payloads include explicit DUAL Console links by default using `DUAL_CONSOLE_BASE_URL` (`https://console-testnet.dual.network` unless overridden). The default URL templates point to the current passport template, passport object, latest receipt template/object when present, and latest DUAL action id when present. Set `DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE`, `DUAL_CONSOLE_OBJECT_URL_TEMPLATE`, or `DUAL_CONSOLE_ACTION_URL_TEMPLATE` if the Console detail routes change. Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when the deployment has a public explorer route for finalized L1 transaction hashes.
+The proof and health payloads include explicit DUAL record links by default. These point to app-served readback routes for the current passport template, passport object, latest batch, latest affected actions, and receipt template/object when present. Console entity deep links are opt-in because the current Console detail routes can 404; set `DUAL_CONSOLE_ORG_URL_TEMPLATE`, `DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE`, `DUAL_CONSOLE_OBJECT_URL_TEMPLATE`, or `DUAL_CONSOLE_ACTION_URL_TEMPLATE` only when the target routes have been verified. Set `DUAL_BLOCKSCOUT_BASE_URL` or `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE` when the deployment has a public explorer route for finalized L1 transaction hashes.
 
 Public deployments are read-linked by default. Server-side DUAL writes are blocked unless the request passes the demo operator gate with `x-demo-operator-token` or `Authorization: Bearer <DEMO_OPERATOR_TOKEN>`. This operator gate is separate from DUAL event-bus auth and keeps the public demo safe while still allowing the operator to replay events into DUAL.
 
@@ -101,6 +100,10 @@ POST /api/dual/auth/verify-code
 GET  /api/dual/replay-queue
 POST /api/dual/replay-queue/execute
 GET  /api/dual/trade-receipts
+GET  /api/dual/records/templates/{templateId}
+GET  /api/dual/records/objects/{objectId}
+GET  /api/dual/records/actions/{actionId}
+GET  /api/dual/records/batches/{batchId}
 POST /api/dual/trade-receipts/replay
 GET  /api/dual/passport
 GET  /api/dual/template-readback
@@ -115,7 +118,7 @@ POST /mcp
 
 Template schemas: `dual-agent-passport.schema.json` and `dual-trade-receipt.schema.json`.
 
-`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, trade receipt template/readiness, write-readiness, DUAL Console/Blockscout link metadata, local audit root hash, replay queue root, trade receipt root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` and presentation links are outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has scoped API-key write auth for `/ebus/execute`. `/api/dual/trade-receipts/replay` mints pending executed-trade receipts into DUAL once the trade receipt template and operator write auth are active.
+`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, trade receipt template/readiness, write-readiness, DUAL record/Blockscout link metadata, local audit root hash, replay queue root, trade receipt root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` and presentation links are outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has scoped API-key write auth for `/ebus/execute`. `/api/dual/trade-receipts/replay` mints pending executed-trade receipts into DUAL once the trade receipt template and operator write auth are active.
 
 The proof bundle surfaces latest batch id, status, proof value, Merkle root, and L1 transaction hash when available. The UI shows this as first-class `DUAL batch` and `Batch proof` rows.
 

@@ -736,6 +736,17 @@ function summarizeBatch(batch) {
     status: batch.status || batch.state || null,
     proofValue: batch.proof_value || batch.proofValue || batch.proof?.value || batch.proof?.status || null,
     actionCount: batch.action_count ?? batch.actions_count ?? batch.actionCount ?? batch.actions?.length ?? null,
+    actionsHash: batch.actions_hash || batch.actionsHash || null,
+    affectedActions: extractBatchActions(batch),
+    commitment: batch.commitment || null,
+    hash: batch.hash || null,
+    integrityRoot: batch.integrity_root || batch.integrityRoot || null,
+    ipfsUrl: batch.ipfs_url || batch.ipfsUrl || null,
+    prevHash: batch.prev_hash || batch.prevHash || null,
+    proof: batch.proof || null,
+    sequence: batch.sequence ?? null,
+    totalFee: batch.total_fee || batch.totalFee || null,
+    totalFeeWei: batch.total_fee_wei || batch.totalFeeWei || null,
     merkleRoot: batch.merkle_root || batch.merkleRoot || batch.root_hash || batch.rootHash || null,
     checkpointId: batch.checkpoint_id || batch.checkpointId || batch.checkpoint?.id || null,
     transactionHash: nonZeroHash(batch.transaction_hash || batch.transactionHash || batch.tx_hash || batch.txHash || batch.l1_tx_hash || batch.l1TxHash),
@@ -743,6 +754,17 @@ function summarizeBatch(batch) {
     createdAt: batch.created_at || batch.createdAt || batch.when_created || batch.whenCreated || null,
     updatedAt: batch.updated_at || batch.updatedAt || batch.when_modified || batch.whenModified || null
   };
+}
+
+function extractBatchActions(batch) {
+  const actions = batch?.affected_actions || batch?.affectedActions || batch?.actions || [];
+  return Array.isArray(actions)
+    ? actions.map((action) => ({
+      id: action.id || action.action_id || action.actionId || null,
+      name: action.name || action.action_name || action.actionName || null,
+      hash: action.hash || action.action_hash || action.actionHash || null
+    })).filter((action) => action.id || action.hash)
+    : [];
 }
 
 function describeBatchFinality(batch) {

@@ -223,7 +223,7 @@ Call out these rows:
 - `Write readiness`: ready when `DUAL_WRITE_MODE=event_bus` and write auth is configured.
 - `Mandate source`: DUAL template.
 - `DUAL object`: passport object used by the demo.
-- DUAL data links: open the explicit Console records for the passport template, passport object, receipt template/object when present, and latest DUAL action when an action id is retained. If a Blockscout transaction URL is configured and a finalized batch hash is present, the proof panel also links to the explorer.
+- DUAL data links: open explicit DUAL record readback for the passport template, passport object, latest batch, latest affected actions, receipt template/object when present, and a Blockscout transaction when a finalized batch hash is available. Console detail links are opt-in because the current Console entity routes can 404.
 - `Policy version` and `Policy hash`: stable policy identity.
 - `DUAL batch` and `Batch proof`: DUAL batch evidence is present.
 - `Verifier`: all checks pass.

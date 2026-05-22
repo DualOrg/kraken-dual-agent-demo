@@ -62,14 +62,30 @@ assert(proof.policy.hash, "proof includes policy hash");
 assert(proof.dualBatch && typeof proof.dualBatch.available === "boolean", "proof includes DUAL batch status");
 assert(Array.isArray(proof.verification), "proof includes verification checks");
 assert(Array.isArray(proof.links), "proof includes DUAL data links");
-assert(proof.links.some((link) => link.source === "console"), "proof includes a DUAL Console link");
-const passportTemplateLink = proof.links.find((link) => link.id === "console-template");
-const passportObjectLink = proof.links.find((link) => link.id === "console-object");
+const passportTemplateLink = proof.links.find((link) => link.id === "dual-record-template");
+const passportObjectLink = proof.links.find((link) => link.id === "dual-record-object");
+const hasDualRecordIds = Boolean(
+  proof.status.dualMode?.templateId
+  || proof.status.dualMode?.objectId
+  || proof.dualBatch?.id
+  || proof.dualBatch?.affectedActions?.length
+);
+if (hasDualRecordIds) {
+  assert(proof.links.some((link) => link.source === "dual-record"), "proof includes explicit DUAL record links");
+}
 if (proof.status.dualMode?.templateId) {
   assert(passportTemplateLink?.href?.includes(proof.status.dualMode.templateId), "proof template link targets the explicit DUAL template id");
+  const templateRecord = await get(passportTemplateLink.href);
+  assert(templateRecord.id === proof.status.dualMode.templateId, "template record link resolves without relying on Console routes");
 }
 if (proof.status.dualMode?.objectId) {
   assert(passportObjectLink?.href?.includes(proof.status.dualMode.objectId), "proof object link targets the explicit DUAL object id");
+  const objectRecord = await get(passportObjectLink.href);
+  assert(objectRecord.id === proof.status.dualMode.objectId, "object record link resolves without relying on Console routes");
+}
+const batchRecordLink = proof.links.find((link) => link.id === "dual-record-batch");
+if (proof.dualBatch?.id) {
+  assert(batchRecordLink?.href?.includes(proof.dualBatch.id), "proof batch link targets the explicit DUAL batch id");
 }
 
 const proofVerify = await get("/api/proof/verify");

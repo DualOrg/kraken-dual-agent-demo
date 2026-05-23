@@ -296,28 +296,60 @@ function renderMarkets() {
   els.marketStrip.innerHTML = pairs.map((pair) => {
     const market = state.data.market[pair] || {};
     const change = Number(market.changePct || 0);
+    const isPositive = change >= 0;
     return `
-      <article class="quote-card">
-        <div class="quote-top">
-          <span>${pair}</span>
-          <small>${change >= 0 ? "+" : ""}${change.toFixed(2)}%</small>
-        </div>
-        <strong>${formatMarketPrice(market.price)}</strong>
-        <small>Vol ${Number(market.volume || 0).toLocaleString()} · ${market.source || "seed"}</small>
-        <div class="sparkline" aria-hidden="true"></div>
+      <article class="ticker ${pair === "DUALUSD" ? "active" : ""}">
+        <div class="pair">${pair}</div>
+        <div class="price">${formatMarketPrice(market.price)}</div>
+        <div class="vol">VOL ${Number(market.volume || 0).toLocaleString()}</div>
+        <div class="change ${isPositive ? "pos" : "neg"}">${isPositive ? "+" : ""}${change.toFixed(2)}%</div>
+        <svg class="spark" viewBox="0 0 240 28" preserveAspectRatio="none" aria-hidden="true">
+          <path d="${sparkPath(pair, isPositive)}" fill="none" stroke="${isPositive ? "var(--positive)" : "var(--negative)"}" stroke-width="1.2"></path>
+        </svg>
       </article>
     `;
   }).join("");
+}
+
+function sparkPath(pair, positive = true) {
+  const seeds = {
+    BTCUSD: positive ? [6, 11, 9, 14, 13, 17, 15, 20] : [20, 15, 17, 13, 14, 9, 11, 6],
+    ETHUSD: positive ? [8, 7, 11, 10, 14, 13, 18, 17] : [17, 18, 13, 14, 10, 11, 7, 8],
+    SOLUSD: positive ? [5, 8, 6, 12, 11, 16, 14, 19] : [19, 14, 16, 11, 12, 6, 8, 5],
+    DUALUSD: positive ? [4, 6, 7, 10, 9, 13, 15, 21] : [21, 15, 13, 9, 10, 7, 6, 4]
+  };
+  const points = seeds[pair] || seeds.BTCUSD;
+  const max = Math.max(...points);
+  const min = Math.min(...points);
+  return points.map((point, index) => {
+    const x = 4 + index * 33;
+    const y = 24 - ((point - min) / Math.max(1, max - min)) * 20;
+    return `${index ? "L" : "M"}${x} ${y.toFixed(1)}`;
+  }).join(" ");
+}
+
+function renderPairChips(allowedPairs = []) {
+  return `<span class="pair-chips">${pairs.map((pair) => `
+    <span class="pair-chip ${allowedPairs.includes(pair) ? "" : "off"}">${pair}</span>
+  `).join("")}</span>`;
+}
+
+function renderDailyBar(passport) {
+  const used = Number(passport.dailyNotionalUsed || 0);
+  const cap = Number(passport.maxDailyNotionalUsd || 1);
+  const pct = Math.min(100, Math.max(0, (used / cap) * 100));
+  return `<span class="daily-bar"><span class="fill ${pct > 80 ? "high" : ""}" style="width: ${pct}%"></span></span>`;
 }
 
 function renderPassport() {
   const passport = state.data.passport;
   els.passportState.textContent = `${passport.agentName} · ${passport.mode.toUpperCase()} mode`;
   els.stateChip.textContent = passport.dualObjectState;
+  els.stateChip.className = `state-chip ${passport.dualObjectState || "active"}`;
   const rows = [
-    ["Allowed pairs", passport.allowedPairs.join(", ")],
+    ["Allowed pairs", renderPairChips(passport.allowedPairs)],
     ["Max trade", money.format(passport.maxNotionalUsd)],
-    ["Daily cap", `${money.format(passport.dailyNotionalUsed)} / ${money.format(passport.maxDailyNotionalUsd)}`],
+    ["Daily cap", `${money.format(passport.dailyNotionalUsed)} / ${money.format(passport.maxDailyNotionalUsd)}${renderDailyBar(passport)}`],
     ["Leverage", passport.leverageAllowed ? "Allowed" : "Blocked"],
     ["Approval threshold", money.format(passport.humanApprovalRequiredAbove)],
     ["Policy", passport.approvalPolicy.replaceAll("_", " ")]
@@ -325,8 +357,8 @@ function renderPassport() {
 
   els.mandateList.innerHTML = rows.map(([label, value]) => `
     <div class="mandate-row">
-      <span>${label}</span>
-      <strong>${value}</strong>
+      <span class="k">${label}</span>
+      <strong class="v">${value}</strong>
     </div>
   `).join("");
 
@@ -347,8 +379,13 @@ function renderPolicyForm(passport) {
 function renderProposal() {
   const proposal = state.data.proposals.find((item) => item.id === state.activeProposalId) || state.data.proposals[0];
   if (!proposal) {
-    els.proposalCard.className = "proposal-card";
-    els.proposalCard.innerHTML = "<span>No active proposal</span><strong>Create a trade intent to see DUAL policy output.</strong>";
+    els.proposalCard.className = "proposal empty";
+    els.proposalCard.innerHTML = `
+      <div class="empty-proposal">
+        <span>No active proposal</span>
+        <strong>Create a trade intent to see DUAL policy output.</strong>
+      </div>
+    `;
     els.approveButton.disabled = true;
     els.executeButton.disabled = true;
     return;
@@ -356,32 +393,90 @@ function renderProposal() {
 
   state.activeProposalId = proposal.id;
   const policy = proposal.policy;
+  const marketPrice = proposal.trade.price || state.data.market?.[proposal.trade.pair]?.price || 0;
+  const quantity = proposal.trade.quantity || (marketPrice ? policy.notional / marketPrice : 0);
+  const policyHash = state.data.passport.policyHash || "";
+  const policyVersion = state.data.passport.policyVersion || "1";
   const statusClass = policy.decision === "block" ? "blocked" : policy.decision === "needs_approval" ? "pending" : "allowed";
   const message = policy.violations[0] || policy.warnings[0] || "Ready for paper execution.";
-  els.proposalCard.className = `proposal-card ${statusClass}`;
+  els.proposalCard.className = `proposal ${statusClass === "blocked" ? "state-blocked" : ""}`;
   els.proposalCard.innerHTML = `
-    <span>${proposal.state.replaceAll("_", " ")} · ${proposal.trade.side.toUpperCase()} ${proposal.trade.pair}</span>
-    <strong>${money.format(policy.notional)} notional</strong>
-    <p>${message}</p>
-    ${proposal.tradeReceipt ? `<small>Receipt ${shortId(proposal.tradeReceipt.id)} · ${tradeReceiptSyncLabel(proposal.tradeReceipt)}</small>` : ""}
+    <div class="prop-head">
+      <div>
+        <div class="id">${proposal.id.toUpperCase()}</div>
+        <div class="summary">
+          <span class="side ${proposal.trade.side}">${proposal.trade.side.toUpperCase()}</span>
+          <b>${proposal.trade.pair}</b>
+          <span class="price-context">@ ${formatMarketPrice(marketPrice)}</span>
+        </div>
+      </div>
+      <div class="notional">
+        ${money.format(policy.notional)}
+        <small>notional</small>
+      </div>
+    </div>
+    <div class="flow">
+      ${renderProposalStep("proposed", "Proposed", `<b>${proposal.trade.side.toUpperCase()} ${proposal.trade.pair}</b><br>${money.format(policy.notional)} · ${Number(quantity || 0).toFixed(6)} ${proposal.trade.pair.replace("USD", "")}`, "done")}
+      ${renderProposalStep("policy", "Policy check", policy.decision === "block"
+        ? `decision: <b class="negative">BLOCK</b><br>${message}`
+        : `decision: <b class="positive">${policy.decision === "needs_approval" ? "NEEDS APPROVAL" : "ALLOW"}</b><br>v${policyVersion} · <span class="hash-mono">${shortId(policyHash)}</span>`, policy.decision === "block" ? "blocked" : "done")}
+      ${renderProposalStep("approval", "Human gate", policy.decision === "needs_approval"
+        ? proposal.state === "approved" || proposal.state === "executed"
+          ? "approved · operator"
+          : "awaiting human"
+        : "auto · under threshold", policy.decision === "needs_approval" && proposal.state !== "approved" && proposal.state !== "executed" ? "needs" : "done")}
+      ${renderProposalStep("executed", "Paper exec", proposal.state === "executed"
+        ? `<b class="positive">FILLED</b> · ${proposal.result?.source || "simulated-paper"}<br>digest <span class="hash-mono">${shortId(proposal.result?.digest || "")}</span>`
+        : proposal.state === "approved"
+          ? "ready to execute"
+          : "pending", proposal.state === "executed" ? "done" : proposal.state === "approved" ? "active" : "pending")}
+    </div>
+    <div class="prop-actions">
+      <span>${proposal.tradeReceipt ? `receipt <span class="hash-mono">${shortId(proposal.tradeReceipt.id)}</span> · ${tradeReceiptSyncLabel(proposal.tradeReceipt)}` : message}</span>
+      <strong>${proposal.state.replaceAll("_", " ")}</strong>
+    </div>
   `;
   els.approveButton.disabled = proposal.state !== "awaiting_approval";
   els.executeButton.disabled = proposal.state !== "approved";
+}
+
+function renderProposalStep(key, label, detail, cls) {
+  return `
+    <div class="flow-step ${cls}" data-step="${key}">
+      <div class="step-label"><span>${label}</span></div>
+      <div class="step-detail">${detail}</div>
+    </div>
+  `;
 }
 
 function renderTimeline() {
   const audit = state.data.audit || [];
   els.eventCount.textContent = `${audit.length} events`;
   els.timeline.innerHTML = audit.slice(0, 24).map((event) => `
-    <li>
-      <div>
-        <strong>${event.title}</strong>
-        <small>${event.detail}</small>
-        <small>${new Date(event.timestamp).toLocaleTimeString()} · ${event.provenanceHash ? event.provenanceHash.slice(0, 12) : event.id}</small>
-      </div>
-      <span class="event-status ${event.status}">${event.status}</span>
+    <li class="term-line fade-in">
+      <span class="ts">${new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+      <span class="src ${timelineSourceClass(event)}">${timelineSourceLabel(event)}</span>
+      <span class="msg"><b>${event.title}</b> · ${event.detail} · <span class="hash">${event.provenanceHash ? event.provenanceHash.slice(0, 12) : event.id}</span></span>
     </li>
   `).join("");
+}
+
+function timelineSourceClass(event) {
+  if (event.type?.includes("market")) return "krk";
+  if (event.type?.includes("red")) return "err";
+  if (event.status === "blocked" || event.status === "error") return "err";
+  if (event.status === "executed" || event.status === "approved") return "ok";
+  if (event.type?.includes("proposal") || event.type?.includes("policy") || event.type?.includes("passport")) return "dual";
+  return "sys";
+}
+
+function timelineSourceLabel(event) {
+  const source = timelineSourceClass(event);
+  if (source === "krk") return "kraken >";
+  if (source === "dual") return "dual >";
+  if (source === "ok") return "ok >";
+  if (source === "err") return "err >";
+  return "sys >";
 }
 
 async function loadProof() {
@@ -455,9 +550,9 @@ function renderProof() {
   ];
 
   els.proofGrid.innerHTML = rows.map(([label, value]) => `
-    <div class="proof-row">
-      <span>${label}</span>
-      <strong>${value}</strong>
+    <div class="proof-cell">
+      <div class="k">${label}</div>
+      <div class="v">${value}</div>
     </div>
   `).join("");
 

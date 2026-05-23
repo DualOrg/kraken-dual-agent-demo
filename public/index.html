@@ -7,201 +7,168 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="rail">
-        <div class="brand">
-          <div class="brand-mark">D/K</div>
-          <div>
-            <strong>DUAL x Kraken</strong>
-            <span>Agent Passport</span>
-          </div>
+    <div class="app" data-brand="co">
+      <header class="topbar">
+        <div class="lockup">
+          <div class="mark dual">d</div>
+          <span class="name">DUAL</span>
+          <span class="sep">x</span>
+          <div class="mark krk">K</div>
+          <span class="name">KRAKEN</span>
+          <div class="brand-divider"></div>
+          <span class="product-name">AGENT TRADING PASSPORT</span>
         </div>
-        <nav>
-          <button class="nav-item active" data-view="command" type="button">Command</button>
-          <button class="nav-item" data-view="mandate" type="button">Mandate</button>
-          <button class="nav-item" data-view="proof" type="button">Proof</button>
-          <button class="nav-item" data-view="audit" type="button">Audit</button>
-          <button class="nav-item" data-view="redteam" type="button">Red Team</button>
-        </nav>
-        <div class="rail-card">
-          <span>Mode</span>
-          <strong id="modeLabel">PAPER</strong>
-          <small>No credentials. No real funds.</small>
+        <div class="topbar-meta">
+          <span class="meta-chip"><span class="dot accent"></span><span>mode</span><strong>PAPER</strong></span>
+          <span class="meta-chip" id="dualStatus">Checking DUAL</span>
+          <span class="meta-chip" id="adapterStatus">Checking adapter</span>
         </div>
-      </aside>
+        <div class="topbar-right">
+          <button id="resetButton" class="btn-ghost" type="button">Reset demo</button>
+        </div>
+      </header>
 
-      <main>
-        <header class="topbar">
-          <div>
-            <h1>Agent Trading Passport</h1>
-            <p>Kraken executes. DUAL governs, approves, and records.</p>
+      <main class="main">
+        <section class="col markets-col" aria-label="Kraken market tape">
+          <div class="panel-head">
+            <span class="label"><strong>MARKETS</strong> · KRAKEN</span>
+            <span class="sublabel">live</span>
           </div>
-          <div class="top-actions">
-            <span class="status-pill" id="adapterStatus">Checking adapter</span>
-            <span class="status-pill" id="dualStatus">Checking DUAL</span>
-            <button id="resetButton" class="ghost-button">Reset demo</button>
+          <div class="markets" id="marketStrip"></div>
+          <div class="venue-card">
+            <span class="label">Venue</span>
+            <dl>
+              <div><dt>adapter</dt><dd>kraken-public</dd></div>
+              <div><dt>mode</dt><dd>paper</dd></div>
+              <div><dt>settlement</dt><dd>DUAL proof</dd></div>
+            </dl>
           </div>
-        </header>
+        </section>
 
-        <section class="market-strip" id="marketStrip"></section>
-
-        <section class="grid">
-          <article class="panel trade-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Propose Paper Trade</h2>
-                <p>Policy checked before Kraken paper execution.</p>
+        <section class="col center">
+          <div class="center-stack">
+            <div class="command-area trade-panel">
+              <div class="panel-head">
+                <span class="label"><strong>COMMAND DECK</strong> · PROPOSE · APPROVE · EXECUTE</span>
+                <span class="sublabel">listening</span>
               </div>
-              <span class="mini-label">DUAL gate</span>
-            </div>
-
-            <form id="tradeForm" class="trade-form">
-              <label>
-                Pair
-                <select name="pair">
-                  <option>BTCUSD</option>
-                  <option>ETHUSD</option>
-                  <option>SOLUSD</option>
-                  <option>DUALUSD</option>
-                </select>
-              </label>
-              <label>
-                Side
-                <select name="side">
-                  <option>buy</option>
-                  <option>sell</option>
-                </select>
-              </label>
-              <label>
-                Notional USD
-                <input name="notional" type="number" min="1" value="75">
-              </label>
-              <button class="primary-button" type="submit">Check policy</button>
-            </form>
-
-            <div class="proposal-card" id="proposalCard">
-              <span>No active proposal</span>
-              <strong>Create a trade intent to see DUAL policy output.</strong>
-            </div>
-
-            <div class="button-row">
-              <button id="approveButton" class="secondary-button" disabled>Approve</button>
-              <button id="executeButton" class="primary-button" disabled>Execute paper trade</button>
-            </div>
-          </article>
-
-          <article class="panel passport-panel">
-            <div class="panel-header">
-              <div>
-                <h2>DUAL Mandate</h2>
-                <p id="passportState">Loading passport</p>
-              </div>
-              <span class="state-chip" id="stateChip">active</span>
-            </div>
-            <div class="mandate-list" id="mandateList"></div>
-            <form id="policyForm" class="policy-form">
-              <div class="policy-section">
-                <span>Allowed pairs</span>
-                <div class="check-grid">
-                  <label class="check-tile">
-                    <input type="checkbox" name="allowedPairs" value="BTCUSD">
-                    <span>BTCUSD</span>
-                  </label>
-                  <label class="check-tile">
-                    <input type="checkbox" name="allowedPairs" value="ETHUSD">
-                    <span>ETHUSD</span>
-                  </label>
-                  <label class="check-tile">
-                    <input type="checkbox" name="allowedPairs" value="SOLUSD">
-                    <span>SOLUSD</span>
-                  </label>
-                  <label class="check-tile">
-                    <input type="checkbox" name="allowedPairs" value="DUALUSD">
-                    <span>DUALUSD</span>
-                  </label>
+              <div class="command-content">
+                <ol class="term-log" id="timeline"></ol>
+                <div class="proposal-card" id="proposalCard">
+                  <span>No active proposal</span>
+                  <strong>Create a trade intent to see DUAL policy output.</strong>
                 </div>
               </div>
-              <div class="policy-number-grid">
-                <label>
-                  Max trade
-                  <input id="policyMaxTrade" name="maxNotionalUsd" type="number" min="1" step="1">
-                </label>
-                <label>
-                  Daily cap
-                  <input id="policyDailyCap" name="maxDailyNotionalUsd" type="number" min="1" step="1">
-                </label>
-                <label>
-                  Approval above
-                  <input id="policyApprovalThreshold" name="humanApprovalRequiredAbove" type="number" min="0" step="1">
-                </label>
+              <div class="command-input">
+                <form id="tradeForm" class="prompt-row">
+                  <span class="caret">&gt;</span>
+                  <label>
+                    Pair
+                    <select name="pair">
+                      <option>BTCUSD</option>
+                      <option>ETHUSD</option>
+                      <option>SOLUSD</option>
+                      <option>DUALUSD</option>
+                    </select>
+                  </label>
+                  <label>
+                    Side
+                    <select name="side">
+                      <option>buy</option>
+                      <option>sell</option>
+                    </select>
+                  </label>
+                  <label>
+                    Notional USD
+                    <input name="notional" type="number" min="1" value="75">
+                  </label>
+                  <button class="btn-primary" type="submit">Check policy</button>
+                </form>
+                <div class="command-suggestions">
+                  <button id="approveButton" class="btn-secondary" type="button" disabled>Approve</button>
+                  <button id="executeButton" class="btn-primary" type="button" disabled>Execute paper trade</button>
+                  <span class="key-hint">API-backed · DUAL-gated · paper venue</span>
+                </div>
               </div>
-              <label class="toggle-row">
-                <input id="policyLeverageAllowed" name="leverageAllowed" type="checkbox">
-                <span>Allow leverage</span>
-              </label>
-              <div class="button-row">
-                <button class="primary-button" type="submit">Save policy</button>
-                <span class="policy-message" id="policyMessage"></span>
-              </div>
-            </form>
-          </article>
+            </div>
+          </div>
+        </section>
 
-          <article class="panel red-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Compliance Red Team</h2>
-                <p>Unsafe requests should fail before execution.</p>
+        <section class="col right-col">
+          <div class="mandate-area">
+            <article class="mandate-card passport-panel">
+              <div class="panel-head compact">
+                <span class="label"><strong>DUAL MANDATE</strong> · READ-LINKED</span>
+                <span class="state-chip" id="stateChip">active</span>
               </div>
-            </div>
-            <div class="red-grid">
-              <button data-scenario="oversized">Oversized order</button>
-              <button data-scenario="blocked_pair">Blocked pair</button>
-              <button data-scenario="leverage">Leverage attempt</button>
-              <button data-scenario="missing_approval">Missing approval</button>
-            </div>
-          </article>
+              <div class="passport-state">
+                <div class="name">
+                  Kraken Market Agent
+                  <small id="passportState">Loading passport</small>
+                </div>
+              </div>
+              <div class="mandate-rows" id="mandateList"></div>
+              <details class="policy-details">
+                <summary>Policy editor</summary>
+                <form id="policyForm" class="policy-form">
+                  <div class="policy-section">
+                    <span>Allowed pairs</span>
+                    <div class="check-grid">
+                      <label class="check-tile"><input type="checkbox" name="allowedPairs" value="BTCUSD"><span>BTCUSD</span></label>
+                      <label class="check-tile"><input type="checkbox" name="allowedPairs" value="ETHUSD"><span>ETHUSD</span></label>
+                      <label class="check-tile"><input type="checkbox" name="allowedPairs" value="SOLUSD"><span>SOLUSD</span></label>
+                      <label class="check-tile"><input type="checkbox" name="allowedPairs" value="DUALUSD"><span>DUALUSD</span></label>
+                    </div>
+                  </div>
+                  <div class="policy-number-grid">
+                    <label>Max trade<input id="policyMaxTrade" name="maxNotionalUsd" type="number" min="1" step="1"></label>
+                    <label>Daily cap<input id="policyDailyCap" name="maxDailyNotionalUsd" type="number" min="1" step="1"></label>
+                    <label>Approval above<input id="policyApprovalThreshold" name="humanApprovalRequiredAbove" type="number" min="0" step="1"></label>
+                  </div>
+                  <label class="toggle-row"><input id="policyLeverageAllowed" name="leverageAllowed" type="checkbox"><span>Allow leverage</span></label>
+                  <div class="prop-actions policy-actions">
+                    <button class="btn-primary" type="submit">Save policy</button>
+                    <span class="policy-message" id="policyMessage"></span>
+                  </div>
+                </form>
+              </details>
+            </article>
 
-          <article class="panel proof-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Live Proof Bundle</h2>
-                <p>Readback from DUAL, Kraken source, and local audit root.</p>
+            <article class="proof-card proof-panel">
+              <div class="panel-head compact">
+                <span class="label"><strong>LIVE PROOF</strong> · DUAL READBACK</span>
+                <button id="exportProofButton" class="btn-ghost" type="button">Export</button>
               </div>
-              <button id="exportProofButton" class="ghost-button" type="button">Export proof</button>
-              <button id="setupActionPassportButton" class="ghost-button" type="button" disabled>Setup action passport</button>
-              <button id="setupReceiptTemplateButton" class="ghost-button" type="button" disabled>Setup receipt template</button>
-              <button id="executeReplayButton" class="secondary-button" type="button" disabled>Execute DUAL replay</button>
-              <button id="executeReceiptReplayButton" class="secondary-button" type="button" disabled>Mint receipts</button>
-            </div>
-            <div class="auth-grid hidden" id="dualEmailAuthPanel">
-              <label>
-                DUAL email
-                <input id="dualAuthEmail" name="dualAuthEmail" type="email" autocomplete="email" placeholder="name@example.com">
-              </label>
-              <button id="requestCodeButton" class="secondary-button" type="button">Get code</button>
-              <label>
-                Code
-                <input id="dualAuthCode" name="dualAuthCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
-              </label>
-              <button id="verifyCodeButton" class="primary-button" type="button">Authenticate</button>
-            </div>
-            <p class="auth-message" id="dualAuthMessage">Scoped API-key auth controls live DUAL writes for this public demo.</p>
-            <div class="dual-links" id="dualLinks" aria-label="DUAL data links"></div>
-            <div class="proof-grid" id="proofGrid"></div>
-          </article>
-
-          <article class="panel audit-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Provenance Timeline</h2>
-                <p>Every market snapshot, policy decision, approval, and execution.</p>
+              <div class="proof-actions">
+                <button id="setupActionPassportButton" class="btn-ghost" type="button" disabled>Setup passport</button>
+                <button id="setupReceiptTemplateButton" class="btn-ghost" type="button" disabled>Setup receipt</button>
+                <button id="executeReplayButton" class="btn-secondary" type="button" disabled>Replay</button>
+                <button id="executeReceiptReplayButton" class="btn-secondary" type="button" disabled>Mint receipts</button>
               </div>
-              <span class="mini-label" id="eventCount">0 events</span>
-            </div>
-            <ol class="timeline" id="timeline"></ol>
-          </article>
+              <div class="auth-grid hidden" id="dualEmailAuthPanel">
+                <label>DUAL email<input id="dualAuthEmail" name="dualAuthEmail" type="email" autocomplete="email" placeholder="name@example.com"></label>
+                <button id="requestCodeButton" class="btn-secondary" type="button">Get code</button>
+                <label>Code<input id="dualAuthCode" name="dualAuthCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></label>
+                <button id="verifyCodeButton" class="btn-primary" type="button">Authenticate</button>
+              </div>
+              <p class="auth-message" id="dualAuthMessage">Scoped API-key auth controls live DUAL writes for this public demo.</p>
+              <div class="dual-links" id="dualLinks" aria-label="DUAL data links"></div>
+              <div class="proof-grid" id="proofGrid"></div>
+            </article>
+          </div>
         </section>
       </main>
+
+      <footer class="footer red-panel">
+        <div class="footer-stat"><span>Events</span><strong id="eventCount">0 events</strong></div>
+        <div class="red-team-row">
+          <span class="rt-label">Red team</span>
+          <button class="rt-btn" data-scenario="oversized" type="button">Oversized</button>
+          <button class="rt-btn" data-scenario="blocked_pair" type="button">Blocked pair</button>
+          <button class="rt-btn" data-scenario="leverage" type="button">Leverage</button>
+          <button class="rt-btn" data-scenario="missing_approval" type="button">Missing approval</button>
+        </div>
+      </footer>
     </div>
 
     <script type="module" src="/app.js"></script>

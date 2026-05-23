@@ -178,7 +178,12 @@ assert(mcpTrade.result.executionPath, "MCP paper trade returns execution path");
 assert(!Object.hasOwn(mcpTrade.result, "fallbackReason"), "MCP paper trade does not expose simulator path as fallback error");
 assert(mcpTrade.tradeReceipt?.id?.startsWith("tr-"), "MCP paper trade returns a trade receipt");
 assert(Array.isArray(mcpTrade.warnings), "MCP trade returns top-level warnings");
-assert(mcpTrade.warnings.some((warning) => warning.code === "dual_anchoring_not_available"), "MCP trade warns when DUAL anchoring is not available");
+const mcpTradeAnchored = Boolean(mcpTrade.tradeReceipt?.dualSync?.synced);
+const mcpTradeWarnedAnchoringUnavailable = mcpTrade.warnings.some((warning) => warning.code === "dual_anchoring_not_available");
+assert(mcpTradeAnchored || mcpTradeWarnedAnchoringUnavailable, "MCP trade either anchors to DUAL or warns when DUAL anchoring is not available");
+if (mcpTrade.writeState?.canWriteNow) {
+  assert(mcpTradeAnchored, "MCP trade mints a DUAL receipt when write readiness is active");
+}
 
 const mcpCompactStatus = mcpJson(await mcp("tools/call", {
   name: "kraken_dual_get_status",

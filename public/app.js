@@ -590,11 +590,17 @@ function renderProof() {
       : "pending";
   const writeReadiness = proof?.status?.writeReadiness || dual?.writeReadiness;
   const writeGate = writeReadiness?.writeGate || dual?.writeGate || auth?.writeGate;
+  const writeReadyNow = Boolean(
+    writeReadiness?.canWriteNow
+    ?? writeReadiness?.ready
+    ?? dual?.canWriteNow
+    ?? (dual?.writable && writeGate?.allowed)
+  );
   const rows = [
     ["Kraken market", sourceLabel(adapter)],
     ["Paper execution", proof?.status?.krakenPaperExecution || "simulated-paper"],
     ["DUAL mode", isDualLive(dual) ? dual.writable ? "write-sync" : "read-linked" : "local simulator"],
-    ["Write readiness", writeReadiness?.canWriteNow ? "ready" : writeReadiness?.persistenceReady ? "public writes disabled" : "needs DUAL write config"],
+    ["Write readiness", writeReadyNow ? "ready" : writeReadiness?.persistenceReady || dual?.persistenceReady ? "public writes disabled" : "needs DUAL write config"],
     ["Write gate", writeGate?.allowed ? "public demo writes" : "disabled"],
     ["Write auth", authLabel(auth)],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
@@ -628,7 +634,7 @@ function renderProof() {
   renderDualLinks(proof?.links || state.health?.dual?.links || dual?.links || []);
   renderBinding();
 
-  const writeReady = Boolean(writeReadiness?.canWriteNow ?? proof?.status?.writeReadiness?.ready);
+  const writeReady = writeReadyNow;
   els.executeReplayButton.disabled = !writeReady || !(replayQueue?.pendingCount ?? replayQueue?.eventCount);
   els.setupActionPassportButton.disabled = !writeReady;
   els.setupReceiptTemplateButton.disabled = !writeReady;

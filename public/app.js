@@ -386,7 +386,7 @@ function renderProposal() {
     els.proposalCard.innerHTML = `
       <div class="empty-proposal">
         <span>No active proposal</span>
-        <strong>Create a trade intent to see DUAL policy output.</strong>
+        <strong>Create a DUAL/USD trade intent to see the mandate decision.</strong>
       </div>
     `;
     els.approveButton.disabled = true;

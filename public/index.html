@@ -9,14 +9,16 @@
   <body>
     <div class="app" data-brand="co">
       <header class="topbar">
-        <div class="lockup">
-          <div class="mark dual">d</div>
-          <span class="name">DUAL</span>
+        <div class="lockup brand-lockup">
+          <span class="brand-logo-card dual-card">
+            <img src="/assets/dual-logo.svg" alt="DUAL">
+          </span>
           <span class="sep">x</span>
-          <div class="mark krk">K</div>
-          <span class="name">KRAKEN</span>
+          <span class="brand-logo-card kraken-card">
+            <img src="/assets/kraken-logo.svg" alt="Kraken">
+          </span>
           <div class="brand-divider"></div>
-          <span class="product-name">DUAL BINDING LAYER</span>
+          <span class="product-name">AGENT TRADING PASSPORT</span>
         </div>
         <div class="topbar-meta">
           <span class="meta-chip"><span class="dot accent"></span><span>mode</span><strong>PAPER</strong></span>
@@ -28,23 +30,78 @@
         </div>
       </header>
 
-      <main class="main">
-        <section class="binding-stage" aria-label="DUAL binding proof">
+      <main class="main narrative-main">
+        <section class="trade-stage" aria-label="DUAL USD trading workflow">
+          <article class="story-card">
+            <div class="story-copy">
+              <span>Agent Trading Passport</span>
+              <h1>Trade DUAL/USD with a governed agent</h1>
+              <p>Kraken supplies the market venue. DUAL binds the mandate, policy decision, action log, receipt and proof so the trade can be inspected after execution.</p>
+            </div>
+            <div class="story-flow" aria-label="Demo flow">
+              <div><strong>1</strong><span>Propose DUAL/USD</span></div>
+              <div><strong>2</strong><span>Check mandate</span></div>
+              <div><strong>3</strong><span>Execute paper trade</span></div>
+              <div><strong>4</strong><span>Open DUAL proof</span></div>
+            </div>
+          </article>
+
+          <article class="trade-card trade-panel red-panel">
+            <div class="panel-head compact">
+              <span class="label"><strong>LIVE TRADE</strong> · DUAL/USD · POLICY-GATED</span>
+              <span class="trade-focus-chip">primary demo path</span>
+            </div>
+            <form id="tradeForm" class="trade-hero-form">
+              <label>
+                Pair
+                <select name="pair">
+                  <option>DUALUSD</option>
+                  <option>BTCUSD</option>
+                  <option>ETHUSD</option>
+                  <option>SOLUSD</option>
+                </select>
+              </label>
+              <label>
+                Side
+                <select name="side">
+                  <option>buy</option>
+                  <option>sell</option>
+                </select>
+              </label>
+              <label>
+                Notional USD
+                <input name="notional" type="number" min="1" value="75">
+              </label>
+              <button class="btn-primary trade-check" type="submit">Check policy</button>
+            </form>
+            <div class="proposal-card" id="proposalCard">
+              <span>No active proposal</span>
+              <strong>Create a DUAL/USD trade intent to see the mandate decision.</strong>
+            </div>
+            <div class="trade-actions">
+              <button id="approveButton" class="btn-secondary" type="button" disabled>Approve</button>
+              <button id="executeButton" class="btn-primary" type="button" disabled>Execute paper trade</button>
+              <span class="key-hint">DUAL-bound receipt minted after execution</span>
+            </div>
+          </article>
+
           <article class="binding-card binding-focus">
             <div class="panel-head compact">
               <span class="label"><strong>DUAL BINDING</strong> · TEMPLATE · OBJECT · ACTION · RECEIPT</span>
               <span class="binding-score" id="bindingSummary">Waiting for DUAL proof</span>
             </div>
             <div class="binding-hero">
-              <span>Binding first</span>
-              <strong>The trade is the trigger. DUAL is the durable object graph.</strong>
-              <p>Every paper execution resolves back to a DUAL mandate template, passport object, action log, receipt object, and batch proof.</p>
+              <span>After execution</span>
+              <strong>The trade becomes a DUAL-bound data trail.</strong>
+              <p>Every paper execution resolves back to a mandate template, passport object, action, receipt object and batch proof.</p>
             </div>
             <div class="binding-chain" id="bindingChain">
               <div class="binding-empty">Loading DUAL binding proof...</div>
             </div>
           </article>
+        </section>
 
+        <section class="evidence-stage" aria-label="DUAL proof and operating context">
           <article class="proof-card proof-panel binding-proof">
             <div class="panel-head compact">
               <span class="label"><strong>LIVE PROOF</strong> · DUAL READBACK</span>
@@ -122,62 +179,23 @@
               </div>
             </article>
           </section>
-        </section>
 
-        <section class="command-dock trade-panel red-panel" aria-label="Trade command deck">
+          <article class="command-dock audit-panel" aria-label="Event trace">
           <div class="panel-head">
-            <span class="label"><strong>COMMAND DECK</strong> · PROPOSE · APPROVE · EXECUTE</span>
+            <span class="label"><strong>EVENT TRACE</strong> · MARKET · POLICY · EXECUTION</span>
             <span class="footer-stat"><span>Events</span><strong id="eventCount">0 events</strong></span>
           </div>
-          <div class="command-grid">
-            <div class="command-content">
-              <ol class="term-log" id="timeline"></ol>
-            </div>
-            <div class="proposal-stack">
-              <div class="proposal-card" id="proposalCard">
-                <span>No active proposal</span>
-                <strong>Create a trade intent to see DUAL policy output.</strong>
-              </div>
-              <div class="command-input">
-                <form id="tradeForm" class="prompt-row">
-                  <span class="caret">&gt;</span>
-                  <label>
-                    Pair
-                    <select name="pair">
-                      <option>DUALUSD</option>
-                      <option>BTCUSD</option>
-                      <option>ETHUSD</option>
-                      <option>SOLUSD</option>
-                    </select>
-                  </label>
-                  <label>
-                    Side
-                    <select name="side">
-                      <option>buy</option>
-                      <option>sell</option>
-                    </select>
-                  </label>
-                  <label>
-                    Notional USD
-                    <input name="notional" type="number" min="1" value="75">
-                  </label>
-                  <button class="btn-primary" type="submit">Check policy</button>
-                </form>
-                <div class="command-suggestions">
-                  <button id="approveButton" class="btn-secondary" type="button" disabled>Approve</button>
-                  <button id="executeButton" class="btn-primary" type="button" disabled>Execute paper trade</button>
-                  <span class="key-hint">API-backed · DUAL-bound · paper venue</span>
-                </div>
-                <div class="red-team-row">
-                  <span class="rt-label">Red team</span>
-                  <button class="rt-btn" data-scenario="oversized" type="button">Oversized</button>
-                  <button class="rt-btn" data-scenario="blocked_pair" type="button">Blocked pair</button>
-                  <button class="rt-btn" data-scenario="leverage" type="button">Leverage</button>
-                  <button class="rt-btn" data-scenario="missing_approval" type="button">Missing approval</button>
-                </div>
-              </div>
-            </div>
+          <div class="red-team-row trace-red-team">
+            <span class="rt-label">Red team</span>
+            <button class="rt-btn" data-scenario="oversized" type="button">Oversized</button>
+            <button class="rt-btn" data-scenario="blocked_pair" type="button">Blocked pair</button>
+            <button class="rt-btn" data-scenario="leverage" type="button">Leverage</button>
+            <button class="rt-btn" data-scenario="missing_approval" type="button">Missing approval</button>
           </div>
+          <div class="command-content">
+            <ol class="term-log" id="timeline"></ol>
+          </div>
+          </article>
         </section>
       </main>
     </div>

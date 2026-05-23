@@ -16,7 +16,7 @@
           <div class="mark krk">K</div>
           <span class="name">KRAKEN</span>
           <div class="brand-divider"></div>
-          <span class="product-name">AGENT TRADING PASSPORT</span>
+          <span class="product-name">DUAL BINDING LAYER</span>
         </div>
         <div class="topbar-meta">
           <span class="meta-chip"><span class="dot accent"></span><span>mode</span><strong>PAPER</strong></span>
@@ -29,73 +29,45 @@
       </header>
 
       <main class="main">
-        <section class="col markets-col" aria-label="Kraken market tape">
-          <div class="panel-head">
-            <span class="label"><strong>MARKETS</strong> · KRAKEN</span>
-            <span class="sublabel">live</span>
-          </div>
-          <div class="markets" id="marketStrip"></div>
-          <div class="venue-card">
-            <span class="label">Venue</span>
-            <dl>
-              <div><dt>adapter</dt><dd>kraken-public</dd></div>
-              <div><dt>mode</dt><dd>paper</dd></div>
-              <div><dt>settlement</dt><dd>DUAL proof</dd></div>
-            </dl>
-          </div>
-        </section>
-
-        <section class="col center">
-          <div class="center-stack">
-            <div class="command-area trade-panel">
-              <div class="panel-head">
-                <span class="label"><strong>COMMAND DECK</strong> · PROPOSE · APPROVE · EXECUTE</span>
-                <span class="sublabel">listening</span>
-              </div>
-              <div class="command-content">
-                <ol class="term-log" id="timeline"></ol>
-                <div class="proposal-card" id="proposalCard">
-                  <span>No active proposal</span>
-                  <strong>Create a trade intent to see DUAL policy output.</strong>
-                </div>
-              </div>
-              <div class="command-input">
-                <form id="tradeForm" class="prompt-row">
-                  <span class="caret">&gt;</span>
-                  <label>
-                    Pair
-                    <select name="pair">
-                      <option>BTCUSD</option>
-                      <option>ETHUSD</option>
-                      <option>SOLUSD</option>
-                      <option>DUALUSD</option>
-                    </select>
-                  </label>
-                  <label>
-                    Side
-                    <select name="side">
-                      <option>buy</option>
-                      <option>sell</option>
-                    </select>
-                  </label>
-                  <label>
-                    Notional USD
-                    <input name="notional" type="number" min="1" value="75">
-                  </label>
-                  <button class="btn-primary" type="submit">Check policy</button>
-                </form>
-                <div class="command-suggestions">
-                  <button id="approveButton" class="btn-secondary" type="button" disabled>Approve</button>
-                  <button id="executeButton" class="btn-primary" type="button" disabled>Execute paper trade</button>
-                  <span class="key-hint">API-backed · DUAL-gated · paper venue</span>
-                </div>
-              </div>
+        <section class="binding-stage" aria-label="DUAL binding proof">
+          <article class="binding-card binding-focus">
+            <div class="panel-head compact">
+              <span class="label"><strong>DUAL BINDING</strong> · TEMPLATE · OBJECT · ACTION · RECEIPT</span>
+              <span class="binding-score" id="bindingSummary">Waiting for DUAL proof</span>
             </div>
-          </div>
-        </section>
+            <div class="binding-hero">
+              <span>Binding first</span>
+              <strong>The trade is the trigger. DUAL is the durable object graph.</strong>
+              <p>Every paper execution resolves back to a DUAL mandate template, passport object, action log, receipt object, and batch proof.</p>
+            </div>
+            <div class="binding-chain" id="bindingChain">
+              <div class="binding-empty">Loading DUAL binding proof...</div>
+            </div>
+          </article>
 
-        <section class="col right-col">
-          <div class="mandate-area">
+          <article class="proof-card proof-panel binding-proof">
+            <div class="panel-head compact">
+              <span class="label"><strong>LIVE PROOF</strong> · DUAL READBACK</span>
+              <button id="exportProofButton" class="btn-ghost" type="button">Export</button>
+            </div>
+            <div class="proof-actions">
+              <button id="setupActionPassportButton" class="btn-ghost" type="button" disabled>Setup passport</button>
+              <button id="setupReceiptTemplateButton" class="btn-ghost" type="button" disabled>Setup receipt</button>
+              <button id="executeReplayButton" class="btn-secondary" type="button" disabled>Replay</button>
+              <button id="executeReceiptReplayButton" class="btn-secondary" type="button" disabled>Mint receipts</button>
+            </div>
+            <div class="auth-grid hidden" id="dualEmailAuthPanel">
+              <label>DUAL email<input id="dualAuthEmail" name="dualAuthEmail" type="email" autocomplete="email" placeholder="name@example.com"></label>
+              <button id="requestCodeButton" class="btn-secondary" type="button">Get code</button>
+              <label>Code<input id="dualAuthCode" name="dualAuthCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></label>
+              <button id="verifyCodeButton" class="btn-primary" type="button">Authenticate</button>
+            </div>
+            <p class="auth-message" id="dualAuthMessage">Scoped API-key auth controls live DUAL writes for this public demo.</p>
+            <div class="dual-links" id="dualLinks" aria-label="DUAL data links"></div>
+            <div class="proof-grid" id="proofGrid"></div>
+          </article>
+
+          <section class="context-stack" aria-label="DUAL mandate and market context">
             <article class="mandate-card passport-panel">
               <div class="panel-head compact">
                 <span class="label"><strong>DUAL MANDATE</strong> · READ-LINKED</span>
@@ -134,41 +106,80 @@
               </details>
             </article>
 
-            <article class="proof-card proof-panel">
+            <article class="market-card markets-col">
               <div class="panel-head compact">
-                <span class="label"><strong>LIVE PROOF</strong> · DUAL READBACK</span>
-                <button id="exportProofButton" class="btn-ghost" type="button">Export</button>
+                <span class="label"><strong>MARKETS</strong> · KRAKEN</span>
+                <span class="sublabel">live</span>
               </div>
-              <div class="proof-actions">
-                <button id="setupActionPassportButton" class="btn-ghost" type="button" disabled>Setup passport</button>
-                <button id="setupReceiptTemplateButton" class="btn-ghost" type="button" disabled>Setup receipt</button>
-                <button id="executeReplayButton" class="btn-secondary" type="button" disabled>Replay</button>
-                <button id="executeReceiptReplayButton" class="btn-secondary" type="button" disabled>Mint receipts</button>
+              <div class="markets" id="marketStrip"></div>
+              <div class="venue-card">
+                <span class="label">Venue</span>
+                <dl>
+                  <div><dt>adapter</dt><dd>kraken-public</dd></div>
+                  <div><dt>mode</dt><dd>paper</dd></div>
+                  <div><dt>settlement</dt><dd>DUAL proof</dd></div>
+                </dl>
               </div>
-              <div class="auth-grid hidden" id="dualEmailAuthPanel">
-                <label>DUAL email<input id="dualAuthEmail" name="dualAuthEmail" type="email" autocomplete="email" placeholder="name@example.com"></label>
-                <button id="requestCodeButton" class="btn-secondary" type="button">Get code</button>
-                <label>Code<input id="dualAuthCode" name="dualAuthCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></label>
-                <button id="verifyCodeButton" class="btn-primary" type="button">Authenticate</button>
-              </div>
-              <p class="auth-message" id="dualAuthMessage">Scoped API-key auth controls live DUAL writes for this public demo.</p>
-              <div class="dual-links" id="dualLinks" aria-label="DUAL data links"></div>
-              <div class="proof-grid" id="proofGrid"></div>
             </article>
+          </section>
+        </section>
+
+        <section class="command-dock trade-panel red-panel" aria-label="Trade command deck">
+          <div class="panel-head">
+            <span class="label"><strong>COMMAND DECK</strong> · PROPOSE · APPROVE · EXECUTE</span>
+            <span class="footer-stat"><span>Events</span><strong id="eventCount">0 events</strong></span>
+          </div>
+          <div class="command-grid">
+            <div class="command-content">
+              <ol class="term-log" id="timeline"></ol>
+            </div>
+            <div class="proposal-stack">
+              <div class="proposal-card" id="proposalCard">
+                <span>No active proposal</span>
+                <strong>Create a trade intent to see DUAL policy output.</strong>
+              </div>
+              <div class="command-input">
+                <form id="tradeForm" class="prompt-row">
+                  <span class="caret">&gt;</span>
+                  <label>
+                    Pair
+                    <select name="pair">
+                      <option>DUALUSD</option>
+                      <option>BTCUSD</option>
+                      <option>ETHUSD</option>
+                      <option>SOLUSD</option>
+                    </select>
+                  </label>
+                  <label>
+                    Side
+                    <select name="side">
+                      <option>buy</option>
+                      <option>sell</option>
+                    </select>
+                  </label>
+                  <label>
+                    Notional USD
+                    <input name="notional" type="number" min="1" value="75">
+                  </label>
+                  <button class="btn-primary" type="submit">Check policy</button>
+                </form>
+                <div class="command-suggestions">
+                  <button id="approveButton" class="btn-secondary" type="button" disabled>Approve</button>
+                  <button id="executeButton" class="btn-primary" type="button" disabled>Execute paper trade</button>
+                  <span class="key-hint">API-backed · DUAL-bound · paper venue</span>
+                </div>
+                <div class="red-team-row">
+                  <span class="rt-label">Red team</span>
+                  <button class="rt-btn" data-scenario="oversized" type="button">Oversized</button>
+                  <button class="rt-btn" data-scenario="blocked_pair" type="button">Blocked pair</button>
+                  <button class="rt-btn" data-scenario="leverage" type="button">Leverage</button>
+                  <button class="rt-btn" data-scenario="missing_approval" type="button">Missing approval</button>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </main>
-
-      <footer class="footer red-panel">
-        <div class="footer-stat"><span>Events</span><strong id="eventCount">0 events</strong></div>
-        <div class="red-team-row">
-          <span class="rt-label">Red team</span>
-          <button class="rt-btn" data-scenario="oversized" type="button">Oversized</button>
-          <button class="rt-btn" data-scenario="blocked_pair" type="button">Blocked pair</button>
-          <button class="rt-btn" data-scenario="leverage" type="button">Leverage</button>
-          <button class="rt-btn" data-scenario="missing_approval" type="button">Missing approval</button>
-        </div>
-      </footer>
     </div>
 
     <script type="module" src="/app.js"></script>

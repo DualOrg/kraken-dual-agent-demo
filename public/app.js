@@ -39,6 +39,8 @@ const els = {
   executeReceiptReplayButton: document.querySelector("#executeReceiptReplayButton"),
   exportProofButton: document.querySelector("#exportProofButton"),
   proofGrid: document.querySelector("#proofGrid"),
+  bindingChain: document.querySelector("#bindingChain"),
+  bindingSummary: document.querySelector("#bindingSummary"),
   policyForm: document.querySelector("#policyForm"),
   policyMessage: document.querySelector("#policyMessage"),
   policyMaxTrade: document.querySelector("#policyMaxTrade"),
@@ -288,6 +290,7 @@ function render() {
   renderPassport();
   renderProposal();
   renderProof();
+  renderBinding();
   renderTimeline();
 }
 
@@ -557,6 +560,7 @@ function renderProof() {
   `).join("");
 
   renderDualLinks(proof?.links || state.health?.dual?.links || dual?.links || []);
+  renderBinding();
 
   const writeReady = Boolean(writeReadiness?.canWriteNow ?? proof?.status?.writeReadiness?.ready);
   els.executeReplayButton.disabled = !writeReady || !(replayQueue?.pendingCount ?? replayQueue?.eventCount);
@@ -572,6 +576,126 @@ function renderProof() {
   } else if (!els.dualAuthMessage.textContent) {
     els.dualAuthMessage.textContent = auth?.detail || "Scoped API-key auth controls live DUAL writes for this public demo.";
   }
+}
+
+function renderBinding() {
+  if (!els.bindingChain) return;
+  const items = dualBindingItems();
+  const liveCount = items.filter((item) => item.ready).length;
+  if (els.bindingSummary) {
+    els.bindingSummary.textContent = `${liveCount}/${items.length} live bindings`;
+    els.bindingSummary.className = `binding-score ${liveCount === items.length ? "complete" : liveCount ? "partial" : ""}`;
+  }
+  els.bindingChain.innerHTML = items.map((item, index) => `
+    <article class="binding-node ${item.ready ? "ready" : "pending"}">
+      <div class="node-index">${String(index + 1).padStart(2, "0")}</div>
+      <div class="node-body">
+        <span class="node-label">${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.title)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+        <code>${escapeHtml(shortId(item.id || "pending"))}</code>
+      </div>
+      <div class="node-links">
+        ${renderBindingTargets(item.link)}
+      </div>
+    </article>
+  `).join("");
+}
+
+function dualBindingItems() {
+  const proof = state.proof || {};
+  const dual = proof.status?.dualMode || state.health?.dual || {};
+  const dualTemplate = proof.dualTemplate;
+  const dualObject = proof.dualObject;
+  const tradeReceipts = proof.tradeReceipts || {};
+  const replayQueue = proof.replayQueue || {};
+  const dualBatch = proof.dualBatch || {};
+  const latestReplay = firstWithActionId(replayQueue.latest || []);
+  const latestReceipt = firstSyncedReceipt(tradeReceipts.latest || []);
+  const latestBatchAction = latestActionFromBatch(dualBatch);
+  const actionId = latestReplay?.actionId || latestReplay?.dualSync?.result?.actionId || latestBatchAction?.id || "";
+  const actionHash = latestReplay?.dualSync?.result?.hash || latestBatchAction?.hash || "";
+  const receiptObjectId = latestReceipt?.dualSync?.result?.id || "";
+  const receiptActionId = latestReceipt?.dualSync?.result?.actionId || "";
+  const policy = proof.policy || {};
+
+  return [
+    {
+      label: "Mandate template",
+      title: "Rules become schema",
+      detail: dualTemplate?.available ? "The agent mandate is read from a DUAL template." : "Waiting for a readable DUAL template.",
+      id: dualTemplate?.id || dual.templateId,
+      ready: Boolean(dualTemplate?.available || dual.templateId),
+      link: proofLink("dual-record-template")
+    },
+    {
+      label: "Passport object",
+      title: "Agent state is bound",
+      detail: dualObject?.available ? "Policy limits, state, and latest event pointer are on the DUAL object." : "Waiting for passport object readback.",
+      id: dualObject?.id || dual.objectId,
+      ready: Boolean(dualObject?.available || dual.objectId),
+      link: proofLink("dual-record-object")
+    },
+    {
+      label: "Policy hash",
+      title: "Mandate is fingerprinted",
+      detail: policy.hash ? `Policy v${policy.version || 1} is committed into the proof bundle.` : "Waiting for policy hash.",
+      id: policy.hash || state.data?.passport?.policyHash,
+      ready: Boolean(policy.hash || state.data?.passport?.policyHash),
+      link: proofLink("dual-record-object")
+    },
+    {
+      label: "Action log",
+      title: "Execution creates DUAL action",
+      detail: actionId ? "The latest governed trade event has a DUAL action id." : "Waiting for a synced DUAL action.",
+      id: actionId || actionHash,
+      ready: Boolean(actionId),
+      link: proofLink(`dual-record-action-${actionId}`) || proofLink("dual-record-action")
+    },
+    {
+      label: "Receipt object",
+      title: "Trade receipt minted",
+      detail: receiptObjectId ? "The paper trade receipt exists as a DUAL object." : "Waiting for a minted receipt object.",
+      id: receiptObjectId || receiptActionId,
+      ready: Boolean(receiptObjectId || receiptActionId),
+      link: proofLink("dual-record-receipt-object")
+    },
+    {
+      label: "Batch proof",
+      title: "Actions enter batch proof",
+      detail: dualBatch?.available ? batchProofLabel(dualBatch) : "Waiting for DUAL batch readback.",
+      id: dualBatch?.id,
+      ready: Boolean(dualBatch?.available),
+      link: proofLink("dual-record-batch")
+    }
+  ];
+}
+
+function firstWithActionId(events = []) {
+  return events.find((event) => event?.actionId || event?.dualSync?.result?.actionId) || null;
+}
+
+function firstSyncedReceipt(receipts = []) {
+  return receipts.find((receipt) => receipt?.dualSync?.synced) || receipts.find((receipt) => receipt?.dualSync?.result?.id) || null;
+}
+
+function latestActionFromBatch(batch = {}) {
+  const actions = batch.affectedActions || [];
+  return actions.length ? actions[actions.length - 1] : null;
+}
+
+function proofLink(id) {
+  return (state.proof?.links || state.health?.dual?.links || []).find((link) => link.id === id) || null;
+}
+
+function renderBindingTargets(link) {
+  if (!link?.href) return `<span class="binding-target muted">pending</span>`;
+  const targets = link.targets?.length ? link.targets : [{ label: link.source || "Open", href: link.href, source: link.source }];
+  return targets.slice(0, 3).map((target) => `
+    <a class="binding-target ${dualLinkSourceClass(target.source)}" href="${escapeHtml(target.href)}" target="_blank" rel="noreferrer">
+      ${escapeHtml(target.label || "Open")}
+    </a>
+  `).join("");
 }
 
 function renderOptionalEmailAuth() {

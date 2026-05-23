@@ -18,6 +18,10 @@ const els = {
   adapterStatus: document.querySelector("#adapterStatus"),
   dualStatus: document.querySelector("#dualStatus"),
   marketStrip: document.querySelector("#marketStrip"),
+  marketStats: document.querySelector("#marketStats"),
+  orderBook: document.querySelector("#orderBook"),
+  depthMeter: document.querySelector("#depthMeter"),
+  bookPair: document.querySelector("#bookPair"),
   mandateList: document.querySelector("#mandateList"),
   passportState: document.querySelector("#passportState"),
   stateChip: document.querySelector("#stateChip"),
@@ -244,6 +248,8 @@ function bindEvents() {
       render();
     });
   });
+
+  els.tradeForm.elements.pair?.addEventListener("change", renderMarkets);
 }
 
 async function checkHealth() {
@@ -296,12 +302,13 @@ function render() {
 
 function renderMarkets() {
   if (!state.data) return;
+  const activePair = selectedPair();
   els.marketStrip.innerHTML = pairs.map((pair) => {
     const market = state.data.market[pair] || {};
     const change = Number(market.changePct || 0);
     const isPositive = change >= 0;
     return `
-      <article class="ticker ${pair === "DUALUSD" ? "active" : ""}">
+      <article class="ticker ${pair === activePair ? "active" : ""}">
         <div class="pair">${pair}</div>
         <div class="price">${formatMarketPrice(market.price)}</div>
         <div class="vol">VOL ${Number(market.volume || 0).toLocaleString()}</div>
@@ -312,6 +319,65 @@ function renderMarkets() {
       </article>
     `;
   }).join("");
+  renderMarketTerminal(activePair);
+}
+
+function selectedPair() {
+  return els.tradeForm?.elements?.pair?.value || "DUALUSD";
+}
+
+function renderMarketTerminal(pair = selectedPair()) {
+  if (!els.marketStats || !els.orderBook || !els.depthMeter) return;
+  const market = state.data?.market?.[pair] || {};
+  const price = Number(market.price || 0);
+  const spread = price ? Math.max(price * 0.0036, pair === "DUALUSD" ? 0.000001 : 0.01) : 0;
+  const bid = Math.max(0, price - spread / 2);
+  const ask = price + spread / 2;
+  const spreadPct = price ? (spread / price) * 100 : 0;
+  const volume = Number(market.volume || 0);
+  const change = Number(market.changePct || 0);
+  const bidDepth = Math.max(42, Math.min(84, 54 + Math.abs(change) * 5));
+  const askDepth = Math.max(36, Math.min(78, 50 + Math.abs(change) * 4));
+  const quotePair = pair.replace("USD", "/USD");
+  const stats = [
+    ["BID", formatMarketPrice(bid), "bid"],
+    ["ASK", formatMarketPrice(ask), "ask"],
+    ["SPREAD", `${formatMarketPrice(spread)} · ${spreadPct.toFixed(2)}%`, "spread"],
+    ["24H VOL", compactNumber(volume), "vol"]
+  ];
+  const sizeBase = Math.max(1, volume / (pair === "DUALUSD" ? 36 : 72));
+  const rows = [
+    { side: "ask", label: "ASK", price: ask + spread * 0.9, size: sizeBase * 0.54 },
+    { side: "ask", label: "ASK", price: ask, size: sizeBase * 0.82 },
+    { side: "bid", label: "BID", price: bid, size: sizeBase },
+    { side: "bid", label: "BID", price: Math.max(0, bid - spread * 0.9), size: sizeBase * 0.68 }
+  ];
+  const maxSize = Math.max(...rows.map((row) => row.size), 1);
+
+  if (els.bookPair) els.bookPair.textContent = pair;
+  els.marketStats.innerHTML = stats.map(([label, value, tone]) => `
+    <div class="market-stat ${tone}">
+      <span>${label}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+  els.orderBook.innerHTML = rows.map((row) => `
+    <div class="book-row ${row.side}" style="--depth:${Math.round((row.size / maxSize) * 100)}%">
+      <span>${row.label}</span>
+      <strong>${formatMarketPrice(row.price)}</strong>
+      <em>${compactNumber(row.size)}</em>
+    </div>
+  `).join("");
+  els.depthMeter.innerHTML = `
+    <div class="depth-meter-head">
+      <span>${quotePair} depth</span>
+      <strong>${change >= 0 ? "+" : ""}${change.toFixed(2)}%</strong>
+    </div>
+    <div class="depth-bar" aria-label="Bid and ask depth">
+      <span class="bid" style="width:${bidDepth}%"></span>
+      <span class="ask" style="width:${askDepth}%"></span>
+    </div>
+  `;
 }
 
 function sparkPath(pair, positive = true) {
@@ -800,6 +866,13 @@ function formatMarketPrice(value) {
     minimumFractionDigits: amount > 0 && amount < 1 ? 6 : 2,
     maximumFractionDigits: amount > 0 && amount < 1 ? 6 : 2
   }).format(amount);
+}
+
+function compactNumber(value) {
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1
+  }).format(Number(value || 0));
 }
 
 async function getJson(url, options = {}) {

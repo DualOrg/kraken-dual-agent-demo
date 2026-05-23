@@ -1965,13 +1965,13 @@ input, select, textarea { font: inherit; color: inherit; }
 .narrative-main {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: minmax(504px, 0.76fr) minmax(148px, 0.24fr);
+  grid-template-rows: minmax(418px, 0.64fr) minmax(246px, 0.36fr);
   overflow: hidden;
 }
 
 .trade-stage {
   display: grid;
-  grid-template-columns: minmax(290px, 0.78fr) minmax(430px, 1.08fr) minmax(430px, 1.14fr);
+  grid-template-columns: minmax(330px, 0.92fr) minmax(430px, 1.08fr) minmax(410px, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -1988,9 +1988,10 @@ input, select, textarea { font: inherit; color: inherit; }
     radial-gradient(90% 80% at 5% 0%, rgba(138, 124, 255, 0.2), transparent 72%),
     linear-gradient(180deg, rgba(14, 36, 38, 0.8), rgba(6, 16, 15, 0.36));
   display: grid;
-  gap: 16px;
-  grid-template-rows: auto auto;
-  padding: 22px;
+  gap: 10px;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 14px;
+  overflow: hidden;
 }
 
 .story-copy {
@@ -2009,18 +2010,18 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .story-copy h1 {
   color: var(--ink);
-  font-size: clamp(30px, 2.4vw, 42px);
+  font-size: clamp(22px, 1.85vw, 32px);
   font-weight: 680;
   letter-spacing: 0;
   line-height: 1.02;
-  margin: 12px 0 0;
+  margin: 8px 0 0;
 }
 
 .story-copy p {
   color: var(--ink-2);
-  font-size: 14px;
-  line-height: 1.48;
-  margin: 14px 0 0;
+  font-size: 12.5px;
+  line-height: 1.42;
+  margin: 8px 0 0;
 }
 
 .story-flow {
@@ -2070,7 +2071,7 @@ input, select, textarea { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px 16px;
+  padding: 12px 16px;
   overflow: hidden;
 }
 
@@ -2127,13 +2128,14 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .trade-card .proposal {
-  flex: 0 0 auto;
-  min-height: 190px;
+  flex: 1 1 auto;
+  min-height: 126px;
+  order: 4;
   overflow: hidden;
 }
 
 .trade-card .proposal.empty {
-  min-height: 190px;
+  min-height: 126px;
 }
 
 .trade-card .prop-head {
@@ -2145,8 +2147,8 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .trade-card .flow-step {
-  min-height: 56px;
-  padding: 8px 9px 9px;
+  min-height: 50px;
+  padding: 7px 8px 8px;
 }
 
 .trade-card .step-detail {
@@ -2166,6 +2168,7 @@ input, select, textarea { font: inherit; color: inherit; }
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  order: 3;
 }
 
 .trade-card .key-hint {
@@ -2174,31 +2177,120 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .trade-stage .binding-focus {
-  padding: 16px;
+  padding: 12px;
 }
 
 .trade-stage .binding-hero {
-  padding: 13px 15px;
+  padding: 10px 12px;
 }
 
 .trade-stage .binding-hero strong {
-  font-size: clamp(20px, 1.8vw, 28px);
+  font-size: clamp(18px, 1.55vw, 24px);
 }
 
 .trade-stage .binding-chain {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.left-context-stack {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 0;
+  grid-template-rows: minmax(0, 0.72fr) minmax(0, 1.28fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.left-context-stack .mandate-card,
+.left-context-stack .market-card {
+  border: 0;
+  min-height: 0;
+  padding: 10px;
+}
+
+.left-context-stack .mandate-card {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.left-context-stack .passport-state {
+  padding: 9px 10px;
+}
+
+.left-context-stack .mandate-row {
+  padding: 6px 10px;
+  font-size: 10.5px;
+}
+
+.left-context-stack .mandate-row .v {
+  max-width: 140px;
+}
+
+.left-context-stack .policy-details {
+  display: none;
+}
+
+.left-context-stack .market-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.left-context-stack .markets {
+  display: grid;
+  grid-auto-rows: minmax(28px, 1fr);
+  overflow: hidden;
+}
+
+.left-context-stack .ticker {
+  align-items: center;
+  display: grid;
+  gap: 4px 8px;
+  grid-template-columns: 68px minmax(0, 1fr) auto;
+  grid-template-rows: auto;
+  min-height: 0;
+  padding: 5px 10px;
+}
+
+.left-context-stack .ticker .pair {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.left-context-stack .ticker .price {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 13px;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.left-context-stack .ticker .change {
+  align-self: center;
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.left-context-stack .ticker .vol,
+.left-context-stack .ticker .spark {
+  display: none;
+}
+
 .evidence-stage {
   border-top: 1px solid var(--line-strong);
   display: grid;
-  grid-template-columns: minmax(430px, 1.08fr) minmax(390px, 0.98fr) minmax(320px, 0.82fr);
+  grid-template-columns: minmax(680px, 1.6fr) minmax(360px, 0.8fr);
   min-height: 0;
   overflow: hidden;
 }
 
 .evidence-stage > .proof-card,
-.evidence-stage > .context-stack,
 .evidence-stage > .command-dock {
   border-right: 1px solid var(--line);
   min-height: 0;
@@ -2209,16 +2301,16 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .evidence-stage .binding-proof {
-  padding: 14px;
+  padding: 12px;
 }
 
 .evidence-stage .binding-proof .proof-actions {
-  max-height: 76px;
+  max-height: 36px;
   overflow: auto;
 }
 
 .evidence-stage .binding-proof .dual-links {
-  max-height: 92px;
+  max-height: 62px;
 }
 
 .evidence-stage .binding-proof .proof-grid {
@@ -2262,7 +2354,7 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .evidence-stage .command-content {
   border-right: 0;
-  padding: 12px 14px;
+  padding: 8px 12px;
 }
 
 .evidence-stage .term-log {
@@ -2300,7 +2392,7 @@ input, select, textarea { font: inherit; color: inherit; }
 
 @media (max-width: 1400px) {
   .trade-stage {
-    grid-template-columns: minmax(260px, 0.72fr) minmax(410px, 1.08fr) minmax(390px, 1fr);
+    grid-template-columns: minmax(330px, 0.92fr) minmax(410px, 1.08fr) minmax(390px, 1fr);
   }
 
   .trade-hero-form {
@@ -2312,7 +2404,7 @@ input, select, textarea { font: inherit; color: inherit; }
   }
 
   .evidence-stage {
-    grid-template-columns: minmax(390px, 1fr) minmax(330px, 0.9fr) minmax(300px, 0.8fr);
+    grid-template-columns: minmax(620px, 1.55fr) minmax(330px, 0.85fr);
   }
 }
 
@@ -2338,8 +2430,7 @@ input, select, textarea { font: inherit; color: inherit; }
   }
 
   .trade-stage,
-  .evidence-stage,
-  .evidence-stage .context-stack {
+  .evidence-stage {
     grid-template-columns: 1fr;
     overflow: visible;
   }
@@ -2347,9 +2438,7 @@ input, select, textarea { font: inherit; color: inherit; }
   .story-card,
   .trade-card,
   .trade-stage .binding-focus,
-  .evidence-stage > .proof-card,
-  .evidence-stage > .context-stack,
-  .evidence-stage .mandate-card {
+  .evidence-stage > .proof-card {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
@@ -2359,8 +2448,8 @@ input, select, textarea { font: inherit; color: inherit; }
     grid-template-rows: auto auto;
   }
 
-  .story-flow {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .left-context-stack {
+    grid-template-rows: auto auto;
   }
 
   .trade-card {
@@ -2403,6 +2492,10 @@ input, select, textarea { font: inherit; color: inherit; }
   .trade-hero-form,
   .trade-stage .binding-chain,
   .evidence-stage .binding-proof .proof-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .left-context-stack {
     grid-template-columns: 1fr;
   }
 

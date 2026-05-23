@@ -38,12 +38,54 @@
               <h1>Trade DUAL/USD with a governed agent</h1>
               <p>Kraken supplies the market venue. DUAL binds the mandate, policy decision, action log, receipt and proof so the trade can be inspected after execution.</p>
             </div>
-            <div class="story-flow" aria-label="Demo flow">
-              <div><strong>1</strong><span>Propose DUAL/USD</span></div>
-              <div><strong>2</strong><span>Check mandate</span></div>
-              <div><strong>3</strong><span>Execute paper trade</span></div>
-              <div><strong>4</strong><span>Open DUAL proof</span></div>
-            </div>
+
+            <section class="context-stack left-context-stack" aria-label="DUAL agent setup and market context">
+              <article class="mandate-card passport-panel">
+                <div class="panel-head compact">
+                  <span class="label"><strong>AGENT SETUP</strong> · DUAL MANDATE</span>
+                  <span class="state-chip" id="stateChip">active</span>
+                </div>
+                <div class="passport-state">
+                  <div class="name">
+                    Kraken Market Agent
+                    <small id="passportState">Loading passport</small>
+                  </div>
+                </div>
+                <div class="mandate-rows" id="mandateList"></div>
+                <details class="policy-details">
+                  <summary>Policy editor</summary>
+                  <form id="policyForm" class="policy-form">
+                    <div class="policy-section">
+                      <span>Allowed pairs</span>
+                      <div class="check-grid">
+                        <label class="check-tile"><input type="checkbox" name="allowedPairs" value="BTCUSD"><span>BTCUSD</span></label>
+                        <label class="check-tile"><input type="checkbox" name="allowedPairs" value="ETHUSD"><span>ETHUSD</span></label>
+                        <label class="check-tile"><input type="checkbox" name="allowedPairs" value="SOLUSD"><span>SOLUSD</span></label>
+                        <label class="check-tile"><input type="checkbox" name="allowedPairs" value="DUALUSD"><span>DUALUSD</span></label>
+                      </div>
+                    </div>
+                    <div class="policy-number-grid">
+                      <label>Max trade<input id="policyMaxTrade" name="maxNotionalUsd" type="number" min="1" step="1"></label>
+                      <label>Daily cap<input id="policyDailyCap" name="maxDailyNotionalUsd" type="number" min="1" step="1"></label>
+                      <label>Approval above<input id="policyApprovalThreshold" name="humanApprovalRequiredAbove" type="number" min="0" step="1"></label>
+                    </div>
+                    <label class="toggle-row"><input id="policyLeverageAllowed" name="leverageAllowed" type="checkbox"><span>Allow leverage</span></label>
+                    <div class="prop-actions policy-actions">
+                      <button class="btn-primary" type="submit">Save policy</button>
+                      <span class="policy-message" id="policyMessage"></span>
+                    </div>
+                  </form>
+                </details>
+              </article>
+
+              <article class="market-card markets-col">
+                <div class="panel-head compact">
+                  <span class="label"><strong>MARKETS</strong> · KRAKEN</span>
+                  <span class="sublabel">live</span>
+                </div>
+                <div class="markets" id="marketStrip"></div>
+              </article>
+            </section>
           </article>
 
           <article class="trade-card trade-panel red-panel">
@@ -123,62 +165,6 @@
             <div class="dual-links" id="dualLinks" aria-label="DUAL data links"></div>
             <div class="proof-grid" id="proofGrid"></div>
           </article>
-
-          <section class="context-stack" aria-label="DUAL mandate and market context">
-            <article class="mandate-card passport-panel">
-              <div class="panel-head compact">
-                <span class="label"><strong>DUAL MANDATE</strong> · READ-LINKED</span>
-                <span class="state-chip" id="stateChip">active</span>
-              </div>
-              <div class="passport-state">
-                <div class="name">
-                  Kraken Market Agent
-                  <small id="passportState">Loading passport</small>
-                </div>
-              </div>
-              <div class="mandate-rows" id="mandateList"></div>
-              <details class="policy-details">
-                <summary>Policy editor</summary>
-                <form id="policyForm" class="policy-form">
-                  <div class="policy-section">
-                    <span>Allowed pairs</span>
-                    <div class="check-grid">
-                      <label class="check-tile"><input type="checkbox" name="allowedPairs" value="BTCUSD"><span>BTCUSD</span></label>
-                      <label class="check-tile"><input type="checkbox" name="allowedPairs" value="ETHUSD"><span>ETHUSD</span></label>
-                      <label class="check-tile"><input type="checkbox" name="allowedPairs" value="SOLUSD"><span>SOLUSD</span></label>
-                      <label class="check-tile"><input type="checkbox" name="allowedPairs" value="DUALUSD"><span>DUALUSD</span></label>
-                    </div>
-                  </div>
-                  <div class="policy-number-grid">
-                    <label>Max trade<input id="policyMaxTrade" name="maxNotionalUsd" type="number" min="1" step="1"></label>
-                    <label>Daily cap<input id="policyDailyCap" name="maxDailyNotionalUsd" type="number" min="1" step="1"></label>
-                    <label>Approval above<input id="policyApprovalThreshold" name="humanApprovalRequiredAbove" type="number" min="0" step="1"></label>
-                  </div>
-                  <label class="toggle-row"><input id="policyLeverageAllowed" name="leverageAllowed" type="checkbox"><span>Allow leverage</span></label>
-                  <div class="prop-actions policy-actions">
-                    <button class="btn-primary" type="submit">Save policy</button>
-                    <span class="policy-message" id="policyMessage"></span>
-                  </div>
-                </form>
-              </details>
-            </article>
-
-            <article class="market-card markets-col">
-              <div class="panel-head compact">
-                <span class="label"><strong>MARKETS</strong> · KRAKEN</span>
-                <span class="sublabel">live</span>
-              </div>
-              <div class="markets" id="marketStrip"></div>
-              <div class="venue-card">
-                <span class="label">Venue</span>
-                <dl>
-                  <div><dt>adapter</dt><dd>kraken-public</dd></div>
-                  <div><dt>mode</dt><dd>paper</dd></div>
-                  <div><dt>settlement</dt><dd>DUAL proof</dd></div>
-                </dl>
-              </div>
-            </article>
-          </section>
 
           <article class="command-dock audit-panel" aria-label="Event trace">
           <div class="panel-head">

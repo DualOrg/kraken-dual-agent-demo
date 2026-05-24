@@ -521,7 +521,7 @@ function renderProposalStep(key, label, detail, cls) {
 function renderTimeline() {
   const audit = state.data.audit || [];
   els.eventCount.textContent = `${audit.length} events`;
-  els.timeline.innerHTML = audit.slice(0, 24).map((event) => `
+  els.timeline.innerHTML = audit.slice(0, 3).map((event) => `
     <li class="term-line fade-in">
       <span class="ts">${new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
       <span class="src ${timelineSourceClass(event)}">${timelineSourceLabel(event)}</span>
@@ -624,7 +624,7 @@ function renderProof() {
     ["Verifier", verifier ? verifier.complete ? "complete" : verifier.ok ? verifier.status.replaceAll("_", " ") : "checks pending" : "pending"]
   ];
 
-  els.proofGrid.innerHTML = rows.map(([label, value]) => `
+  els.proofGrid.innerHTML = compactProofRows(rows).map(([label, value]) => `
     <div class="proof-cell">
       <div class="k">${label}</div>
       <div class="v">${value}</div>
@@ -786,7 +786,7 @@ function renderDualLinks(links) {
     els.dualLinks.innerHTML = `<div class="link-empty">DUAL record links appear when proof readback data is available.</div>`;
     return;
   }
-  els.dualLinks.innerHTML = uniqueLinks.map((link) => `
+  els.dualLinks.innerHTML = compactDualLinks(uniqueLinks).map((link) => `
     <div class="dual-link ${dualLinkSourceClass(link.source)}">
       <a class="dual-link-main" href="${escapeHtml(link.href)}" target="_blank" rel="noreferrer">
         <span>${escapeHtml(link.label || "DUAL data")}</span>
@@ -795,6 +795,44 @@ function renderDualLinks(links) {
       ${renderDualLinkTargets(link.targets)}
     </div>
   `).join("");
+}
+
+function compactProofRows(rows) {
+  const byLabel = new Map(rows);
+  const labels = [
+    "Kraken market",
+    "Paper execution",
+    "DUAL mode",
+    "Write readiness",
+    "Write auth",
+    "DUAL object",
+    "Receipt template",
+    "DUAL actions",
+    "Batch proof"
+  ];
+  return labels
+    .map((label) => [label, byLabel.get(label)])
+    .filter(([, value]) => value != null);
+}
+
+function compactDualLinks(links) {
+  const actionLinks = links.filter((link) => link.id?.startsWith("dual-record-action"));
+  const latestAction = actionLinks[actionLinks.length - 1];
+  const priority = [
+    "console-dashboard",
+    "dual-record-template",
+    "dual-record-object",
+    "dual-record-receipt-object",
+    "dual-record-receipt-template",
+    "dual-record-batch"
+  ];
+  const selected = [];
+  for (const id of priority) {
+    const match = links.find((link) => link.id === id);
+    if (match) selected.push(match);
+  }
+  if (latestAction) selected.splice(3, 0, latestAction);
+  return [...new Map(selected.map((link) => [link.id || link.href, link])).values()].slice(0, 6);
 }
 
 function renderDualLinkTargets(targets = []) {

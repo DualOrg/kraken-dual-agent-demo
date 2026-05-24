@@ -1511,7 +1511,7 @@ input, select, textarea { font: inherit; color: inherit; }
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   padding-right: 2px;
 }
 
@@ -2503,28 +2503,82 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .evidence-stage .binding-proof {
-  padding: 12px;
+  display: grid;
+  gap: 8px;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
+  padding: 10px 12px;
 }
 
 .evidence-stage .binding-proof .proof-actions {
-  max-height: 36px;
-  overflow: auto;
+  display: none;
 }
 
 .evidence-stage .binding-proof .dual-links {
-  max-height: 62px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  max-height: none;
+  overflow: hidden;
 }
 
 .evidence-stage .binding-proof .proof-grid {
+  align-self: stretch;
+  grid-auto-rows: minmax(30px, 1fr);
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 0;
 }
 
 .evidence-stage .proof-cell {
-  padding: 8px 10px;
+  min-height: 0;
+  padding: 5px 8px;
+}
+
+.evidence-stage .proof-cell .k {
+  font-size: 7.4px;
 }
 
 .evidence-stage .proof-cell .v {
-  font-size: 10.2px;
+  font-size: 8.8px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.evidence-stage .dual-link,
+.evidence-stage .link-empty {
+  border-radius: 6px;
+  min-height: 0;
+  padding: 5px 6px;
+}
+
+.evidence-stage .dual-link {
+  gap: 0;
+}
+
+.evidence-stage .dual-link-main {
+  gap: 2px;
+}
+
+.evidence-stage .dual-link-main span,
+.evidence-stage .link-empty {
+  font-size: 7.2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-stage .dual-link-main strong {
+  font-size: 8.4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-stage .dual-link-targets {
+  display: none;
 }
 
 .evidence-stage .context-stack {
@@ -2548,45 +2602,90 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .evidence-stage .command-dock {
   grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .evidence-stage .command-dock .panel-head {
-  padding: 10px 14px;
+  padding: 8px 12px;
 }
 
 .evidence-stage .command-content {
   border-right: 0;
+  overflow: hidden;
   padding: 8px 12px;
 }
 
 .evidence-stage .term-log {
   font-size: 10.7px;
   line-height: 1.45;
+  overflow: hidden;
+}
+
+.evidence-stage .term-line {
+  align-items: center;
+  min-height: 24px;
+}
+
+.evidence-stage .term-line .msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trace-red-team {
   border-bottom: 1px solid var(--line);
   flex-wrap: wrap;
-  padding: 8px 14px;
+  padding: 6px 12px;
 }
 
-.evidence-stage .binding-proof::-webkit-scrollbar,
-.evidence-stage .binding-proof .proof-actions::-webkit-scrollbar,
-.evidence-stage .command-content .term-log::-webkit-scrollbar,
+.trade-stage .binding-focus .binding-node {
+  gap: 5px;
+  min-height: 0;
+  padding: 7px;
+}
+
+.trade-stage .binding-focus .node-index {
+  font-size: 8px;
+}
+
+.trade-stage .binding-focus .node-label {
+  font-size: 7.4px;
+}
+
+.trade-stage .binding-focus .node-body strong {
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.trade-stage .binding-focus .node-body p {
+  -webkit-line-clamp: 1;
+  font-size: 9.2px;
+  line-height: 1.2;
+  margin-top: 2px;
+}
+
+.trade-stage .binding-focus .node-body code {
+  font-size: 8.4px;
+  margin-top: 3px;
+}
+
+.trade-stage .binding-focus .node-links {
+  gap: 3px;
+}
+
+.trade-stage .binding-focus .binding-target {
+  font-size: 7.2px;
+  padding: 3px 5px;
+}
+
 .evidence-stage .market-card .markets::-webkit-scrollbar {
   width: 6px;
 }
 
-.evidence-stage .binding-proof::-webkit-scrollbar-track,
-.evidence-stage .binding-proof .proof-actions::-webkit-scrollbar-track,
-.evidence-stage .command-content .term-log::-webkit-scrollbar-track,
 .evidence-stage .market-card .markets::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.evidence-stage .binding-proof::-webkit-scrollbar-thumb,
-.evidence-stage .binding-proof .proof-actions::-webkit-scrollbar-thumb,
-.evidence-stage .command-content .term-log::-webkit-scrollbar-thumb,
 .evidence-stage .market-card .markets::-webkit-scrollbar-thumb {
   background: var(--line-strong);
   border-radius: 3px;

@@ -66,6 +66,7 @@ assert(proof.tradeReceipts.rootHash, "proof includes trade receipt root");
 assert(typeof proof.tradeReceipts.pendingCount === "number", "proof includes pending trade receipt count");
 assert(proof.policy.hash, "proof includes policy hash");
 assert(proof.dualBatch && typeof proof.dualBatch.available === "boolean", "proof includes DUAL batch status");
+assert(proof.settlement?.layers?.length === 3, "proof includes L3/L2/L1 settlement route");
 assert(Array.isArray(proof.verification), "proof includes verification checks");
 assert(Array.isArray(proof.links), "proof includes DUAL data links");
 const passportTemplateLink = proof.links.find((link) => link.id === "dual-record-template");
@@ -99,11 +100,15 @@ const batchRecordLink = proof.links.find((link) => link.id === "dual-record-batc
 if (proof.dualBatch?.id) {
   const batchDataHref = targetHref(batchRecordLink, "dual-record") || batchRecordLink?.href;
   assert(batchDataHref?.includes(proof.dualBatch.id), "proof batch link targets the explicit DUAL batch id");
+  if (proof.dualBatch?.l2TransactionHash || proof.dualBatch?.transactionHash) {
+    const batchL2Href = targetHref(batchRecordLink, "l2-explorer") || batchRecordLink?.href;
+    assert(batchL2Href?.includes("explorer-test-v2.dual.network/tx/"), "proof batch links include L2 explorer transaction targets");
+  }
 }
-const actionWithHash = proof.links.find((link) => link.id?.startsWith("dual-record-action-") && targetHref(link, "blockscout"));
+const actionWithHash = proof.links.find((link) => link.id?.startsWith("dual-record-action-") && targetHref(link, "l3-explorer"));
 if (proof.dualBatch?.affectedActions?.some((action) => action?.hash)) {
-  const actionBlockscoutHref = targetHref(actionWithHash, "blockscout") || actionWithHash?.href;
-  assert(actionBlockscoutHref?.includes("explorer-test-v2.dual.network/tx/"), "proof action links include Blockscout transaction targets");
+  const actionL3Href = targetHref(actionWithHash, "l3-explorer") || actionWithHash?.href;
+  assert(actionL3Href?.includes("explorer-testnet.dual.network/tx/"), "proof action links include L3 explorer transaction targets");
 }
 
 const proofVerify = await get("/api/proof/verify");

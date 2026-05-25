@@ -224,7 +224,7 @@ Call out these rows:
 - `Write gate`: public demo writes are enabled by default and can be disabled with `DEMO_PUBLIC_DUAL_WRITES=false` for a read-linked rehearsal.
 - `Mandate source`: DUAL template.
 - `DUAL object`: passport object used by the demo.
-- DUAL data links: template and object values open DUAL Console collection pages with the explicit entity id in the URL, action hash values open Blockscout when available, and the `Data` target opens the app's verified DUAL readback route for the same template, object, batch, action, or receipt.
+- DUAL data links: template and object values open DUAL Console collection pages with the explicit entity id in the URL, action hash values open the L3 explorer when available, batch/roll-up values open the L2 explorer when available, and the `Data` target opens the app's verified DUAL readback route for the same template, object, batch, action, or receipt.
 - Public browser and MCP trades create DUAL action logs when server-side write readiness is active. For Console-visible receipt objects, configure or create the DUAL trade receipt template before minting receipts.
 - `Policy version` and `Policy hash`: stable policy identity.
 - `DUAL batch` and `Batch proof`: DUAL batch evidence is present.
@@ -416,7 +416,7 @@ Remaining `0.3`:
 - Production needs a scoped event-bus API key installed in Vercel with `DUAL_WRITE_MODE=event_bus`.
 - The app should move from `read-linked` to durable `write-synced` using the current `/ebus/execute` path.
 - Per-trade receipt minting should be shown after `DUAL_TRADE_RECEIPT_TEMPLATE_ID` is configured.
-- Finalized L1 proof status should be shown as a first-class row once available, distinct from anchoring/proof-success batch state.
+- The live app now shows the settlement path as `L3 action -> L2 batch -> L1 roll-up`. If a finalized L1 transaction hash is not present yet, call out whether the L1 roll-up is pending or represented through the L2 batch link.
 
 ## 12. Close The Demo
 

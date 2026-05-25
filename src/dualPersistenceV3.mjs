@@ -811,6 +811,8 @@ async function searchObjects(sdk, templateId) {
 
 function summarizeBatch(batch) {
   if (!batch || typeof batch !== "object") return null;
+  const l1TransactionHash = nonZeroHash(batch.l1_tx_hash || batch.l1TxHash || batch.rollup_tx_hash || batch.rollupTxHash);
+  const l2TransactionHash = nonZeroHash(batch.l2_tx_hash || batch.l2TxHash || batch.transaction_hash || batch.transactionHash || batch.tx_hash || batch.txHash);
   return {
     id: batch.id || batch.batch_id || batch.batchId || null,
     status: batch.status || batch.state || null,
@@ -829,7 +831,10 @@ function summarizeBatch(batch) {
     totalFeeWei: batch.total_fee_wei || batch.totalFeeWei || null,
     merkleRoot: batch.merkle_root || batch.merkleRoot || batch.root_hash || batch.rootHash || null,
     checkpointId: batch.checkpoint_id || batch.checkpointId || batch.checkpoint?.id || null,
-    transactionHash: nonZeroHash(batch.transaction_hash || batch.transactionHash || batch.tx_hash || batch.txHash || batch.l1_tx_hash || batch.l1TxHash),
+    transactionHash: l2TransactionHash || l1TransactionHash,
+    l2TransactionHash,
+    l1TransactionHash,
+    rollupTransactionHash: l1TransactionHash,
     chainId: batch.chain_id || batch.chainId || batch.network || batch.chain || null,
     createdAt: batch.created_at || batch.createdAt || batch.when_created || batch.whenCreated || null,
     updatedAt: batch.updated_at || batch.updatedAt || batch.when_modified || batch.whenModified || null

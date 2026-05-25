@@ -1399,6 +1399,67 @@ input, select, textarea { font: inherit; color: inherit; }
   color: var(--ink-3);
 }
 
+.settlement-rail {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settlement-step {
+  background: rgba(5, 13, 13, 0.62);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 9px;
+  text-decoration: none;
+}
+
+.settlement-step.ready {
+  border-color: rgba(55, 211, 139, 0.34);
+}
+
+.settlement-step.explorer {
+  background: rgba(43, 182, 115, 0.09);
+}
+
+.settlement-step.pending {
+  border-color: rgba(232, 176, 66, 0.34);
+}
+
+.settlement-step span {
+  color: var(--ink-4);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.settlement-step strong {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settlement-step em {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .footer .red-team-row button {
   white-space: nowrap;
 }
@@ -2504,8 +2565,8 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .evidence-stage .binding-proof {
   display: grid;
-  gap: 8px;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 6px;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   overflow: hidden;
   padding: 10px 12px;
 }
@@ -2516,15 +2577,37 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .evidence-stage .binding-proof .dual-links {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   max-height: none;
   overflow: hidden;
 }
 
+.evidence-stage .settlement-rail {
+  gap: 4px;
+}
+
+.evidence-stage .settlement-step {
+  border-radius: 6px;
+  gap: 1px;
+  padding: 5px 6px;
+}
+
+.evidence-stage .settlement-step span {
+  font-size: 7.2px;
+}
+
+.evidence-stage .settlement-step strong {
+  font-size: 8.4px;
+}
+
+.evidence-stage .settlement-step em {
+  font-size: 7.4px;
+}
+
 .evidence-stage .binding-proof .proof-grid {
   align-self: stretch;
-  grid-auto-rows: minmax(30px, 1fr);
+  grid-auto-rows: minmax(27px, 1fr);
   grid-template-columns: repeat(3, minmax(0, 1fr));
   min-height: 0;
 }

@@ -35,6 +35,7 @@ const els = {
   dualAuthMessage: document.querySelector("#dualAuthMessage"),
   dualEmailAuthPanel: document.querySelector("#dualEmailAuthPanel"),
   dualLinks: document.querySelector("#dualLinks"),
+  settlementRail: document.querySelector("#settlementRail"),
   requestCodeButton: document.querySelector("#requestCodeButton"),
   verifyCodeButton: document.querySelector("#verifyCodeButton"),
   setupActionPassportButton: document.querySelector("#setupActionPassportButton"),
@@ -572,6 +573,7 @@ function renderProof() {
   const replayQueue = proof?.replayQueue;
   const tradeReceipts = proof?.tradeReceipts;
   const policy = proof?.policy;
+  const settlement = proof?.settlement;
   const eventBusSync = verifier?.checks?.find((check) => check.id === "dual-event-bus-sync");
   const replayExecutionLabel = state.replayExecution?.executedCount != null
     ? `${state.replayExecution.executedCount} writes / ${state.replayExecution.skippedCount || 0} skipped`
@@ -603,6 +605,9 @@ function renderProof() {
     ["Write readiness", writeReadyNow ? "ready" : writeReadiness?.persistenceReady || dual?.persistenceReady ? "public writes disabled" : "needs DUAL write config"],
     ["Write gate", writeGate?.allowed ? "public demo writes" : "disabled"],
     ["Write auth", authLabel(auth)],
+    ["L3 action", settlementValue(settlement, "l3-action")],
+    ["L2 batch", settlementValue(settlement, "l2-batch")],
+    ["L1 roll-up", settlementValue(settlement, "l1-rollup")],
     ["Mandate source", dualTemplate?.available ? "DUAL template" : "local seed"],
     ["DUAL object", dualObject?.available ? shortId(dualObject.id) : shortId(dual?.objectId || "pending")],
     ["Policy version", policy?.version ? `v${policy.version}` : "pending"],
@@ -631,6 +636,7 @@ function renderProof() {
     </div>
   `).join("");
 
+  renderSettlementRoute(settlement);
   renderDualLinks(proof?.links || state.health?.dual?.links || dual?.links || []);
   renderBinding();
 
@@ -797,16 +803,42 @@ function renderDualLinks(links) {
   `).join("");
 }
 
+function renderSettlementRoute(settlement) {
+  if (!els.settlementRail) return;
+  const layers = settlement?.layers || [];
+  if (!layers.length) {
+    els.settlementRail.innerHTML = `
+      <div class="settlement-step pending">
+        <span>Settlement</span>
+        <strong>L3 -> L2 -> L1</strong>
+        <em>pending</em>
+      </div>
+    `;
+    return;
+  }
+  els.settlementRail.innerHTML = layers.map((layer) => {
+    const className = `settlement-step ${dualLinkSourceClass(layer.source)} ${layer.href ? "ready" : "pending"}`;
+    const body = `
+      <span>${escapeHtml(layer.label)}</span>
+      <strong>${escapeHtml(layer.detail || "pending")}</strong>
+      <em>${escapeHtml(layer.status || "pending")}</em>
+    `;
+    return layer.href
+      ? `<a class="${className}" href="${escapeHtml(layer.href)}" target="_blank" rel="noreferrer">${body}</a>`
+      : `<div class="${className}">${body}</div>`;
+  }).join("");
+}
+
 function compactProofRows(rows) {
   const byLabel = new Map(rows);
   const labels = [
     "Kraken market",
     "Paper execution",
     "DUAL mode",
-    "Write readiness",
-    "Write auth",
+    "L3 action",
+    "L2 batch",
+    "L1 roll-up",
     "DUAL object",
-    "Receipt template",
     "DUAL actions",
     "Batch proof"
   ];
@@ -822,9 +854,9 @@ function compactDualLinks(links) {
     "console-dashboard",
     "dual-record-template",
     "dual-record-object",
+    "dual-record-batch",
     "dual-record-receipt-object",
-    "dual-record-receipt-template",
-    "dual-record-batch"
+    "dual-record-receipt-template"
   ];
   const selected = [];
   for (const id of priority) {
@@ -852,10 +884,15 @@ function renderDualLinkTargets(targets = []) {
 }
 
 function dualLinkSourceClass(source) {
-  if (source === "blockscout") return "explorer";
+  if (source === "blockscout" || source === "l3-explorer" || source === "l2-explorer" || source === "l1-rollup") return "explorer";
   if (source === "dual-record") return "record";
   if (source === "console") return "console";
   return "";
+}
+
+function settlementValue(settlement, id) {
+  const layer = settlement?.layers?.find((item) => item.id === id);
+  return layer?.detail || layer?.status || "pending";
 }
 
 function sourceLabel(source) {

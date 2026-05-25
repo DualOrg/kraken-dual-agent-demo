@@ -26,14 +26,19 @@ const publicDualWrites = process.env.DEMO_PUBLIC_DUAL_WRITES === undefined
   : parseBoolean(process.env.DEMO_PUBLIC_DUAL_WRITES);
 const emailCodeAuthEnabled = parseBoolean(process.env.DEMO_ENABLE_EMAIL_AUTH || "false");
 const dualConsoleBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_CONSOLE_BASE_URL || "https://console-testnet.dual.network");
-const dualBlockscoutBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_BLOCKSCOUT_BASE_URL || "https://explorer-test-v2.dual.network");
+const dualL3ExplorerBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_L3_EXPLORER_BASE_URL || "https://explorer-testnet.dual.network");
+const dualL2ExplorerBaseUrl = normalizeExternalBaseUrl(
+  process.env.DUAL_L2_EXPLORER_BASE_URL || process.env.DUAL_BLOCKSCOUT_BASE_URL || "https://explorer-test-v2.dual.network"
+);
+const dualL1ExplorerBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_L1_EXPLORER_BASE_URL || "");
 const dualLinkTemplates = {
   consoleOrg: process.env.DUAL_CONSOLE_ORG_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}` : ""),
   consoleTemplate: process.env.DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/templates?templateId={templateId}` : ""),
   consoleObject: process.env.DUAL_CONSOLE_OBJECT_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/objects?objectId={objectId}` : ""),
   consoleAction: process.env.DUAL_CONSOLE_ACTION_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/action-logs?actionId={actionId}` : ""),
-  blockscoutTransaction: process.env.DUAL_BLOCKSCOUT_TX_URL_TEMPLATE || (dualBlockscoutBaseUrl ? `${dualBlockscoutBaseUrl}/tx/{transactionHash}` : ""),
-  blockscoutAction: process.env.DUAL_BLOCKSCOUT_ACTION_URL_TEMPLATE || (dualBlockscoutBaseUrl ? `${dualBlockscoutBaseUrl}/tx/{actionHash}` : "")
+  l3Action: process.env.DUAL_L3_ACTION_URL_TEMPLATE || process.env.DUAL_BLOCKSCOUT_ACTION_URL_TEMPLATE || (dualL3ExplorerBaseUrl ? `${dualL3ExplorerBaseUrl}/tx/{actionHash}` : ""),
+  l2Transaction: process.env.DUAL_L2_TX_URL_TEMPLATE || process.env.DUAL_BLOCKSCOUT_TX_URL_TEMPLATE || (dualL2ExplorerBaseUrl ? `${dualL2ExplorerBaseUrl}/tx/{transactionHash}` : ""),
+  l1RollupTransaction: process.env.DUAL_L1_ROLLUP_TX_URL_TEMPLATE || (dualL1ExplorerBaseUrl ? `${dualL1ExplorerBaseUrl}/tx/{transactionHash}` : "")
 };
 const dualRecordLinkTemplates = {
   template: "/api/dual/records/templates/{templateId}",
@@ -1882,7 +1887,10 @@ function publicFeatureStatus() {
     emailCodeRequired: false,
     dualConsoleLinksConfigured: Boolean(dualLinkTemplates.consoleTemplate || dualLinkTemplates.consoleObject || dualLinkTemplates.consoleAction),
     dualRecordLinksConfigured: true,
-    dualBlockscoutLinksConfigured: Boolean(dualLinkTemplates.blockscoutTransaction)
+    dualL3ExplorerLinksConfigured: Boolean(dualLinkTemplates.l3Action),
+    dualL2ExplorerLinksConfigured: Boolean(dualLinkTemplates.l2Transaction),
+    dualL1RollupLinksConfigured: Boolean(dualLinkTemplates.l1RollupTransaction),
+    dualBlockscoutLinksConfigured: Boolean(dualLinkTemplates.l2Transaction || dualLinkTemplates.l3Action)
   };
 }
 
@@ -2090,6 +2098,51 @@ function tradeReceiptRecords(tradeReceipts = {}) {
   });
 }
 
+function buildDualSettlementRoute({ dualBatch = null, replayQueue = null, tradeReceipts = null } = {}) {
+  const actionId = latestDualActionId(replayQueue, tradeReceipts);
+  const latestAction = (dualBatch?.affectedActions || []).find((action) => action?.id === actionId)
+    || (dualBatch?.affectedActions || []).find((action) => action?.hash)
+    || null;
+  const actionHash = firstNonEmpty(latestAction?.hash, latestDualActionHash(replayQueue, tradeReceipts));
+  const l2TransactionHash = firstNonEmpty(dualBatch?.l2TransactionHash, dualBatch?.transactionHash);
+  const l1RollupHash = firstNonEmpty(dualBatch?.l1TransactionHash, dualBatch?.rollupTransactionHash);
+  const batchRecordHref = renderUrlTemplate(dualRecordLinkTemplates.batch, { batchId: dualBatch?.id });
+  const actionRecordHref = renderUrlTemplate(dualRecordLinkTemplates.action, { actionId });
+  const l3ActionHref = renderUrlTemplate(dualLinkTemplates.l3Action, { actionHash });
+  const l2BatchHref = renderUrlTemplate(dualLinkTemplates.l2Transaction, { transactionHash: l2TransactionHash });
+  const l1RollupHref = renderUrlTemplate(dualLinkTemplates.l1RollupTransaction, { transactionHash: l1RollupHash });
+
+  return {
+    label: "Protocol/L3 -> DUAL Network/L2 -> Ethereum/L1",
+    layers: [
+      {
+        id: "l3-action",
+        label: "L3 action",
+        detail: shortIdForLink(actionHash || actionId),
+        status: actionHash ? "action hash" : actionId ? "action id" : "pending",
+        href: l3ActionHref || actionRecordHref,
+        source: l3ActionHref ? "l3-explorer" : actionRecordHref ? "dual-record" : null
+      },
+      {
+        id: "l2-batch",
+        label: "L2 batch",
+        detail: shortIdForLink(l2TransactionHash || dualBatch?.id),
+        status: l2TransactionHash ? "batch tx" : dualBatch?.available ? dualBatch.status || dualBatch.finality || "readback" : "pending",
+        href: l2BatchHref || batchRecordHref,
+        source: l2BatchHref ? "l2-explorer" : batchRecordHref ? "dual-record" : null
+      },
+      {
+        id: "l1-rollup",
+        label: "L1 roll-up",
+        detail: shortIdForLink(l1RollupHash || l2TransactionHash || dualBatch?.finality),
+        status: l1RollupHash ? "anchored" : l2TransactionHash ? "via L2" : dualBatch?.available ? dualBatch.finality || "pending tx" : "pending",
+        href: l1RollupHref || l2BatchHref || batchRecordHref,
+        source: l1RollupHref ? "l1-rollup" : l2BatchHref ? "l2-explorer" : batchRecordHref ? "dual-record" : null
+      }
+    ]
+  };
+}
+
 function buildDualDataLinks({
   dualStatus = {},
   dualObject = null,
@@ -2103,7 +2156,8 @@ function buildDualDataLinks({
   const objectId = dualObject?.available ? dualObject?.id : null;
   const templateId = dualTemplate?.available ? dualTemplate?.id : null;
   const receiptTemplateId = dualTradeReceiptTemplate?.available ? dualTradeReceiptTemplate?.id : null;
-  const transactionHash = firstNonEmpty(dualBatch?.transactionHash);
+  const l2TransactionHash = firstNonEmpty(dualBatch?.l2TransactionHash, dualBatch?.transactionHash);
+  const l1RollupHash = firstNonEmpty(dualBatch?.l1TransactionHash, dualBatch?.rollupTransactionHash);
   const actionId = latestDualActionId(replayQueue, tradeReceipts);
   const receiptObjectId = latestTradeReceiptObjectId(tradeReceipts);
   const links = [];
@@ -2160,15 +2214,17 @@ function buildDualDataLinks({
   });
 
   const batchRecordHref = renderUrlTemplate(dualRecordLinkTemplates.batch, { batchId: dualBatch?.id });
-  const batchBlockscoutHref = renderUrlTemplate(dualLinkTemplates.blockscoutTransaction, { transactionHash });
+  const batchL2Href = renderUrlTemplate(dualLinkTemplates.l2Transaction, { transactionHash: l2TransactionHash });
+  const rollupHref = renderUrlTemplate(dualLinkTemplates.l1RollupTransaction, { transactionHash: l1RollupHash }) || batchL2Href;
   addDualEntityLink(links, {
     id: "dual-record-batch",
-    label: "Latest batch data",
-    href: batchBlockscoutHref || batchRecordHref,
-    detail: shortIdForLink(transactionHash || dualBatch?.id),
-    source: batchBlockscoutHref ? "blockscout" : "dual-record",
+    label: "L2 batch + L1 roll-up",
+    href: batchL2Href || rollupHref || batchRecordHref,
+    detail: shortIdForLink(l1RollupHash || l2TransactionHash || dualBatch?.id),
+    source: batchL2Href ? "l2-explorer" : rollupHref ? "l1-rollup" : "dual-record",
     targets: [
-      dualLinkTarget("Blockscout", batchBlockscoutHref, "blockscout"),
+      dualLinkTarget("L2", batchL2Href, "l2-explorer"),
+      dualLinkTarget("L1 roll-up", rollupHref, rollupHref === batchL2Href ? "l2-explorer" : "l1-rollup"),
       dualLinkTarget("Data", batchRecordHref, "dual-record")
     ]
   });
@@ -2178,15 +2234,15 @@ function buildDualDataLinks({
     const actionHash = firstNonEmpty(action.hash, action.transactionHash);
     const actionRecordHref = renderUrlTemplate(dualRecordLinkTemplates.action, { actionId: action.id });
     const actionConsoleHref = orgId ? renderUrlTemplate(dualLinkTemplates.consoleAction, { orgId, actionId: action.id }) : null;
-    const actionBlockscoutHref = renderUrlTemplate(dualLinkTemplates.blockscoutAction, { actionHash });
+    const actionL3Href = renderUrlTemplate(dualLinkTemplates.l3Action, { actionHash });
     addDualEntityLink(links, {
       id: `dual-record-action-${actionIdForLink}`,
-      label: `Action ${shortIdForLink(action.id)}`,
-      href: actionBlockscoutHref || actionConsoleHref || actionRecordHref,
+      label: `L3 action ${shortIdForLink(action.id)}`,
+      href: actionL3Href || actionConsoleHref || actionRecordHref,
       detail: actionHash ? shortIdForLink(actionHash) : action.name || "Action data",
-      source: actionBlockscoutHref ? "blockscout" : actionConsoleHref ? "console" : "dual-record",
+      source: actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record",
       targets: [
-        dualLinkTarget("Blockscout", actionBlockscoutHref, "blockscout"),
+        dualLinkTarget("L3", actionL3Href, "l3-explorer"),
         dualLinkTarget("Console", actionConsoleHref, "console"),
         dualLinkTarget("Data", actionRecordHref, "dual-record")
       ]
@@ -2197,15 +2253,15 @@ function buildDualDataLinks({
   const latestActionHash = firstNonEmpty(latestAction?.hash, latestDualActionHash(replayQueue, tradeReceipts));
   const latestActionRecordHref = renderUrlTemplate(dualRecordLinkTemplates.action, { actionId });
   const latestActionConsoleHref = orgId ? renderUrlTemplate(dualLinkTemplates.consoleAction, { orgId, actionId }) : null;
-  const latestActionBlockscoutHref = renderUrlTemplate(dualLinkTemplates.blockscoutAction, { actionHash: latestActionHash });
+  const latestActionL3Href = renderUrlTemplate(dualLinkTemplates.l3Action, { actionHash: latestActionHash });
   addDualEntityLink(links, {
     id: "dual-record-action",
-    label: "Latest action data",
-    href: latestActionBlockscoutHref || latestActionConsoleHref || latestActionRecordHref,
+    label: "Latest L3 action",
+    href: latestActionL3Href || latestActionConsoleHref || latestActionRecordHref,
     detail: shortIdForLink(latestActionHash || actionId),
-    source: latestActionBlockscoutHref ? "blockscout" : latestActionConsoleHref ? "console" : "dual-record",
+    source: latestActionL3Href ? "l3-explorer" : latestActionConsoleHref ? "console" : "dual-record",
     targets: [
-      dualLinkTarget("Blockscout", latestActionBlockscoutHref, "blockscout"),
+      dualLinkTarget("L3", latestActionL3Href, "l3-explorer"),
       dualLinkTarget("Console", latestActionConsoleHref, "console"),
       dualLinkTarget("Data", latestActionRecordHref, "dual-record")
     ]
@@ -2518,6 +2574,7 @@ async function buildProofBundle(req) {
         : "DUAL sequencer batch status is not readable."
     }
   ];
+  const settlement = buildDualSettlementRoute({ dualBatch, replayQueue, tradeReceipts: tradeReceiptQueue });
 
   const payload = {
     schemaVersion: "dual-kraken-proof.v2",
@@ -2532,6 +2589,7 @@ async function buildProofBundle(req) {
     dualObject,
     dualTradeReceiptTemplate,
     dualBatch,
+    settlement,
     replayQueue: {
       ready: replayQueue.ready,
       writable: replayQueue.writable,

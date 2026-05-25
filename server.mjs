@@ -36,7 +36,7 @@ const dualLinkTemplates = {
   consoleTemplate: process.env.DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/templates?templateId={templateId}` : ""),
   consoleObject: process.env.DUAL_CONSOLE_OBJECT_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/objects?objectId={objectId}` : ""),
   consoleAction: process.env.DUAL_CONSOLE_ACTION_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/action-logs?actionId={actionId}` : ""),
-  l3Action: process.env.DUAL_L3_ACTION_URL_TEMPLATE || process.env.DUAL_BLOCKSCOUT_ACTION_URL_TEMPLATE || (dualL3ExplorerBaseUrl ? `${dualL3ExplorerBaseUrl}/tx/{actionHash}` : ""),
+  l3Action: process.env.DUAL_L3_ACTION_URL_TEMPLATE || process.env.DUAL_BLOCKSCOUT_ACTION_URL_TEMPLATE || (dualL3ExplorerBaseUrl ? `${dualL3ExplorerBaseUrl}/actions/{actionId}` : ""),
   l2Transaction: process.env.DUAL_L2_TX_URL_TEMPLATE || process.env.DUAL_BLOCKSCOUT_TX_URL_TEMPLATE || (dualL2ExplorerBaseUrl ? `${dualL2ExplorerBaseUrl}/tx/{transactionHash}` : ""),
   l1RollupTransaction: process.env.DUAL_L1_ROLLUP_TX_URL_TEMPLATE || (dualL1ExplorerBaseUrl ? `${dualL1ExplorerBaseUrl}/tx/{transactionHash}` : "")
 };
@@ -2099,16 +2099,21 @@ function tradeReceiptRecords(tradeReceipts = {}) {
 }
 
 function buildDualSettlementRoute({ dualBatch = null, replayQueue = null, tradeReceipts = null } = {}) {
-  const actionId = latestDualActionId(replayQueue, tradeReceipts);
-  const latestAction = (dualBatch?.affectedActions || []).find((action) => action?.id === actionId)
-    || (dualBatch?.affectedActions || []).find((action) => action?.hash)
+  const preferredActionId = latestDualActionId(replayQueue, tradeReceipts);
+  const affectedActions = dualBatch?.affectedActions || [];
+  const latestAction = affectedActions.find((action) => action?.id === preferredActionId)
+    || [...affectedActions].reverse().find((action) => action?.id)
     || null;
-  const actionHash = firstNonEmpty(latestAction?.hash, latestDualActionHash(replayQueue, tradeReceipts));
+  const actionId = firstNonEmpty(preferredActionId, latestAction?.id);
+  const actionWithHash = latestAction
+    || [...affectedActions].reverse().find((action) => action?.hash)
+    || null;
+  const actionHash = firstNonEmpty(actionWithHash?.hash, latestDualActionHash(replayQueue, tradeReceipts));
   const l2TransactionHash = firstNonEmpty(dualBatch?.l2TransactionHash, dualBatch?.transactionHash);
   const l1RollupHash = firstNonEmpty(dualBatch?.l1TransactionHash, dualBatch?.rollupTransactionHash);
   const batchRecordHref = renderUrlTemplate(dualRecordLinkTemplates.batch, { batchId: dualBatch?.id });
   const actionRecordHref = renderUrlTemplate(dualRecordLinkTemplates.action, { actionId });
-  const l3ActionHref = renderUrlTemplate(dualLinkTemplates.l3Action, { actionHash });
+  const l3ActionHref = renderUrlTemplate(dualLinkTemplates.l3Action, { actionId, actionHash });
   const l2BatchHref = renderUrlTemplate(dualLinkTemplates.l2Transaction, { transactionHash: l2TransactionHash });
   const l1RollupHref = renderUrlTemplate(dualLinkTemplates.l1RollupTransaction, { transactionHash: l1RollupHash });
 
@@ -2234,7 +2239,7 @@ function buildDualDataLinks({
     const actionHash = firstNonEmpty(action.hash, action.transactionHash);
     const actionRecordHref = renderUrlTemplate(dualRecordLinkTemplates.action, { actionId: action.id });
     const actionConsoleHref = orgId ? renderUrlTemplate(dualLinkTemplates.consoleAction, { orgId, actionId: action.id }) : null;
-    const actionL3Href = renderUrlTemplate(dualLinkTemplates.l3Action, { actionHash });
+    const actionL3Href = renderUrlTemplate(dualLinkTemplates.l3Action, { actionId: action.id, actionHash });
     addDualEntityLink(links, {
       id: `dual-record-action-${actionIdForLink}`,
       label: `L3 action ${shortIdForLink(action.id)}`,
@@ -2249,16 +2254,18 @@ function buildDualDataLinks({
     });
   }
 
-  const latestAction = (dualBatch?.affectedActions || []).find((action) => action?.id === actionId);
+  const latestAction = (dualBatch?.affectedActions || []).find((action) => action?.id === actionId)
+    || [...(dualBatch?.affectedActions || [])].reverse().find((action) => action?.id);
+  const latestActionId = firstNonEmpty(actionId, latestAction?.id);
   const latestActionHash = firstNonEmpty(latestAction?.hash, latestDualActionHash(replayQueue, tradeReceipts));
-  const latestActionRecordHref = renderUrlTemplate(dualRecordLinkTemplates.action, { actionId });
-  const latestActionConsoleHref = orgId ? renderUrlTemplate(dualLinkTemplates.consoleAction, { orgId, actionId }) : null;
-  const latestActionL3Href = renderUrlTemplate(dualLinkTemplates.l3Action, { actionHash: latestActionHash });
+  const latestActionRecordHref = renderUrlTemplate(dualRecordLinkTemplates.action, { actionId: latestActionId });
+  const latestActionConsoleHref = orgId ? renderUrlTemplate(dualLinkTemplates.consoleAction, { orgId, actionId: latestActionId }) : null;
+  const latestActionL3Href = renderUrlTemplate(dualLinkTemplates.l3Action, { actionId: latestActionId, actionHash: latestActionHash });
   addDualEntityLink(links, {
     id: "dual-record-action",
     label: "Latest L3 action",
     href: latestActionL3Href || latestActionConsoleHref || latestActionRecordHref,
-    detail: shortIdForLink(latestActionHash || actionId),
+    detail: shortIdForLink(latestActionHash || latestActionId),
     source: latestActionL3Href ? "l3-explorer" : latestActionConsoleHref ? "console" : "dual-record",
     targets: [
       dualLinkTarget("L3", latestActionL3Href, "l3-explorer"),

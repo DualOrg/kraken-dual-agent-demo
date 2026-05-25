@@ -20,6 +20,7 @@ The demo is not about trading performance. It is about controlled agent action.
 | --- | --- |
 | Live app | <https://kraken-dual-agent-demo.vercel.app/> |
 | Playbook | `docs/kraken-dual-demo-playbook.md` |
+| L3/L2/L1 run sheet | `docs/kraken-dual-l3-l2-l1-demo-run-sheet.md` |
 | Screenshot 1 | `docs/assets/demo-playbook/01-command-trade-executed.png` |
 | Screenshot 2 | `docs/assets/demo-playbook/02-proof-bundle.png` |
 | Screenshot 3 | `docs/assets/demo-playbook/03-provenance-timeline.png` |

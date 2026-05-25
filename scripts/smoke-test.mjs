@@ -108,7 +108,7 @@ if (proof.dualBatch?.id) {
 const actionWithHash = proof.links.find((link) => link.id?.startsWith("dual-record-action-") && targetHref(link, "l3-explorer"));
 if (proof.dualBatch?.affectedActions?.some((action) => action?.hash)) {
   const actionL3Href = targetHref(actionWithHash, "l3-explorer") || actionWithHash?.href;
-  assert(actionL3Href?.includes("explorer-testnet.dual.network/tx/"), "proof action links include L3 explorer transaction targets");
+  assert(actionL3Href?.includes("explorer-testnet.dual.network/actions/"), "proof action links include L3 explorer action targets");
 }
 
 const proofVerify = await get("/api/proof/verify");

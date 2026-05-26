@@ -1996,6 +1996,7 @@ async function publicTransactionHistory(req, args = {}) {
   const batch = proof.dualBatch?.available ? proof.dualBatch : null;
   const orgId = firstNonEmpty(proof.dualObject?.orgId, proof.status?.dualMode?.orgId, process.env.DUAL_ORG_ID);
   let transactions = filteredReceipts.slice(0, limit).map((receipt) => transactionHistoryItem(receipt, { proof, batch, orgId }));
+  const policyBlocks = receiptId ? [] : policyBlockHistoryItems(state.audit || [], { orgId, limit: 4 });
   const latestBatch = batch ? {
     id: batch.id,
     status: batch.status,
@@ -2026,10 +2027,51 @@ async function publicTransactionHistory(req, args = {}) {
       mintedCount: effectiveCounts.mintedCount,
       pendingCount: effectiveCounts.pendingCount,
       proofHash: proof.proofHash,
-      latestBatch
+      latestBatch,
+      policyBlockCount: policyBlocks.length
     }),
     latestBatch,
+    policyBlockCount: policyBlocks.length,
+    policyBlocks,
     transactions
+  };
+}
+
+function policyBlockHistoryItems(audit = [], { orgId = null, limit = 4 } = {}) {
+  return audit
+    .filter((event) => event?.type === "red_team_check" || event?.status === "blocked")
+    .slice(0, limit)
+    .map((event) => policyBlockHistoryItem(event, { orgId }));
+}
+
+function policyBlockHistoryItem(event = {}, { orgId = null } = {}) {
+  const result = event.dualSync?.result || {};
+  const actionId = firstNonEmpty(result.actionId, result.action_id, result.id);
+  const actionHash = firstNonEmpty(result.hash, result.integrityHash, result.integrity_hash, event.provenanceHash);
+  const actionRecordHref = renderUrlTemplate(dualRecordLinkTemplates.action, { actionId });
+  const actionConsoleHref = orgId ? renderUrlTemplate(dualLinkTemplates.consoleAction, { orgId, actionId }) : null;
+  const actionL3Href = renderUrlTemplate(dualLinkTemplates.l3Action, { actionId, actionHash });
+  return {
+    id: event.id,
+    type: event.type,
+    status: event.status,
+    title: event.title,
+    detail: event.detail,
+    scenario: event.payload?.scenario || null,
+    timestamp: event.timestamp,
+    eventHash: event.provenanceHash || event.id,
+    dual: {
+      synced: Boolean(event.dualSync?.synced),
+      envelopeHash: event.dualSync?.envelopeHash || event.dualSync?.replay?.envelopeHash || null,
+      actionId,
+      actionHash,
+      reason: event.dualSync?.reason || null,
+      error: event.dualSync?.error || null
+    },
+    links: [
+      transactionHistoryLink("L3 action", actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", actionId),
+      transactionHistoryLink("Data", actionRecordHref, "dual-record", actionId)
+    ].filter((link) => link?.href)
   };
 }
 

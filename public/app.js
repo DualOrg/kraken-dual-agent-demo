@@ -30,6 +30,7 @@ const els = {
   eventCount: document.querySelector("#eventCount"),
   transactionHistory: document.querySelector("#transactionHistory"),
   transactionSummary: document.querySelector("#transactionSummary"),
+  policyBlocks: document.querySelector("#policyBlocks"),
   transactionFocus: document.querySelector("#transactionFocus"),
   transactionCount: document.querySelector("#transactionCount"),
   transactionCountLabel: document.querySelector("#transactionCountLabel"),
@@ -253,6 +254,7 @@ function bindEvents() {
       const result = await postJson("/api/red-team", { scenario: button.dataset.scenario });
       state.data = result.state;
       render();
+      await loadProof();
     });
   });
 
@@ -528,15 +530,41 @@ function renderProposalStep(key, label, detail, cls) {
 
 function renderTimeline() {
   if (!els.timeline || !els.eventCount) return;
-  const audit = state.data.audit || [];
+  const audit = timelineEvents();
   els.eventCount.textContent = `${audit.length} events`;
-  els.timeline.innerHTML = audit.slice(0, 3).map((event) => `
+  if (!audit.length) {
+    els.timeline.innerHTML = `
+      <li class="term-line empty">
+        <span class="ts">--:--:--</span>
+        <span class="src sys">sys &gt;</span>
+        <span class="msg"><b>No audit events yet</b> · Run a red-team check or paper trade to populate this trace.</span>
+      </li>
+    `;
+    return;
+  }
+  els.timeline.innerHTML = audit.slice(0, 8).map((event) => `
     <li class="term-line fade-in">
       <span class="ts">${new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
       <span class="src ${timelineSourceClass(event)}">${timelineSourceLabel(event)}</span>
       <span class="msg"><b>${event.title}</b> · ${event.detail} · <span class="hash">${event.provenanceHash ? event.provenanceHash.slice(0, 12) : event.id}</span></span>
     </li>
   `).join("");
+}
+
+function timelineEvents() {
+  const audit = state.data?.audit || [];
+  if (audit.length) return audit;
+  const blocks = state.transactionHistory?.policyBlocks || [];
+  return blocks.map((block) => ({
+    id: block.id,
+    type: block.type || "red_team_check",
+    status: block.status || "blocked",
+    title: block.title || "Policy block",
+    detail: block.detail || "Recovered from DUAL policy-block readback.",
+    provenanceHash: block.eventHash,
+    dualSync: block.dual?.synced ? { synced: true, result: { actionId: block.dual.actionId } } : null,
+    timestamp: block.timestamp
+  }));
 }
 
 function timelineSourceClass(event) {
@@ -676,6 +704,7 @@ function renderTransactionHistory() {
     els.transactionCountLabel.textContent = history.summary?.status === "recovered_dual_proof" ? "Proofs" : "Trades";
   }
   if (els.transactionSummary) els.transactionSummary.innerHTML = renderTransactionSummary(history, transactions);
+  renderPolicyBlocks(history);
   if (!transactions.length) {
     if (els.transactionFocus) els.transactionFocus.innerHTML = "";
     els.transactionHistory.innerHTML = `<div class="history-empty">No executed trades yet.</div>`;
@@ -683,6 +712,72 @@ function renderTransactionHistory() {
   }
   if (els.transactionFocus) els.transactionFocus.innerHTML = renderTransactionFocus(transactions[0]);
   els.transactionHistory.innerHTML = transactions.map((tx, index) => renderTransactionRow(tx, index)).join("");
+}
+
+function renderPolicyBlocks(history = {}) {
+  if (!els.policyBlocks) return;
+  const blocks = history.policyBlocks?.length ? history.policyBlocks : localPolicyBlocks();
+  if (!blocks.length) {
+    els.policyBlocks.innerHTML = `
+      <article class="policy-block empty">
+        <span>Policy block proof</span>
+        <strong>No red-team blocks yet</strong>
+        <small>Use the red-team buttons in Event Trace to create a blocked-action proof.</small>
+      </article>
+    `;
+    return;
+  }
+  els.policyBlocks.innerHTML = blocks.slice(0, 2).map((block) => renderPolicyBlock(block)).join("");
+}
+
+function localPolicyBlocks() {
+  return (state.data?.audit || [])
+    .filter((event) => event?.type === "red_team_check" || event?.status === "blocked")
+    .map((event) => ({
+      id: event.id,
+      type: event.type,
+      status: event.status,
+      title: event.title,
+      detail: event.detail,
+      scenario: event.payload?.scenario,
+      timestamp: event.timestamp,
+      eventHash: event.provenanceHash || event.id,
+      dual: {
+        synced: Boolean(event.dualSync?.synced),
+        envelopeHash: event.dualSync?.envelopeHash || event.dualSync?.replay?.envelopeHash,
+        actionId: event.dualSync?.result?.actionId || event.dualSync?.result?.id,
+        actionHash: event.dualSync?.result?.hash
+      },
+      links: event.dualSync?.result?.actionId
+        ? [{ label: "L3 action", href: `https://explorer-testnet.dual.network/actions/${encodeURIComponent(event.dualSync.result.actionId)}`, source: "l3-explorer" }]
+        : []
+    }));
+}
+
+function renderPolicyBlock(block = {}) {
+  const actionId = block.dual?.actionId;
+  const proofLabel = block.dual?.synced
+    ? `DUAL ${actionId ? shortId(actionId) : "synced"}`
+    : block.dual?.envelopeHash
+      ? `Replay ${shortId(block.dual.envelopeHash)}`
+      : "Local proof";
+  return `
+    <article class="policy-block ${block.dual?.synced ? "synced" : "pending"}">
+      <div class="policy-block-main">
+        <span>Policy block proof</span>
+        <strong>${escapeHtml(block.title || "Blocked action")}</strong>
+        <b>${escapeHtml(proofLabel)}</b>
+      </div>
+      <p>${escapeHtml(block.detail || "The policy engine blocked this action before execution.")}</p>
+      <div class="policy-block-meta">
+        <span>${escapeHtml(block.scenario ? `scenario ${block.scenario}` : block.status || "blocked")}</span>
+        <span>${escapeHtml(block.eventHash ? `hash ${shortId(block.eventHash)}` : block.id || "event pending")}</span>
+      </div>
+      <div class="tx-links">
+        ${renderTransactionLinks(block.links || []) || `<span class="tx-link muted">DUAL link pending</span>`}
+      </div>
+    </article>
+  `;
 }
 
 function renderTransactionSummary(history = {}, transactions = []) {

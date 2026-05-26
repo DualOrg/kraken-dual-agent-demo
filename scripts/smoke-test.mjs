@@ -177,6 +177,10 @@ assert(transactionHistory.transactions[0]?.links?.some((link) => ["Receipt", "Da
 
 const redTeam = await post("/api/red-team", { scenario: "leverage" });
 assert(redTeam.policy.decision === "block", "leverage red-team scenario is blocked");
+const historyWithBlock = await get("/api/transactions/history?limit=5");
+assert(historyWithBlock.policyBlockCount >= 1, "transaction history exposes blocked policy proofs");
+assert(historyWithBlock.policyBlocks[0]?.title?.includes("tested"), "blocked policy proof includes a visible event title");
+assert(historyWithBlock.policyBlocks[0]?.dual, "blocked policy proof includes DUAL sync state");
 
 const mcpMarket = mcpJson(await mcp("tools/call", {
   name: "kraken_dual_get_market",

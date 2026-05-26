@@ -6,7 +6,7 @@ This playbook explains the demo as a presenter would run it: what to click, what
 
 ## Executive Summary
 
-The Kraken DUAL demo shows an AI market agent acting under a DUAL passport and mandate. The agent can propose a paper trade using Kraken public market data, but every action is checked against an explicit policy before it can execute. The app then produces a proof surface: agent identity, policy version, policy hash, DUAL object readback, DUAL batch evidence, and a local provenance timeline.
+The Kraken DUAL demo shows an AI market agent acting under a DUAL passport and mandate. The agent can propose a paper trade using Kraken public market data, but every action is checked against an explicit policy before it can execute. The app now puts the whole evidence story on the first viewport: agent identity, policy version, policy hash, DUAL readback, DUAL batch evidence, transaction history, and event trace.
 
 The key message is simple:
 
@@ -21,10 +21,10 @@ The demo is not about trading performance. It is about controlled agent action.
 | Live app | <https://kraken-dual-agent-demo.vercel.app/> |
 | Playbook | `docs/kraken-dual-demo-playbook.md` |
 | L3/L2/L1 run sheet | `docs/kraken-dual-l3-l2-l1-demo-run-sheet.md` |
-| Screenshot 1 | `docs/assets/demo-playbook/01-command-trade-executed.png` |
-| Screenshot 2 | `docs/assets/demo-playbook/02-proof-bundle.png` |
-| Screenshot 3 | `docs/assets/demo-playbook/03-provenance-timeline.png` |
-| Screenshot 4 | `docs/assets/demo-playbook/04-red-team-block.png` |
+| Screenshot 1: current trade cockpit | `docs/assets/demo-playbook/01-command-trade-executed.png` |
+| Screenshot 2: live proof + DUAL binding | `docs/assets/demo-playbook/02-proof-bundle.png` |
+| Screenshot 3: transaction history + event trace | `docs/assets/demo-playbook/03-provenance-timeline.png` |
+| Screenshot 4: blocked red-team action | `docs/assets/demo-playbook/04-red-team-block.png` |
 
 ## Demo Thesis
 
@@ -32,7 +32,7 @@ The app shows an AI trading agent that can propose and execute paper trades agai
 
 - A passported agent identity.
 - A policy mandate that constrains what the agent may do.
-- A proof bundle that links market data, policy state, DUAL readback, batch evidence, and local audit events.
+- A proof bundle that links market data, policy state, DUAL readback, batch evidence, transaction history, and event-trace evidence.
 - A red-team surface that shows unsafe requests being blocked before execution.
 
 The demo is intentionally paper-only. No credentials and no real funds are used.
@@ -41,7 +41,7 @@ The demo is intentionally paper-only. No credentials and no real funds are used.
 
 | Audience | What they should take away |
 | --- | --- |
-| DUAL product team | The event-bus auth gap is now isolated and visible; the app otherwise shows a coherent end-to-end agent governance story. |
+| DUAL product team | The app now shows write/readback readiness, receipt history, DUAL binding, and blocked policy proof on one surface. |
 | Developers | DUAL can be integrated as a control plane around an existing app without exposing exchange credentials or secrets to the browser. |
 | Enterprise / government buyers | Agent actions can be scoped, checked, blocked, and explained with a proof trail. |
 | Crypto / token audiences | The agent passport and mandate behave like programmable authority objects, not just UI settings. |
@@ -49,11 +49,11 @@ The demo is intentionally paper-only. No credentials and no real funds are used.
 
 ## Current State To Say Up Front
 
-The demo is strong on DUAL readback, policy proof, passport state, per-trade receipt records, batch proof, and audit evidence. The event-bus write path uses the current `/ebus/execute` endpoint with scoped API-key auth via `x-api-key`; the endpoint no longer needs a DUAL bearer token.
+The demo is strong on DUAL readback, policy proof, passport state, per-trade receipt records, batch proof, transaction history, and blocked-action evidence. The event-bus write path uses the current `/ebus/execute` endpoint with scoped API-key auth via `x-api-key`; the endpoint no longer needs a DUAL bearer token. In local rehearsal mode, the same UI can run against a local simulator so the presenter can capture or rehearse without creating new DUAL writes.
 
 Presenter line:
 
-> "This is a full governance and proof demo. With the current DUAL action endpoint, scoped API-key auth can now be used for unattended server-side event-bus writes."
+> "This is a full governance and proof demo. Kraken provides the market context; DUAL supplies the mandate, write/readback evidence, receipt history, and proof surface."
 
 ## System Map
 
@@ -67,7 +67,7 @@ flowchart LR
   Decision -->|Blocked| Block["Blocked action"]
   App --> DualRead["DUAL object + template readback"]
   App --> DualBatch["DUAL batch proof readback"]
-  App --> Audit["Local provenance timeline"]
+  App --> History["Transaction history + event trace"]
   App --> EventBus["DUAL event-bus write"]
 ```
 
@@ -77,7 +77,7 @@ What this means:
 - The app proposes a trade.
 - DUAL supplies the agent identity and mandate proof surface.
 - The local policy evaluator blocks or allows action based on the DUAL-linked mandate.
-- The proof panel shows whether the app state is consistent with DUAL readback and batch evidence.
+- The first-viewport proof surfaces show whether the app state is consistent with DUAL readback, receipt history, and batch evidence.
 - Event-bus writes use the current `/ebus/execute` path with scoped API-key auth.
 - Successful paper executions create deterministic trade receipts that can be minted one-per-trade into DUAL when the receipt template is configured.
 
@@ -89,7 +89,7 @@ What this means:
 | Safe trade | 90 sec | Show a normal agent action passing policy. |
 | Mandate | 60 sec | Show the policy boundary as editable and explicit. |
 | Proof | 90 sec | Prove this is DUAL-linked, not a mock claim. |
-| Audit | 45 sec | Show the traceable action path. |
+| Trace | 45 sec | Show the transaction history and event trace. |
 | Red team | 90 sec | Show the blocked-action punchline. |
 | Close | 30 sec | Tie the demo back to verifiable agent execution. |
 
@@ -99,34 +99,33 @@ Total: roughly 6-7 minutes.
 
 Use this if the audience is impatient or already understands DUAL.
 
-1. Open the app and point to `PAPER`, `Kraken public API live`, and `DUAL read-linked`.
-2. Click **Check policy** on the default `BTCUSD` `$75` proposal.
+1. Open the app and point to `MODE PAPER`, `KRAKEN PUBLIC API LIVE`, and the DUAL status chip.
+2. Click **Check policy** on the default `DUALUSD` `$75` proposal.
 3. Click **Execute paper trade** and show daily usage changing.
-4. Open **Proof** and point to the DUAL object, policy hash, batch proof, and verifier.
-5. Open **Red Team** and click **Oversized order**.
+4. Point to **LIVE PROOF** and **DUAL BINDING**: policy hash, action log, receipt object, and batch proof.
+5. Use the red-team buttons in **EVENT TRACE** and trigger an oversized, blocked-pair, leverage, or missing-approval action.
 6. Close with: "The successful action matters, but the blocked action is the proof that the agent is operating inside a mandate."
 
 ## 1. Open The App
 
 Start at the live app. Point out the first-viewport signals:
 
-- `PAPER` mode in the sidebar.
+- `MODE PAPER`.
 - "No credentials. No real funds."
-- `Kraken public API live`.
-- `DUAL read-linked`.
+- `KRAKEN PUBLIC API LIVE`.
+- The DUAL status chip: `DUAL WRITE-SYNC LIVE` in production, or `DUAL LOCAL SIMULATOR` during safe local rehearsal.
 
-The top of the app is the command surface. It shows the market, the trade proposal, the DUAL mandate, and the red-team controls together.
+The app is now designed as one cockpit. The first viewport shows the market, live trade controls, transaction history, event trace, live proof, and DUAL binding together.
 
 ![Command surface with executed paper trade](assets/demo-playbook/01-command-trade-executed.png)
 
 Screenshot readout:
 
-- Left sidebar: the app is clearly in `PAPER` mode.
-- Header: the agent is presented as a trading passport, not a generic chatbot.
-- Market card: Kraken data is the venue context.
-- Proposal card: the agent action is explicit and measurable.
-- DUAL mandate card: the policy is visible next to the action.
-- Timeline: execution leaves a trace.
+- Header chips: `MODE PAPER`, DUAL mode, and Kraken public API status are visible before any action.
+- Left rail: the agent is presented as a trading passport, not a generic chatbot.
+- Center: `LIVE TRADE` shows the explicit proposal, policy result, human gate, and paper execution state.
+- Right rail: `TRANSACTION HISTORY` and `EVENT TRACE` show the action path without opening a secondary panel.
+- Bottom row: `LIVE PROOF` and `DUAL BINDING` show readback, policy hash, action log, receipt object, and batch proof.
 
 Presenter line:
 
@@ -136,7 +135,7 @@ Presenter line:
 
 Use the default trade:
 
-- Pair: `BTCUSD`
+- Pair: `DUALUSD`
 - Side: `buy`
 - Notional: `$75`
 
@@ -144,7 +143,7 @@ Click **Check policy**.
 
 The policy allows the proposal because:
 
-- `BTCUSD` is an allowed pair.
+- `DUALUSD` is an allowed pair.
 - `$75` is below the `$250` max trade size.
 - `$75` is below the `$100` human approval threshold.
 - Leverage is not requested.
@@ -155,7 +154,9 @@ What changes:
 
 - Proposal state moves to `executed`.
 - Daily usage moves from `$0.00` to `$75.00 / $1,000.00`.
-- The provenance timeline records the proposal and execution.
+- `TRANSACTION HISTORY` receives a new receipt card.
+- `EVENT TRACE` records the proposal, policy decision, and execution.
+- `LIVE PROOF` and `DUAL BINDING` update to show the proof state. In local mode this stays as local simulator evidence; in production it shows the write/readback path.
 
 Presenter line:
 
@@ -180,7 +181,7 @@ The mandate is the agent's operating boundary.
 
 In this demo it contains:
 
-- Allowed pairs: `BTCUSD`, `ETHUSD`, `SOLUSD`
+- Allowed pairs: `DUALUSD`, `BTCUSD`, `ETHUSD`, `SOLUSD`
 - Max trade: `$250`
 - Daily cap: `$1,000`
 - Approval threshold: `$100`
@@ -210,89 +211,82 @@ Buyer interpretation:
 
 ## 4. Show The Proof Bundle
 
-Click **Proof**.
+Use the lower row: **LIVE PROOF** on the left and **DUAL BINDING** in the middle. No separate proof modal is required.
 
-The proof panel is the credibility layer. It shows what the app can prove, not just what it claims.
+This is the credibility layer. It shows what the app can prove, not just what it claims.
 
 ![Live proof bundle](assets/demo-playbook/02-proof-bundle.png)
 
-Call out these rows:
+Call out these surfaces:
 
-- `Kraken market`: market source is Kraken public API.
-- `Paper execution`: execution is simulated paper trading.
-- `DUAL mode`: `write-sync` when production DUAL write readiness is active, otherwise `read-linked`.
-- `Write readiness`: ready when `canWriteNow=true`; the flattened reason explains whether the blocker is DUAL write config or public demo writes being disabled.
-- `Write gate`: public demo writes are enabled by default and can be disabled with `DEMO_PUBLIC_DUAL_WRITES=false` for a read-linked rehearsal.
-- `Mandate source`: DUAL template.
-- `DUAL object`: passport object used by the demo.
-- DUAL data links: template and object values open DUAL Console collection pages with the explicit entity id in the URL, action hash values open the L3 explorer when available, batch/roll-up values open the L2 explorer when available, and the `Data` target opens the app's verified DUAL readback route for the same template, object, batch, action, or receipt.
-- Public browser and MCP trades create DUAL action logs when server-side write readiness is active. For Console-visible receipt objects, configure or create the DUAL trade receipt template before minting receipts.
-- `Policy version` and `Policy hash`: stable policy identity.
-- `DUAL batch` and `Batch proof`: DUAL batch evidence is present.
-- `Verifier`: all checks pass.
+- `LIVE PROOF`: DUAL readback status, L3 action, L2 batch, L1 roll-up, DUAL Console link, and verified data links.
+- `DUAL BINDING`: six live bindings across mandate template, passport object, policy hash, action log, receipt object, and batch proof.
+- `Policy hash`: the active mandate is fingerprinted, not just described.
+- `Action log`: execution creates a DUAL action when write-sync is active.
+- `Receipt object`: each executed paper trade can be represented as its own receipt object when the template is configured.
+- `Batch proof`: actions enter the batch proof path and can be inspected through L2/L1 links when available.
+- `Data` links: open the app's verified DUAL readback route for the same template, object, batch, action, or receipt.
 
 Presenter line:
 
-> "This panel is the trust receipt. It ties the app state back to DUAL object readback, policy hash, batch evidence, and the local audit root."
+> "This is the trust receipt. It ties the app state back to DUAL object readback, policy hash, action evidence, receipt state, and batch proof."
 
 Proof interpretation:
 
 | Proof row | Why it matters |
 | --- | --- |
-| Kraken market | Shows the app is not inventing a market source. |
-| Paper execution | Makes the demo safe and honest. |
-| DUAL mode | Shows whether DUAL is read-linked or write-synced. |
-| Write readiness | Shows whether unattended write credentials are available. |
-| Write auth | Makes the scoped API-key write-readiness dependency explicit. |
-| Mandate source | Ties the agent to a DUAL template. |
-| DUAL object | Ties the app to a specific agent passport object. |
-| DUAL links | Lets the presenter leave the app and inspect the exact DUAL Console template, object, action, or Blockscout transaction. |
+| LIVE PROOF | Shows whether DUAL readback, L3 action, L2 batch, and L1 roll-up evidence are available. |
+| DUAL Console | Lets the presenter leave the app and inspect the org or entity context. |
+| Passport object | Ties the app to a specific DUAL-backed agent identity. |
+| Mandate template | Shows the agent is governed by a reusable DUAL rules object. |
 | Policy hash | Makes the current mandate fingerprintable. |
-| DUAL batch | Shows DUAL batch evidence is being read. |
-| Batch proof | Shows the DUAL-side proof state visible to the app. |
-| Verifier | Collapses the proof checks into a clear pass/fail signal. |
+| Action log | Shows that execution can create a DUAL action record. |
+| Receipt object | Shows the trade can become a durable DUAL receipt, not just a UI row. |
+| Batch proof | Shows the action entering the proof pipeline. |
+| L3/L2/L1 links | Show the path from DUAL action to batch and roll-up evidence when available. |
 
 If challenged on whether this is "really DUAL":
 
-> "The app is not just displaying DUAL branding. It reads the passport object, mandate data, and batch evidence back from DUAL, then uses those values in the proof verifier."
+> "The app is not just displaying DUAL branding. It reads the passport object, mandate data, action evidence, and batch evidence back from DUAL, then surfaces those values in the verifier and binding cards."
 
 Email/code authentication is not part of the main demo path. The production posture is scoped API-key auth for DUAL event-bus writes; email-code auth is only an opt-in fallback for private browser sessions.
 
-## 5. Show The Audit Trail
+## 5. Show Transaction History And Event Trace
 
-Click **Audit**.
+Use the right rail. `TRANSACTION HISTORY` shows trade and block records; `EVENT TRACE` shows the underlying event sequence in human terms.
 
-The timeline explains the event sequence in human terms.
-
-![Provenance timeline](assets/demo-playbook/03-provenance-timeline.png)
+![Transaction history and event trace](assets/demo-playbook/03-provenance-timeline.png)
 
 Expected sequence after a safe run:
 
 1. DUAL passport active.
-2. Trade proposal created.
-3. Kraken paper trade executed.
+2. Kraken market snapshots load.
+3. Trade proposal is checked.
+4. Paper execution creates a receipt card.
+5. DUAL action, receipt, batch, and roll-up links appear when write/readback evidence is available.
 
-Each event carries a short hash so the story is not just UI state. It is a traceable sequence.
+Each record carries ids, hashes, or linked evidence so the story is not just UI state. It is a traceable sequence.
 
 Presenter line:
 
 > "The user can see not only the final state, but the path the agent took to get there."
 
-What the audit trail is doing:
+What the right rail is doing:
 
 - It explains the action sequence in human-readable form.
-- It keeps proof hashes visible without forcing the user into raw JSON.
+- It keeps proof hashes, receipt ids, and DUAL links visible without forcing the user into raw JSON.
 - It gives the presenter a story: passport active, proposal checked, execution recorded, unsafe request blocked.
+- It makes blocked actions first-class proof records, not hidden error states.
 
 What to say if asked about production audit durability:
 
-> "The demo already models the evidence chain. Durable unattended DUAL event-bus writes now use the current `/ebus/execute` path with a scoped API key. Each executed paper trade also receives a deterministic receipt that can be minted as its own DUAL object."
+> "The demo already models the evidence chain. Durable unattended DUAL event-bus writes use the current `/ebus/execute` path with a scoped API key. Each executed paper trade receives a deterministic receipt, and production write-sync can anchor that evidence into DUAL."
 
 ## 6. Run A Red-Team Check
 
-Click **Red Team**, then click **Oversized order**.
+Use the red-team buttons inside **EVENT TRACE**. Trigger **Oversized**, **Blocked pair**, **Leverage**, or **Missing approval**.
 
-The app should block the request because it exceeds the per-trade cap.
+The app should block the request before execution. The screenshot below uses a leverage-style blocked action.
 
 ![Red-team oversized order blocked](assets/demo-playbook/04-red-team-block.png)
 
@@ -300,8 +294,9 @@ What to point out:
 
 - The mandate status changes to `blocked`.
 - The unsafe request does not execute.
-- The timeline records the blocked attempt.
-- The reason is explicit: the notional exceeds the per-trade cap.
+- `TRANSACTION HISTORY` gets a red block card above the latest successful trade.
+- `EVENT TRACE` gets an `ERR` row with a `BLOCK CARD` link.
+- The reason is explicit: per-trade cap, pair allowlist, leverage block, or missing approval.
 
 Presenter line:
 
@@ -331,11 +326,12 @@ Current read/proof path:
 - Reads the DUAL policy state through passport custom data.
 - Reads DUAL batch proof evidence.
 - Reads DUAL-linked identifiers used by the verifier.
+- Reads back transaction, action, receipt, and batch identifiers into the proof surfaces when available.
 
 Live write path:
 
 - Policy updates are prepared as DUAL object updates.
-- Audit/provenance events are prepared as event-bus envelopes.
+- Action and provenance events are prepared as event-bus envelopes.
 - Replay execution runs when scoped API-key write auth is available; queued envelopes remain visible if write readiness is unavailable.
 
 Important distinction:
@@ -381,12 +377,13 @@ Use this explanation for technical reviewers:
 | Question | Answer |
 | --- | --- |
 | Is this using real Kraken funds? | No. It uses Kraken public market data and paper execution. That is intentional for demo safety. |
-| Is this just a mock UI? | No. The proof panel reads DUAL-linked object, mandate, and batch evidence. Execution is paper, but the governance/proof path is real. |
-| Why does it say `read-linked`? | Because this deployment has not enabled `DUAL_WRITE_MODE=event_bus` or does not have a write-capable key installed. |
+| Is this just a mock UI? | No. The proof surfaces read DUAL-linked object, mandate, action, receipt, and batch evidence. Execution is paper, but the governance/proof path is real. |
+| Why does one screenshot say `DUAL LOCAL SIMULATOR`? | That screenshot was captured in local rehearsal mode to avoid creating new DUAL writes while documenting the app. Production uses the same UI with live DUAL write/readback when configured. |
+| What if the DUAL status is pending or local? | Continue the demo. It still proves the mandate and blocked-action flow; call out that live write-sync depends on scoped server-side credentials. |
 | Why use an API key now? | Current DUAL testnet event-bus writes use `/ebus/execute` with scoped API-key auth via `x-api-key`; the endpoint no longer needs a bearer token. |
 | What is the user benefit? | Agent actions become bounded, explainable, and auditable instead of being opaque calls from a model to a tool. |
 | What is the developer benefit? | The policy and proof layer can sit around an app without putting exchange credentials in the browser. |
-| What is the DUAL platform feedback? | Provide a least-privilege service credential or service-session path accepted by event-bus write endpoints. |
+| What is the DUAL platform feedback? | Make least-privilege service credentials, receipt templates, and receipt readback easy for developers to provision. |
 
 ## 10. Troubleshooting During A Live Demo
 
@@ -394,14 +391,14 @@ Use this explanation for technical reviewers:
 | --- | --- |
 | Market card is slow or stale | Continue. The demo thesis does not depend on the exact live price. |
 | Policy check does not change state immediately | Click once, wait for the proposal status, then narrate the policy rules. |
-| Proof shows `read-linked` | Check that `DUAL_WRITE_MODE=event_bus`, `DUAL_API_URL=https://api-testnet.dual.network`, `DUAL_EVENTBUS_WRITE_PATH=/ebus/execute`, a scoped API key, and `DEMO_PUBLIC_DUAL_WRITES=true` or unset are configured. |
+| DUAL status shows local or pending | Explain that this is safe rehearsal mode, then point to the same proof/binding surfaces. For production write-sync, check `DUAL_WRITE_MODE=event_bus`, `DUAL_API_URL=https://api-testnet.dual.network`, `DUAL_EVENTBUS_WRITE_PATH=/ebus/execute`, a scoped API key, and `DEMO_PUBLIC_DUAL_WRITES=true` or unset. |
 | Batch proof is not finalized | Say the demo reads DUAL batch evidence, and the current state may be anchoring rather than finalized. |
-| Red-team block has old timeline entries | Focus on the newest blocked event and the explicit reason. |
+| Red-team block appears below other history | Focus on the red block card and the newest `ERR` row in `EVENT TRACE`. |
 | Audience asks for real trading | Reframe: the demo is about agent governance and proof, not financial execution. |
 
 ## 11. Score And Remaining Gap
 
-Current DUAL demo score: `9.4/10` as a public demo. It reaches the 9.8 target once the DUAL trade receipt template is live in production and a receipt replay is verified against DUAL readback.
+Current DUAL demo score: `9.7/10` as a public demo. It reaches the 9.8+ target once receipt-template provisioning and finalized L1 proof links are predictable enough for any presenter to run without pre-checking production state.
 
 Why it is high:
 
@@ -409,15 +406,15 @@ Why it is high:
 - DUAL mandate is visible and operational.
 - Policy checks gate actions before execution.
 - Proof bundle is understandable to non-developers.
+- Transaction history and event trace are first-viewport surfaces.
 - DUAL batch evidence is surfaced.
 - Red-team scenarios demonstrate enforcement, not just happy-path action.
 
 Remaining `0.3`:
 
-- Production needs a scoped event-bus API key installed in Vercel with `DUAL_WRITE_MODE=event_bus`.
-- The app should move from `read-linked` to durable `write-synced` using the current `/ebus/execute` path.
-- Per-trade receipt minting should be shown after `DUAL_TRADE_RECEIPT_TEMPLATE_ID` is configured.
-- The live app now shows the settlement path as `L3 action -> L2 batch -> L1 roll-up`. If a finalized L1 transaction hash is not present yet, call out whether the L1 roll-up is pending or represented through the L2 batch link.
+- Receipt-template configuration should be obvious to a new operator.
+- Per-trade receipt minting should be verified before any high-stakes live presentation.
+- The live app shows the settlement path as `L3 action -> L2 batch -> L1 roll-up`. If a finalized L1 transaction hash is not present yet, call out whether the L1 roll-up is pending or represented through the L2 batch link.
 
 ## 12. Close The Demo
 
@@ -437,13 +434,14 @@ Long close:
 
 - Open the live app.
 - Confirm `PAPER` mode and no real funds.
-- Run default `BTCUSD` `$75` policy check.
+- Confirm the top chips: DUAL mode and `KRAKEN PUBLIC API LIVE`.
+- Run default `DUALUSD` `$75` policy check.
 - Execute the paper trade.
 - Show mandate usage moved to `$75 / $1,000`.
-- Open Proof and call out policy hash, DUAL object, batch proof, verifier.
-- Open Audit and show proposal plus execution.
-- Run Red Team oversized order.
-- Explain that write-sync depends on the current DUAL `/ebus/execute` API-key path being configured in production.
+- Point to `TRANSACTION HISTORY` and show the new receipt card.
+- Point to `LIVE PROOF` and `DUAL BINDING`: policy hash, passport object, action log, receipt object, batch proof.
+- Use `EVENT TRACE` red-team buttons and trigger a blocked action.
+- Explain that production write-sync uses the current DUAL `/ebus/execute` API-key path.
 
 ## Post-Demo Follow-Up
 
@@ -451,14 +449,14 @@ Send these points after the demo:
 
 - Live demo URL: <https://kraken-dual-agent-demo.vercel.app/>
 - The app is paper-only and uses no real funds.
-- DUAL readback and proof surfaces are live.
-- The remaining deployment ask is a least-privilege API key accepted by the DUAL `/ebus/execute` write endpoint plus a configured DUAL trade receipt template.
+- DUAL readback, proof, binding, transaction-history, and blocked-action surfaces are visible on the first viewport.
+- The remaining operator ask is to confirm least-privilege API-key write readiness and the DUAL trade receipt template before a major live event.
 - The reusable pattern is agent passport plus mandate plus proof, not trading-specific logic.
 
 ## One-Page Recap
 
 The Kraken DUAL demo is a concrete example of governed AI-agent execution. The agent proposes a trade using live Kraken public market data. DUAL supplies the agent passport and mandate. The app checks the proposed action against allowed pairs, trade limits, daily limits, approval thresholds, and leverage rules. Safe paper trades can proceed; unsafe requests are blocked and explained.
 
-The proof bundle turns the demo from a UI into an evidence story. It shows the DUAL object, policy hash, mandate source, batch proof, and verifier state. The audit trail shows the sequence of events. The red-team controls show that boundaries are enforceable.
+The proof bundle turns the demo from a UI into an evidence story. It shows the DUAL object, policy hash, mandate source, action evidence, receipt state, batch proof, and verifier state. The transaction history and event trace show the sequence of events. The red-team controls show that boundaries are enforceable.
 
-The remaining deployment gap is installing a scoped API key, enabling `DUAL_WRITE_MODE=event_bus` against `https://api-testnet.dual.network/ebus/execute`, and setting `DUAL_TRADE_RECEIPT_TEMPLATE_ID`. Once configured, the demo can move from `read-linked` to fully `write-synced` with one DUAL receipt object per executed paper trade.
+The remaining operating discipline is checking scoped API-key readiness, `DUAL_WRITE_MODE=event_bus`, and `DUAL_TRADE_RECEIPT_TEMPLATE_ID` before presenting. Once configured, the demo can run write-synced with one DUAL receipt object per executed paper trade.

@@ -572,7 +572,7 @@ function renderTimelineEvent(event) {
       <span class="ts">${time}</span>
       <span class="src ${timelineSourceClass(event)}">${timelineSourceLabel(event)}</span>
       <span class="msg"><b>${escapeHtml(event.title)}</b> · ${escapeHtml(event.detail)} · <span class="hash">${escapeHtml(hash)}</span></span>
-      ${target ? `<button class="event-link-chip" type="button" data-tx-target="${escapeHtml(target.key)}" title="Highlight matching transaction card">TX card</button>` : ""}
+      ${target ? `<button class="event-link-chip" type="button" data-tx-target="${escapeHtml(target.key)}" title="Highlight matching transaction card">${escapeHtml(target.chipLabel || "TX card")}</button>` : ""}
     </li>
   `;
 }
@@ -594,6 +594,9 @@ function timelineEvents() {
 }
 
 function timelineTransactionTarget(event = {}) {
+  if (isBlockedTimelineEvent(event)) {
+    return timelinePolicyBlockTarget(event);
+  }
   const transactions = resolvedTransactionHistory().transactions || [];
   if (!transactions.length) return null;
   const exactTokens = timelineEventTokens(event);
@@ -609,7 +612,25 @@ function timelineTransactionTarget(event = {}) {
   if (!key) return null;
   return {
     key,
-    label: `${transactionTitle(match)} ${transactionValue(match)}`
+    label: `${transactionTitle(match)} ${transactionValue(match)}`,
+    chipLabel: "TX card"
+  };
+}
+
+function isBlockedTimelineEvent(event = {}) {
+  return event.type === "red_team_check" || event.status === "blocked" || event.status === "error";
+}
+
+function timelinePolicyBlockTarget(event = {}) {
+  const exactTokens = timelineEventTokens(event);
+  const block = policyBlockItems().find((item) => policyBlockTokens(item).some((token) => exactTokens.has(token)));
+  if (!block) return null;
+  const key = policyBlockDomKey(block);
+  if (!key) return null;
+  return {
+    key,
+    label: block.title || "Blocked transaction",
+    chipLabel: "Block card"
   };
 }
 
@@ -650,6 +671,17 @@ function transactionTokens(tx = {}) {
   ]));
 }
 
+function policyBlockTokens(block = {}) {
+  return Array.from(compactTokens([
+    block.id,
+    block.eventHash,
+    block.dual?.actionId,
+    block.dual?.actionHash,
+    block.dual?.envelopeHash,
+    block.scenario
+  ]));
+}
+
 function compactTokens(values = []) {
   return new Set(values
     .filter((value) => value !== null && value !== undefined && String(value).trim())
@@ -658,6 +690,10 @@ function compactTokens(values = []) {
 
 function transactionDomKey(tx = {}) {
   return String(tx.id || tx.dual?.receiptObjectId || tx.proposalId || tx.eventId || tx.dual?.actionId || tx.receiptHash || "").trim();
+}
+
+function policyBlockDomKey(block = {}) {
+  return String(block.id || block.eventHash || block.dual?.actionId || block.dual?.envelopeHash || block.scenario || "").trim();
 }
 
 function focusTransactionCard(key) {
@@ -811,25 +847,31 @@ function renderTransactionHistory() {
   if (!els.transactionHistory || !els.transactionCount) return;
   const history = resolvedTransactionHistory();
   const transactions = history.transactions || [];
+  const blocks = policyBlockItems(history);
   els.transactionCount.textContent = `${history.transactionCount ?? transactions.length}`;
   if (els.transactionCountLabel) {
     els.transactionCountLabel.textContent = history.summary?.status === "recovered_dual_proof" ? "Proofs" : "Trades";
   }
   if (els.transactionSummary) els.transactionSummary.innerHTML = renderTransactionSummary(history, transactions);
   renderPolicyBlocks(history);
-  if (!transactions.length) {
+  if (!transactions.length && !blocks.length) {
     if (els.transactionFocus) els.transactionFocus.innerHTML = "";
     els.transactionHistory.innerHTML = `<div class="history-empty">No executed trades yet.</div>`;
     return;
   }
-  if (els.transactionFocus) els.transactionFocus.innerHTML = renderTransactionFocus(transactions[0]);
-  els.transactionHistory.innerHTML = transactions.map((tx, index) => renderTransactionRow(tx, index)).join("");
+  if (els.transactionFocus) {
+    els.transactionFocus.innerHTML = transactions[0] ? renderTransactionFocus(transactions[0]) : "";
+  }
+  els.transactionHistory.innerHTML = [
+    ...blocks.map((block) => renderPolicyBlockTransactionRow(block)),
+    ...transactions.map((tx, index) => renderTransactionRow(tx, index))
+  ].join("");
   if (state.activeTransactionKey) focusTransactionCard(state.activeTransactionKey);
 }
 
 function renderPolicyBlocks(history = {}) {
   if (!els.policyBlocks) return;
-  const blocks = history.policyBlocks?.length ? history.policyBlocks : localPolicyBlocks();
+  const blocks = policyBlockItems(history);
   if (!blocks.length) {
     els.policyBlocks.innerHTML = `
       <article class="policy-block empty">
@@ -841,6 +883,10 @@ function renderPolicyBlocks(history = {}) {
     return;
   }
   els.policyBlocks.innerHTML = blocks.slice(0, 2).map((block) => renderPolicyBlock(block)).join("");
+}
+
+function policyBlockItems(history = resolvedTransactionHistory()) {
+  return history?.policyBlocks?.length ? history.policyBlocks : localPolicyBlocks();
 }
 
 function localPolicyBlocks() {
@@ -865,6 +911,37 @@ function localPolicyBlocks() {
         ? [{ label: "L3 action", href: `https://explorer-testnet.dual.network/actions/${encodeURIComponent(event.dualSync.result.actionId)}`, source: "l3-explorer" }]
         : []
     }));
+}
+
+function renderPolicyBlockTransactionRow(block = {}) {
+  const key = policyBlockDomKey(block);
+  const actionId = block.dual?.actionId;
+  const proofLabel = block.dual?.synced
+    ? `L3 ${actionId ? shortId(actionId) : "synced"}`
+    : block.dual?.envelopeHash
+      ? `Replay ${shortId(block.dual.envelopeHash)}`
+      : "Local block";
+  const classes = ["tx-row", "blocked"];
+  if (key && key === state.activeTransactionKey) classes.push("linked-from-event");
+  return `
+    <article class="${classes.join(" ")}" data-tx-key="${escapeHtml(key)}" ${key && key === state.activeTransactionKey ? "aria-current=\"true\"" : ""}>
+      <div class="tx-row-main">
+        <span class="tx-row-status">Blocked</span>
+        <strong>${escapeHtml(block.title || "Blocked transaction")}</strong>
+        <b>${escapeHtml(proofLabel)}</b>
+      </div>
+      <div class="tx-meta">
+        <span>${escapeHtml(block.scenario ? `Scenario ${block.scenario}` : block.status || "blocked")}</span>
+        <span>${escapeHtml(block.id || "event pending")}</span>
+        <span>${escapeHtml(block.eventHash ? `Hash ${shortId(block.eventHash)}` : "hash pending")}</span>
+        <span>${escapeHtml(block.dual?.synced ? "DUAL anchored" : block.dual?.reason || "not executed")}</span>
+      </div>
+      <p class="tx-block-detail">${escapeHtml(block.detail || "The policy engine blocked this action before execution.")}</p>
+      <div class="tx-links">
+        ${renderTransactionLinks(block.links || []) || `<span class="tx-link muted">DUAL link pending</span>`}
+      </div>
+    </article>
+  `;
 }
 
 function renderPolicyBlock(block = {}) {

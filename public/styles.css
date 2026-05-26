@@ -2233,6 +2233,16 @@ input, select, textarea { font: inherit; color: inherit; }
   border-color: rgba(240, 180, 41, 0.26);
 }
 
+.tx-row.blocked {
+  background: rgba(229, 72, 77, 0.08);
+  border-color: rgba(229, 72, 77, 0.34);
+}
+
+.tx-row.blocked .tx-row-status,
+.tx-row.blocked .tx-row-main b {
+  color: var(--negative);
+}
+
 .tx-row.linked-from-event {
   border-color: rgba(20, 194, 198, 0.76);
   box-shadow: 0 0 0 1px rgba(20, 194, 198, 0.18), 0 0 22px rgba(20, 194, 198, 0.12);
@@ -2292,6 +2302,16 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .tx-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tx-block-detail {
+  color: var(--ink-2);
+  font-size: 9px;
+  line-height: 1.25;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

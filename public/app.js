@@ -4,6 +4,7 @@ const state = {
   health: null,
   proof: null,
   proofVerification: null,
+  transactionHistory: null,
   dualAuth: null,
   replayExecution: null,
   actionPassportSetup: null,
@@ -27,6 +28,8 @@ const els = {
   stateChip: document.querySelector("#stateChip"),
   timeline: document.querySelector("#timeline"),
   eventCount: document.querySelector("#eventCount"),
+  transactionHistory: document.querySelector("#transactionHistory"),
+  transactionCount: document.querySelector("#transactionCount"),
   proposalCard: document.querySelector("#proposalCard"),
   approveButton: document.querySelector("#approveButton"),
   executeButton: document.querySelector("#executeButton"),
@@ -297,6 +300,7 @@ function render() {
   renderPassport();
   renderProposal();
   renderProof();
+  renderTransactionHistory();
   renderBinding();
   renderTimeline();
 }
@@ -520,6 +524,7 @@ function renderProposalStep(key, label, detail, cls) {
 }
 
 function renderTimeline() {
+  if (!els.timeline || !els.eventCount) return;
   const audit = state.data.audit || [];
   els.eventCount.textContent = `${audit.length} events`;
   els.timeline.innerHTML = audit.slice(0, 3).map((event) => `
@@ -550,13 +555,16 @@ function timelineSourceLabel(event) {
 }
 
 async function loadProof() {
-  const [proof, proofVerification] = await Promise.all([
+  const [proof, proofVerification, transactionHistory] = await Promise.all([
     getJson("/api/proof"),
-    getJson("/api/proof/verify")
+    getJson("/api/proof/verify"),
+    getJson("/api/transactions/history?limit=12")
   ]);
   state.proof = proof;
   state.proofVerification = proofVerification;
+  state.transactionHistory = transactionHistory;
   renderProof();
+  renderTransactionHistory();
   return state.proof;
 }
 
@@ -654,6 +662,136 @@ function renderProof() {
   } else if (!els.dualAuthMessage.textContent) {
     els.dualAuthMessage.textContent = auth?.detail || "Scoped API-key auth controls live DUAL writes for this public demo.";
   }
+}
+
+function renderTransactionHistory() {
+  if (!els.transactionHistory || !els.transactionCount) return;
+  const history = resolvedTransactionHistory();
+  const transactions = history.transactions || [];
+  els.transactionCount.textContent = `${history.transactionCount ?? transactions.length}`;
+  if (!transactions.length) {
+    els.transactionHistory.innerHTML = `<div class="history-empty">No executed trades yet.</div>`;
+    return;
+  }
+  els.transactionHistory.innerHTML = transactions.map((tx) => `
+    <article class="tx-row ${tx.dual?.synced ? "minted" : "pending"}">
+      <div class="tx-head">
+        <span>${escapeHtml(tx.statusLabel || "Trade receipt")}</span>
+        <time>${escapeHtml(formatTradeTime(tx.executedAt))}</time>
+      </div>
+      <div class="tx-main">
+        <strong>${escapeHtml(String(tx.side || "buy").toUpperCase())} ${escapeHtml(tx.pair || "DUALUSD")}</strong>
+        <b>${money.format(Number(tx.notionalUsd || 0))}</b>
+      </div>
+      <div class="tx-meta">
+        <span>${escapeHtml(tx.proposalId || "proposal pending")}</span>
+        <span>${escapeHtml(tx.id || "receipt pending")}</span>
+        <span>${escapeHtml(tx.dual?.actionId ? `L3 ${shortId(tx.dual.actionId)}` : tx.dual?.reason || "L3 pending")}</span>
+        <span>${escapeHtml(tx.settlement?.batchId ? `Batch ${shortId(tx.settlement.batchId)}` : "Batch pending")}</span>
+      </div>
+      <div class="tx-links">
+        ${renderTransactionLinks(tx.links || [])}
+      </div>
+    </article>
+  `).join("");
+}
+
+function resolvedTransactionHistory() {
+  const history = state.transactionHistory || {};
+  if (history.transactions?.length) return history;
+  const receipts = state.proof?.tradeReceipts?.latest || [];
+  if (!receipts.length) return history;
+  return {
+    schemaVersion: "dual-kraken-transaction-history.v1",
+    transactionCount: receipts.length,
+    mintedCount: receipts.filter((receipt) => receipt.dualSync?.synced).length,
+    pendingCount: receipts.filter((receipt) => !receipt.dualSync?.synced).length,
+    proofHash: state.proof?.proofHash,
+    transactions: receipts.map((receipt) => proofReceiptTransaction(receipt))
+  };
+}
+
+function proofReceiptTransaction(receipt = {}) {
+  const dualResult = receipt.dualSync?.result || {};
+  const affectedObject = dualResult.affectedObject || {};
+  const receiptObjectId = dualResult.id || affectedObject.id || null;
+  const actionId = dualResult.actionId || null;
+  const batch = state.proof?.dualBatch?.available ? state.proof.dualBatch : null;
+  return {
+    ...receipt,
+    quantity: receipt.quantity ?? null,
+    priceUsd: receipt.priceUsd ?? null,
+    status: receipt.dualSync?.synced ? "dual_minted" : "pending_dual_mint",
+    statusLabel: receipt.dualSync?.synced ? "Minted to DUAL" : "Pending DUAL mint",
+    dual: {
+      synced: Boolean(receipt.dualSync?.synced),
+      envelopeHash: receipt.dualSync?.envelopeHash || null,
+      receiptObjectId,
+      receiptTemplateId: affectedObject.templateId || state.proof?.tradeReceipts?.targetTemplateId || null,
+      actionId,
+      actionHash: receipt.receiptHash || null,
+      integrityHash: affectedObject.integrityHash || null,
+      stateHash: affectedObject.stateHash || null,
+      stateChangeId: affectedObject.stateChangeId || null,
+      error: receipt.dualSync?.error || null,
+      reason: receipt.dualSync?.reason || null
+    },
+    settlement: batch ? {
+      batchId: batch.id,
+      status: batch.status,
+      proofValue: batch.proofValue,
+      finality: batch.finality,
+      transactionHash: batch.l2TransactionHash || batch.transactionHash || null,
+      l1TransactionHash: batch.l1TransactionHash || batch.rollupTransactionHash || null
+    } : null,
+    links: proofReceiptLinks({ receipt, receiptObjectId, actionId })
+  };
+}
+
+function proofReceiptLinks({ receipt = {}, receiptObjectId = null, actionId = null } = {}) {
+  const receiptObjectLink = proofLink("dual-record-receipt-object");
+  const actionLink = proofLink(`dual-record-action-${actionId}`) || proofLink("dual-record-action");
+  const batchLink = proofLink("dual-record-batch");
+  const links = [
+    historyLinkFromProof("Receipt", receiptObjectLink, receiptObjectId),
+    {
+      label: "Data",
+      href: receiptObjectId ? `/api/dual/records/objects/${encodeURIComponent(receiptObjectId)}` : receipt.id ? `/api/transactions/history?receiptId=${encodeURIComponent(receipt.id)}` : null,
+      source: "dual-record"
+    },
+    historyLinkFromProof("L3 action", actionLink, actionId),
+    historyLinkFromProof("L2/L1 batch", batchLink, state.proof?.dualBatch?.transactionHash || state.proof?.dualBatch?.id)
+  ];
+  return links.filter((link) => link?.href);
+}
+
+function historyLinkFromProof(label, link, detail = null) {
+  if (!link?.href) return null;
+  return {
+    label,
+    href: link.href,
+    source: link.source,
+    detail: shortId(detail || link.detail || link.href)
+  };
+}
+
+function renderTransactionLinks(links = []) {
+  const uniqueLinks = [...new Map(links
+    .filter((link) => link?.href)
+    .map((link) => [`${link.label}:${link.href}`, link])).values()];
+  if (!uniqueLinks.length) return `<span class="tx-link muted">pending</span>`;
+  return uniqueLinks.slice(0, 4).map((link) => `
+    <a class="tx-link ${dualLinkSourceClass(link.source)}" href="${escapeHtml(link.href)}" target="_blank" rel="noreferrer">
+      ${escapeHtml(link.label)}
+    </a>
+  `).join("");
+}
+
+function formatTradeTime(value) {
+  if (!value) return "pending";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "pending";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 function renderBinding() {

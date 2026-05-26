@@ -178,21 +178,30 @@
             <div class="proof-grid" id="proofGrid"></div>
           </article>
 
-          <article class="command-dock audit-panel" aria-label="Event trace">
-          <div class="panel-head">
-            <span class="label"><strong>EVENT TRACE</strong> · MARKET · POLICY · EXECUTION</span>
-            <span class="footer-stat"><span>Events</span><strong id="eventCount">0 events</strong></span>
-          </div>
-          <div class="red-team-row trace-red-team">
-            <span class="rt-label">Red team</span>
-            <button class="rt-btn" data-scenario="oversized" type="button">Oversized</button>
-            <button class="rt-btn" data-scenario="blocked_pair" type="button">Blocked pair</button>
-            <button class="rt-btn" data-scenario="leverage" type="button">Leverage</button>
-            <button class="rt-btn" data-scenario="missing_approval" type="button">Missing approval</button>
-          </div>
-          <div class="command-content">
-            <ol class="term-log" id="timeline"></ol>
-          </div>
+          <article class="transaction-panel audit-panel" aria-label="Transaction history">
+            <div class="panel-head">
+              <span class="label"><strong>TRANSACTION HISTORY</strong> · RECEIPTS · ACTIONS</span>
+              <span class="footer-stat"><span>Trades</span><strong id="transactionCount">0</strong></span>
+            </div>
+            <div class="transaction-history" id="transactionHistory">
+              <div class="history-empty">No executed trades yet.</div>
+            </div>
+            <details class="event-trace-drawer">
+              <summary>
+                <span>Event trace</span>
+                <strong id="eventCount">0 events</strong>
+              </summary>
+              <div class="red-team-row trace-red-team">
+                <span class="rt-label">Red team</span>
+                <button class="rt-btn" data-scenario="oversized" type="button">Oversized</button>
+                <button class="rt-btn" data-scenario="blocked_pair" type="button">Blocked pair</button>
+                <button class="rt-btn" data-scenario="leverage" type="button">Leverage</button>
+                <button class="rt-btn" data-scenario="missing_approval" type="button">Missing approval</button>
+              </div>
+              <div class="command-content">
+                <ol class="term-log" id="timeline"></ol>
+              </div>
+            </details>
           </article>
         </section>
       </main>

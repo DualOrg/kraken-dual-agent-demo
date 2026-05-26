@@ -1759,8 +1759,20 @@ input, select, textarea { font: inherit; color: inherit; }
   overflow: hidden;
 }
 
+.transaction-panel {
+  border-top: 1px solid var(--line-strong);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .command-dock .panel-head {
   padding: 8px 18px;
+}
+
+.transaction-panel .panel-head {
+  padding: 8px 12px;
 }
 
 .command-grid {
@@ -1826,18 +1838,180 @@ input, select, textarea { font: inherit; color: inherit; }
   padding-top: 6px;
 }
 
+.transaction-history {
+  display: grid;
+  gap: 6px;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+}
+
+.tx-row,
+.history-empty {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg-panel);
+  min-width: 0;
+}
+
+.tx-row {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+}
+
+.tx-row.minted {
+  border-color: rgba(43, 182, 115, 0.26);
+  background: rgba(43, 182, 115, 0.07);
+}
+
+.tx-row.pending {
+  border-color: rgba(240, 180, 41, 0.26);
+}
+
+.tx-head,
+.tx-main,
+.tx-meta,
+.tx-links {
+  min-width: 0;
+}
+
+.tx-head,
+.tx-main {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tx-head span,
+.tx-head time,
+.tx-meta,
+.tx-link,
+.history-empty,
+.event-trace-drawer summary {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
+.tx-head span {
+  color: var(--positive);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+}
+
+.tx-head time {
+  color: var(--ink-4);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.tx-main strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tx-main b {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tx-meta {
+  color: var(--ink-4);
+  display: grid;
+  font-size: 8px;
+  gap: 3px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  letter-spacing: 0.04em;
+}
+
+.tx-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tx-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tx-link {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  padding: 4px 6px;
+  text-decoration: none;
+}
+
+.tx-link.console { color: var(--accent); }
+.tx-link.explorer { color: var(--positive); }
+.tx-link.record { color: var(--ink-2); }
+.tx-link.muted { color: var(--ink-4); }
+
+.history-empty {
+  color: var(--ink-3);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 14px;
+}
+
+.event-trace-drawer {
+  border-top: 1px solid var(--line);
+  min-height: 0;
+}
+
+.event-trace-drawer summary {
+  align-items: center;
+  color: var(--ink-3);
+  cursor: pointer;
+  display: flex;
+  font-size: 9px;
+  justify-content: space-between;
+  letter-spacing: 0.12em;
+  list-style: none;
+  padding: 7px 12px;
+}
+
+.event-trace-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.event-trace-drawer summary strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.event-trace-drawer .command-content {
+  max-height: 96px;
+}
+
 .binding-chain::-webkit-scrollbar,
-.binding-proof .dual-links::-webkit-scrollbar {
+.binding-proof .dual-links::-webkit-scrollbar,
+.transaction-history::-webkit-scrollbar {
   width: 6px;
 }
 
 .binding-chain::-webkit-scrollbar-track,
-.binding-proof .dual-links::-webkit-scrollbar-track {
+.binding-proof .dual-links::-webkit-scrollbar-track,
+.transaction-history::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .binding-chain::-webkit-scrollbar-thumb,
-.binding-proof .dual-links::-webkit-scrollbar-thumb {
+.binding-proof .dual-links::-webkit-scrollbar-thumb,
+.transaction-history::-webkit-scrollbar-thumb {
   background: var(--line-strong);
   border-radius: 3px;
 }
@@ -2554,12 +2728,14 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .evidence-stage > .proof-card,
-.evidence-stage > .command-dock {
+.evidence-stage > .command-dock,
+.evidence-stage > .transaction-panel {
   border-right: 1px solid var(--line);
   min-height: 0;
 }
 
-.evidence-stage > .command-dock {
+.evidence-stage > .command-dock,
+.evidence-stage > .transaction-panel {
   border-right: 0;
 }
 
@@ -2689,7 +2865,8 @@ input, select, textarea { font: inherit; color: inherit; }
   overflow: hidden;
 }
 
-.evidence-stage .command-dock .panel-head {
+.evidence-stage .command-dock .panel-head,
+.evidence-stage .transaction-panel .panel-head {
   padding: 8px 12px;
 }
 

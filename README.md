@@ -107,6 +107,8 @@ GET  /api/dual/records/batches/{batchId}
 POST /api/dual/trade-receipts/replay
 GET  /api/dual/passport
 GET  /api/dual/template-readback
+GET  /api/transactions/history
+GET  /api/dual/transaction-history
 POST /api/dual/template
 POST /api/dual/action-passport/setup
 POST /api/dual/trade-receipt-template/setup
@@ -118,7 +120,7 @@ POST /mcp
 
 Template schemas: `dual-agent-passport.schema.json` and `dual-trade-receipt.schema.json`.
 
-`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, trade receipt template/readiness, write-readiness, DUAL record/explorer link metadata, local audit root hash, replay queue root, trade receipt root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` and presentation links are outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has scoped API-key write auth for `/ebus/execute`. `/api/dual/trade-receipts/replay` mints pending executed-trade receipts into DUAL once the trade receipt template and write readiness are active.
+`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, trade receipt template/readiness, write-readiness, DUAL record/explorer link metadata, local audit root hash, replay queue root, trade receipt root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` and presentation links are outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/transactions/history` returns executed paper trades as a history list with proposal id, receipt id, DUAL receipt object, L3 action, L2 batch, L1 roll-up, and app-served record links. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has scoped API-key write auth for `/ebus/execute`. `/api/dual/trade-receipts/replay` mints pending executed-trade receipts into DUAL once the trade receipt template and write readiness are active.
 
 The proof bundle surfaces latest batch id, status, proof value, Merkle root, L3 action hash, L2 batch transaction hash, and L1 roll-up transaction hash when available. The UI shows this as a first-class `L3 action -> L2 batch -> L1 roll-up` rail plus compact proof rows.
 
@@ -139,6 +141,7 @@ The proof bundle surfaces latest batch id, status, proof value, Merkle root, L3 
 - `kraken_dual_get_audit`
 - `kraken_dual_get_replay_queue`
 - `kraken_dual_get_trade_receipts`
+- `kraken_dual_get_transaction_history`
 - `kraken_dual_red_team`
 
 The MCP tools support `DUALUSD` alongside `BTCUSD`, `ETHUSD`, and `SOLUSD`. Trading tools only create or execute paper proposals through the same DUAL policy checks as the UI. Public MCP intentionally does not expose live Kraken order placement or standalone DUAL replay execution.

@@ -22,6 +22,7 @@ assert(!mcpToolNames.some((name) => name.includes("authenticate")), "MCP tools d
 assert(mcpToolNames.includes("kraken_dual_get_market"), "MCP tools include market lookup");
 assert(mcpToolNames.includes("kraken_dual_propose_and_execute_paper_trade"), "MCP tools include paper trade execution");
 assert(mcpToolNames.includes("kraken_dual_get_trade_receipts"), "MCP tools include trade receipt readback");
+assert(mcpToolNames.includes("kraken_dual_get_transaction_history"), "MCP tools include transaction history readback");
 const mcpTradeTool = mcpTools.tools.find((tool) => tool.name === "kraken_dual_propose_and_execute_paper_trade");
 assert(mcpTradeTool?.["x-dual"]?.requiresWriteReadinessForAnchoring === true, "MCP trade tool annotates DUAL write-readiness dependency");
 
@@ -52,6 +53,8 @@ assert(typeof replayQueue.syncedCount === "number", "replay queue reports synced
 const initialTradeReceipts = await get("/api/dual/trade-receipts");
 assert(initialTradeReceipts.rootHash, "trade receipt queue returns a root hash");
 assert(initialTradeReceipts.receiptCount === 0, "reset state starts with no trade receipts");
+const initialHistory = await get("/api/transactions/history");
+assert(initialHistory.transactionCount === 0, "reset state starts with empty transaction history");
 
 const replayExecution = await post("/api/dual/replay-queue/execute", {});
 assert(typeof replayExecution.executed === "boolean", "replay execution reports whether writes ran");
@@ -162,6 +165,11 @@ assert(tradeReceipts.receiptCount >= 2, "trade receipt queue includes executed p
 assert(tradeReceipts.pendingCount >= 0, "trade receipt queue reports pending mints");
 assert(tradeReceipts.latest[0]?.id?.startsWith("tr-"), "trade receipt queue exposes latest receipt summaries");
 
+const transactionHistory = await get("/api/transactions/history?limit=5");
+assert(transactionHistory.transactionCount >= 2, "transaction history includes executed paper trades");
+assert(transactionHistory.transactions[0]?.proposalId?.startsWith("prop-"), "transaction history includes proposal ids");
+assert(transactionHistory.transactions[0]?.links?.some((link) => ["Receipt", "Data"].includes(link.label)), "transaction history exposes receipt/data links");
+
 const redTeam = await post("/api/red-team", { scenario: "leverage" });
 assert(redTeam.policy.decision === "block", "leverage red-team scenario is blocked");
 
@@ -204,6 +212,13 @@ const mcpTradeReceipts = mcpJson(await mcp("tools/call", {
 }));
 assert(mcpTradeReceipts.tradeReceiptQueue.receiptCount >= 3, "MCP trade receipt tool returns executed receipts");
 
+const mcpTransactionHistory = mcpJson(await mcp("tools/call", {
+  name: "kraken_dual_get_transaction_history",
+  arguments: { limit: 5 }
+}));
+assert(mcpTransactionHistory.transactionHistory.transactionCount >= 3, "MCP transaction history returns executed trades");
+assert(mcpTransactionHistory.transactionHistory.transactions[0]?.links?.length >= 1, "MCP transaction history includes proof links");
+
 const mcpVerify = mcpJson(await mcp("tools/call", {
   name: "kraken_dual_verify_proof",
   arguments: {}
@@ -213,6 +228,7 @@ assert(mcpVerify.verification.proofHash, "MCP proof verifier returns proof hash"
 
 const mcpResources = await mcp("resources/list", {});
 assert(mcpResources.resources.some((resource) => resource.uri === "kraken-dual://proof"), "MCP resources include proof");
+assert(mcpResources.resources.some((resource) => resource.uri === "kraken-dual://transaction-history"), "MCP resources include transaction history");
 
 const mcpBlocked = await mcp("tools/call", {
   name: "kraken_dual_get_market",

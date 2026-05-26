@@ -138,6 +138,13 @@ const mcpTools = [
     additionalProperties: false,
     properties: {}
   }, { annotations: { readOnlyHint: true }, "x-dual": { requiresAuthentication: false, writeExecutionExposed: false } }),
+  mcpTool("kraken_dual_get_transaction_history", "Read transaction history with paper-trade receipts, DUAL receipt objects, L3 actions, and L2/L1 batch links.", {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      limit: { type: "integer", minimum: 1, maximum: 50, default: 12 }
+    }
+  }, { annotations: { readOnlyHint: true }, "x-dual": { requiresAuthentication: false, writeExecutionExposed: false } }),
   mcpTool("kraken_dual_red_team", "Red-team an existing or hypothetical paper trade proposal and prove unsafe requests are blocked before execution. Use proactively before approving edge-case trades.", {
     type: "object",
     additionalProperties: false,
@@ -152,7 +159,8 @@ const mcpResources = [
   mcpResource("kraken-dual://proof", "Kraken DUAL proof", "Portable proof bundle for verifier readback."),
   mcpResource("kraken-dual://audit", "Kraken DUAL audit", "Latest audit events and provenance hashes."),
   mcpResource("kraken-dual://replay-queue", "Kraken DUAL replay queue", "Pending DUAL event-bus replay envelopes."),
-  mcpResource("kraken-dual://trade-receipts", "Kraken DUAL trade receipts", "Per-trade DUAL receipt minting status.")
+  mcpResource("kraken-dual://trade-receipts", "Kraken DUAL trade receipts", "Per-trade DUAL receipt minting status."),
+  mcpResource("kraken-dual://transaction-history", "Kraken DUAL transaction history", "Executed paper trades with DUAL receipt, L3 action, and L2/L1 settlement links.")
 ];
 const mcpPrompts = [
   {
@@ -263,6 +271,14 @@ async function handleApi(req, res, url) {
     const state = await loadState();
     applyDualRuntimeConfig(state);
     sendJson(res, 200, publicTradeReceiptQueue(req, state.tradeReceipts || []));
+    return;
+  }
+
+  if (req.method === "GET" && (url.pathname === "/api/transactions/history" || url.pathname === "/api/dual/transaction-history")) {
+    sendJson(res, 200, await publicTransactionHistory(req, {
+      limit: url.searchParams.get("limit"),
+      receiptId: url.searchParams.get("receiptId")
+    }));
     return;
   }
 
@@ -1101,6 +1117,8 @@ async function callMcpTool(req, name, args) {
       const state = await loadState();
       return { ok: true, tradeReceiptQueue: publicTradeReceiptQueue(req, state.tradeReceipts || []) };
     }
+    case "kraken_dual_get_transaction_history":
+      return { ok: true, transactionHistory: await publicTransactionHistory(req, args) };
     case "kraken_dual_red_team": {
       const result = await runRedTeam(req, { scenario: args.scenario || "leverage" });
       return {
@@ -1131,6 +1149,7 @@ async function readMcpResource(req, uri) {
     const state = await loadState();
     return { ok: true, tradeReceiptQueue: publicTradeReceiptQueue(req, state.tradeReceipts || []) };
   }
+  if (uri === "kraken-dual://transaction-history") return { ok: true, transactionHistory: await publicTransactionHistory(req, { limit: 20 }) };
   throw Object.assign(new Error(`Unknown Kraken DUAL MCP resource: ${uri}`), { code: "mcp_resource_not_found", status: 404 });
 }
 
@@ -1400,6 +1419,12 @@ function buildOpenApiDocument(req) {
       },
       "/api/dual/trade-receipts": {
         get: { summary: "Read per-trade DUAL receipt minting status.", responses: { 200: jsonResponse } }
+      },
+      "/api/transactions/history": {
+        get: { summary: "Read executed paper-trade transaction history with DUAL receipt, L3 action, and L2/L1 settlement links.", responses: { 200: jsonResponse } }
+      },
+      "/api/dual/transaction-history": {
+        get: { summary: "Alias for DUAL-bound transaction history.", responses: { 200: jsonResponse } }
       },
       "/api/dual/records/templates/{templateId}": {
         get: { summary: "Read the explicit DUAL template record used by this proof bundle.", responses: { 200: jsonResponse, 404: jsonResponse } }
@@ -1955,6 +1980,112 @@ function publicTradeReceiptQueue(req, tradeReceipts = []) {
     ...queue,
     writable: Boolean(queue.writable && publicWriteReadiness(req).ready),
     latest: (tradeReceipts || []).slice(0, 8).map(summarizeTradeReceipt)
+  };
+}
+
+async function publicTransactionHistory(req, args = {}) {
+  const limit = clampInteger(args.limit, 1, 50, 12);
+  const [state, proof] = await Promise.all([loadState(), buildProofBundle(req)]);
+  applyDualRuntimeConfig(state);
+  const receipts = state.tradeReceipts || [];
+  const receiptId = String(args.receiptId || "").trim();
+  const filteredReceipts = receiptId
+    ? receipts.filter((receipt) => receipt.id === receiptId || receipt.proposalId === receiptId)
+    : receipts;
+  const receiptQueue = publicTradeReceiptQueue(req, receipts);
+  const batch = proof.dualBatch?.available ? proof.dualBatch : null;
+  const orgId = firstNonEmpty(proof.dualObject?.orgId, proof.status?.dualMode?.orgId, process.env.DUAL_ORG_ID);
+  const transactions = filteredReceipts.slice(0, limit).map((receipt) => transactionHistoryItem(receipt, { proof, batch, orgId }));
+
+  return {
+    schemaVersion: "dual-kraken-transaction-history.v1",
+    generatedAt: new Date().toISOString(),
+    transactionCount: receipts.length,
+    filteredCount: filteredReceipts.length,
+    mintedCount: receiptQueue.syncedCount,
+    pendingCount: receiptQueue.pendingCount,
+    proofHash: proof.proofHash,
+    latestBatch: batch ? {
+      id: batch.id,
+      status: batch.status,
+      proofValue: batch.proofValue,
+      finality: batch.finality,
+      transactionHash: firstNonEmpty(batch.l2TransactionHash, batch.transactionHash),
+      l1TransactionHash: firstNonEmpty(batch.l1TransactionHash, batch.rollupTransactionHash)
+    } : null,
+    transactions
+  };
+}
+
+function transactionHistoryItem(receipt = {}, { proof = {}, batch = null, orgId = null } = {}) {
+  const summary = summarizeTradeReceipt(receipt);
+  const dualResult = receipt.dualSync?.result || {};
+  const affectedObject = dualResult.affectedObject || {};
+  const receiptObjectId = firstNonEmpty(dualResult.id, affectedObject.id);
+  const receiptTemplateId = firstNonEmpty(affectedObject.templateId, proof.tradeReceipts?.targetTemplateId);
+  const actionId = firstNonEmpty(dualResult.actionId, affectedObject.actionId);
+  const batchAction = actionId
+    ? (batch?.affectedActions || []).find((action) => action?.id === actionId)
+    : null;
+  const actionHash = firstNonEmpty(batchAction?.hash, dualResult.hash, receipt.receiptHash);
+  const l2TransactionHash = firstNonEmpty(batch?.l2TransactionHash, batch?.transactionHash);
+  const l1RollupHash = firstNonEmpty(batch?.l1TransactionHash, batch?.rollupTransactionHash);
+  const batchRecordHref = renderUrlTemplate(dualRecordLinkTemplates.batch, { batchId: batch?.id });
+  const receiptObjectRecordHref = renderUrlTemplate(dualRecordLinkTemplates.object, { objectId: receiptObjectId });
+  const actionRecordHref = renderUrlTemplate(dualRecordLinkTemplates.action, { actionId });
+  const receiptObjectConsoleHref = orgId ? renderUrlTemplate(dualLinkTemplates.consoleObject, { orgId, objectId: receiptObjectId }) : null;
+  const actionConsoleHref = orgId ? renderUrlTemplate(dualLinkTemplates.consoleAction, { orgId, actionId }) : null;
+  const actionL3Href = renderUrlTemplate(dualLinkTemplates.l3Action, { actionId, actionHash });
+  const l2BatchHref = renderUrlTemplate(dualLinkTemplates.l2Transaction, { transactionHash: l2TransactionHash });
+  const l1RollupHref = renderUrlTemplate(dualLinkTemplates.l1RollupTransaction, { transactionHash: l1RollupHash }) || l2BatchHref;
+  const receiptDataHref = receipt.id ? `/api/transactions/history?receiptId=${encodeURIComponent(receipt.id)}` : null;
+  const synced = Boolean(receipt.dualSync?.synced);
+  const links = [
+    transactionHistoryLink("Receipt", receiptObjectConsoleHref || receiptObjectRecordHref, receiptObjectConsoleHref ? "console" : "dual-record", receiptObjectId),
+    transactionHistoryLink("Data", receiptObjectRecordHref || receiptDataHref, "dual-record", receiptObjectId || receipt.id),
+    transactionHistoryLink("L3 action", actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", actionId),
+    transactionHistoryLink("L2/L1 batch", l2BatchHref || l1RollupHref || batchRecordHref, l2BatchHref ? "l2-explorer" : l1RollupHref ? "l1-rollup" : "dual-record", l2TransactionHash || l1RollupHash || batch?.id)
+  ].filter(Boolean);
+
+  return {
+    ...summary,
+    quantity: receipt.quantity ?? null,
+    priceUsd: receipt.priceUsd ?? null,
+    status: synced ? "dual_minted" : "pending_dual_mint",
+    statusLabel: synced ? "Minted to DUAL" : "Pending DUAL mint",
+    dual: {
+      synced,
+      envelopeHash: receipt.dualSync?.envelopeHash || null,
+      receiptObjectId,
+      receiptTemplateId,
+      actionId,
+      actionHash,
+      integrityHash: firstNonEmpty(affectedObject.integrityHash, dualResult.integrityHash),
+      stateHash: firstNonEmpty(affectedObject.stateHash, dualResult.stateHash),
+      stateChangeId: firstNonEmpty(affectedObject.stateChangeId, dualResult.stateChangeId),
+      error: receipt.dualSync?.error || null,
+      reason: receipt.dualSync?.reason || null
+    },
+    settlement: batch ? {
+      batchId: batch.id,
+      status: batch.status,
+      proofValue: batch.proofValue,
+      finality: batch.finality,
+      transactionHash: l2TransactionHash,
+      l1TransactionHash: l1RollupHash,
+      actionInLatestBatch: Boolean(batchAction)
+    } : null,
+    links
+  };
+}
+
+function transactionHistoryLink(label, href, source, detail = null) {
+  if (!href) return null;
+  return {
+    label,
+    href,
+    source,
+    detail: shortIdForLink(detail || href)
   };
 }
 

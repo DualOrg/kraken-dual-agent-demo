@@ -184,8 +184,12 @@ assert(misleadingBatchLinks.length === 0, "transaction history does not label in
 if (transactionHistory.summary?.latestL2TransactionHash) {
   const explorerBatchLinks = transactionHistory.transactions
     .flatMap((tx) => tx.links || [])
-    .filter((link) => link.label === "Block explorer");
-  assert(explorerBatchLinks.some((link) => link.source === "l2-explorer" && link.href?.includes("explorer-test-v2.dual.network/tx/")), "transaction history exposes L2 batch proof as a block explorer link when an L2 tx hash exists");
+    .filter((link) => link.label === "L2 explorer");
+  const rollupLinks = transactionHistory.transactions
+    .flatMap((tx) => tx.links || [])
+    .filter((link) => link.label === "L1 roll-up");
+  assert(explorerBatchLinks.some((link) => link.source === "l2-explorer" && link.href?.includes("explorer-test-v2.dual.network/tx/")), "transaction history exposes L2 batch proof as an L2 explorer link when an L2 tx hash exists");
+  assert(rollupLinks.some((link) => ["l1-rollup", "l2-explorer"].includes(link.source) && link.href?.includes("explorer-test")), "transaction history keeps a visible L1 roll-up route when explorer evidence exists");
 }
 
 const redTeam = await post("/api/red-team", { scenario: "leverage" });

@@ -2164,13 +2164,12 @@ function transactionHistoryItem(receipt = {}, { proof = {}, batch = null, orgId 
   const l1RouteHref = l1RollupHash ? l1RollupHref : l2BatchHref;
   const receiptDataHref = receipt.id ? `/api/transactions/history?receiptId=${encodeURIComponent(receipt.id)}` : null;
   const synced = Boolean(receipt.dualSync?.synced);
-  const batchExplorerHref = l2BatchHref || l1RollupHref;
-  const batchExplorerSource = l2BatchHref ? "l2-explorer" : l1RollupHref ? "l1-rollup" : null;
   const links = [
     transactionHistoryLink("Receipt", receiptObjectConsoleHref || receiptObjectRecordHref, receiptObjectConsoleHref ? "console" : "dual-record", receiptObjectId),
     transactionHistoryLink("Data", receiptObjectRecordHref || receiptDataHref, "dual-record", receiptObjectId || receipt.id),
-    transactionHistoryLink("L3 action", actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", actionId),
-    transactionHistoryLink("Block explorer", batchExplorerHref, batchExplorerSource, l2TransactionHash || l1RollupHash),
+    transactionHistoryLink("L3 explorer", actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", actionId),
+    transactionHistoryLink("L2 explorer", l2BatchHref, "l2-explorer", l2TransactionHash),
+    transactionHistoryLink("L1 roll-up", l1RouteHref, l1RollupHash ? "l1-rollup" : "l2-explorer", l1RouteValue),
     transactionHistoryLink("Batch data", batchRecordHref, "dual-record", batch?.id)
   ].filter(Boolean);
   const route = [
@@ -2278,13 +2277,12 @@ function dualReceiptObjectTransaction(object = {}, { proof = {}, batch = null, o
     status: firstNonEmpty(custom.status, "executed"),
     executedAt: firstNonEmpty(custom.executed_at, custom.executedAt, object.whenModified, proof.generatedAt)
   };
-  const batchExplorerHref = l2BatchHref || l1RollupHref;
-  const batchExplorerSource = l2BatchHref ? "l2-explorer" : l1RollupHref ? "l1-rollup" : null;
   const links = [
     transactionHistoryLink("Receipt", receiptObjectConsoleHref || receiptObjectRecordHref, receiptObjectConsoleHref ? "console" : "dual-record", receiptObjectId),
     transactionHistoryLink("Data", receiptObjectRecordHref, "dual-record", receiptObjectId),
-    transactionHistoryLink(actionScope === "batch_proof" ? "L3 proof action" : "L3 action", actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", actionId),
-    transactionHistoryLink("Block explorer", batchExplorerHref, batchExplorerSource, l2TransactionHash || l1RollupHash),
+    transactionHistoryLink(actionScope === "batch_proof" ? "L3 explorer" : "L3 explorer", actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", actionId),
+    transactionHistoryLink("L2 explorer", l2BatchHref, "l2-explorer", l2TransactionHash),
+    transactionHistoryLink("L1 roll-up", l1RouteHref, l1RollupHash ? "l1-rollup" : "l2-explorer", l1RouteValue),
     transactionHistoryLink("Batch data", batchRecordHref, "dual-record", batch?.id)
   ].filter(Boolean);
 
@@ -2464,9 +2462,12 @@ function transactionHistoryLink(label, href, source, detail = null) {
 function normalizedTransactionLinkLabel(label, source) {
   const raw = String(label || "Link");
   const lower = raw.toLowerCase();
-  const isBatchLayer = lower.includes("l2/l1") || lower.includes("l2 batch");
-  if (isBatchLayer && (source === "l2-explorer" || source === "l1-rollup")) return "Block explorer";
-  if (isBatchLayer && source === "dual-record") return "Batch data";
+  const isL2Batch = lower.includes("l2/l1") || lower.includes("l2 batch") || lower === "block explorer";
+  if (isL2Batch && source === "l2-explorer") return "L2 explorer";
+  if (isL2Batch && source === "l1-rollup") return "L1 roll-up";
+  if (lower.includes("l3")) return source === "l3-explorer" ? "L3 explorer" : raw;
+  if (lower.includes("l1")) return "L1 roll-up";
+  if (isL2Batch && source === "dual-record") return "Batch data";
   return raw;
 }
 
@@ -2735,7 +2736,7 @@ function buildDualDataLinks({
   const batchExplorerHref = batchL2Href || rollupHref;
   addDualEntityLink(links, {
     id: "dual-record-batch",
-    label: batchExplorerHref ? "Block explorer" : "Batch data",
+    label: batchExplorerHref ? "L2/L1 explorers" : "Batch data",
     href: batchExplorerHref || batchRecordHref,
     detail: shortIdForLink(l1RollupHash || l2TransactionHash || dualBatch?.id),
     source: batchL2Href ? "l2-explorer" : rollupHref ? "l1-rollup" : "dual-record",

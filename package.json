@@ -4,6 +4,15 @@
   "private": true,
   "type": "module",
   "description": "DUAL x Kraken Agent Trading Passport demo with policy checks, paper execution, red-team scenarios, and audit trail.",
+  "homepage": "https://kraken-dual-agent-demo.vercel.app/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DualOrg/kraken-dual-agent-demo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DualOrg/kraken-dual-agent-demo/issues"
+  },
+  "license": "UNLICENSED",
   "dependencies": {
     "dual-sdk": "git+https://github.com/DualOrg/dual-sdk-ts.git"
   },

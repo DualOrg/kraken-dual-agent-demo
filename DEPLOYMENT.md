@@ -5,6 +5,7 @@
 Use local mode for the best demo today:
 
 ```bash
+npm install
 npm start
 ```
 
@@ -43,7 +44,9 @@ DUAL_TRADE_RECEIPT_TEMPLATE_ID=...
 DUAL_AUTH_MODE=api_key
 DUAL_WRITE_MODE=event_bus
 DUAL_EVENTBUS_WRITE_PATH=/ebus/execute
-DUAL_BLOCKSCOUT_BASE_URL=...
+DUAL_L3_EXPLORER_BASE_URL=https://explorer-testnet.dual.network
+DUAL_L2_EXPLORER_BASE_URL=https://explorer-test-v2.dual.network
+DUAL_L1_EXPLORER_BASE_URL=
 DEMO_ENABLE_EMAIL_AUTH=false
 DEMO_PUBLIC_DUAL_WRITES=true
 ```
@@ -54,7 +57,7 @@ API-key auth is suitable for linking the Vercel deployment to a real DUAL passpo
 
 Email-code auth is not required for the public demo. Leave `DEMO_ENABLE_EMAIL_AUTH=false` unless you deliberately want a private browser fallback. The production route is scoped API-key auth plus public demo writes.
 
-The app exposes DUAL data links in `/api/health`, `/api/dual/status`, `/api/proof`, and the Proof panel. By default, template and object cards open DUAL Console collection pages with the explicit entity id in the URL, action cards open Blockscout when an action hash is present, and each card keeps an app-served `Data` target under `/api/dual/records/...` for verified readback. Blockscout defaults to `https://explorer-test-v2.dual.network`; override `DUAL_BLOCKSCOUT_BASE_URL`, `DUAL_BLOCKSCOUT_TX_URL_TEMPLATE`, or `DUAL_BLOCKSCOUT_ACTION_URL_TEMPLATE` only if the explorer route changes. Override Console URL templates only after the target route has been verified.
+The app exposes DUAL data links in `/api/health`, `/api/dual/status`, `/api/proof`, and the Proof panel. By default, template and object cards open DUAL Console collection pages with the explicit entity id in the URL, action cards open the DUAL L3 explorer at `https://explorer-testnet.dual.network/actions/{actionId}`, and batch/roll-up cards open the DUAL L2 explorer at `https://explorer-test-v2.dual.network/tx/{transactionHash}` when a batch transaction hash is present. Each card keeps an app-served `Data` target under `/api/dual/records/...` for verified readback. Override `DUAL_L3_EXPLORER_BASE_URL`, `DUAL_L3_ACTION_URL_TEMPLATE`, `DUAL_L2_EXPLORER_BASE_URL`, `DUAL_L2_TX_URL_TEMPLATE`, `DUAL_L1_EXPLORER_BASE_URL`, or `DUAL_L1_ROLLUP_TX_URL_TEMPLATE` only if the explorer route changes. Legacy `DUAL_BLOCKSCOUT_*` variables are accepted as fallbacks, but new deployments should prefer the explicit L3/L2/L1 names. Override Console URL templates only after the target route has been verified.
 
 Recommended rollout:
 
@@ -65,7 +68,7 @@ Recommended rollout:
 5. Set `DUAL_TRADE_RECEIPT_TEMPLATE_ID` in Vercel.
 6. Set `DEMO_PUBLIC_DUAL_WRITES=true` or leave it unset; public demo writes default to enabled when DUAL write readiness is active.
 7. Set `DUAL_WRITE_MODE=event_bus` for scoped API-key deployments.
-8. Verify the default Console and Blockscout links, then override the URL templates only if DUAL changes the route shape.
+8. Verify the default Console, L3 explorer, L2 explorer, and L1 roll-up links, then override the URL templates only if DUAL changes the route shape.
 9. Redeploy and verify `/api/dual/status`, `/api/dual/write-readiness`, `/api/dual/trade-receipts`, `/api/proof`, `/api/proof/verify`, `/api/openapi.json`, and MCP `initialize` / `tools/list` on `/mcp`.
 
 With `DEMO_PUBLIC_DUAL_WRITES=true`, production creates DUAL action logs for public paper-trade demo events whenever the server-side scoped API key is write-ready. Set `DEMO_PUBLIC_DUAL_WRITES=false` only for a read-linked rehearsal deployment. New receipt objects also require `DUAL_TRADE_RECEIPT_TEMPLATE_ID` or a receipt template created from the Proof panel for the current server run.

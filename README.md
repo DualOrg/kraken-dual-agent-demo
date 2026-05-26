@@ -1,62 +1,144 @@
 # DUAL x Kraken Agent Trading Passport
 
-A safe partner-demo repo that shows Kraken as the agent execution venue and DUAL as the policy, approval, and audit layer.
+A safe paper-trading demo that shows Kraken as the market/execution venue and DUAL as the policy, approval, state, audit, and proof layer for an AI agent.
 
-The public MVP runs in paper/simulator mode by default:
+The short version:
 
-- Kraken CLI market data if `kraken` is installed.
-- Kraken public market-data API when Kraken CLI is unavailable.
-- Simulator fallback only when both Kraken CLI and Kraken public API are unavailable.
-- Kraken spot paper trade command path when available, including DUALUSD paper trades.
-- DUAL `agent_trading_passport` lifecycle simulated locally with the same object model expected for a DUAL-backed integration.
-- Red-team scenarios that prove unsafe requests are blocked before execution.
-- Optional DUAL persistence adapter for syncing passport/audit lifecycle to DUAL when credentials are configured.
+> Kraken executes. DUAL governs, approves, records, and proves.
 
-## Run
+This repo is intentionally paper-only. It does not require Kraken API keys, does not place live Kraken orders, and should not be used for live trading without a separate private safety review.
+
+## Live Demo
+
+Open the public demo:
+
+<https://kraken-dual-agent-demo.vercel.app/>
+
+What to look for:
+
+- `MODE PAPER`: no real Kraken order is placed.
+- `KRAKEN PUBLIC API LIVE`: market data is coming from Kraken public data when available.
+- `DUAL WRITE-SYNC LIVE` or local DUAL status: shows whether paper-trade evidence is being written to DUAL or simulated locally.
+- `TRANSACTION HISTORY`: executed paper trades and blocked-policy proofs.
+- `LIVE PROOF`: proof hash, verifier status, DUAL readback, and settlement route.
+- `DUAL BINDING`: template, passport object, action log, receipt, batch, and explorer/data links.
+
+For presenter guidance, use:
+
+- [Demo playbook](docs/kraken-dual-demo-playbook.md)
+- [L3/L2/L1 run sheet](docs/kraken-dual-l3-l2-l1-demo-run-sheet.md)
+- [Deployment notes](DEPLOYMENT.md)
+
+## New User Paths
+
+Use the path that matches what you are trying to do.
+
+| Path | Use this when | Requires credentials |
+| --- | --- | --- |
+| Live demo viewer | You only want to inspect the current public demo. | No |
+| Local developer | You want to run and change the paper demo locally. | No |
+| DUAL operator | You want DUAL object/action/receipt writes. | Yes, scoped DUAL API key |
+| Private trading research | You want live Kraken trading or account access. | Not supported in this repo |
+
+## Requirements
+
+- Node.js 20 or newer.
+- npm.
+- Git.
+- Network access to GitHub during `npm install` because `dual-sdk` is installed from `DualOrg/dual-sdk-ts`.
+- Optional: Kraken CLI, only if you want local Kraken CLI paper commands. The app works without it.
+
+## Quick Start: Local Paper Demo
 
 ```bash
+git clone https://github.com/DualOrg/kraken-dual-agent-demo.git
+cd kraken-dual-agent-demo
+npm install
 npm start
 ```
 
 Open <http://localhost:4173>.
 
-## Test
+No `.env` file is required for the local paper/simulator path. The app will:
 
-In one terminal:
+- Try Kraken CLI market data if the `kraken` binary is installed.
+- Fall back to Kraken public market-data API when Kraken CLI is unavailable.
+- Fall back to deterministic simulator data only when both are unavailable.
+- Keep DUAL state local unless DUAL credentials are configured.
+
+If port `4173` is busy:
+
+```bash
+PORT=4174 npm start
+```
+
+## Optional Local `.env`
+
+For explicit local settings, copy the example:
+
+```bash
+cp .env.example .env
+```
+
+The default `.env.example` is safe for local paper mode and keeps DUAL writes disabled. Do not put secrets in browser code, screenshots, logs, commits, or DUAL objects.
+
+## First Run Walkthrough
+
+After the app opens:
+
+1. Confirm the status chips show `PAPER` and either Kraken public data or simulator fallback.
+2. Use the default safe proposal, or choose `DUALUSD`, `buy`, and a small notional such as `$10` or `$75`.
+3. Click `CHECK POLICY`.
+4. Confirm the policy decision is `ALLOW`.
+5. Click `EXECUTE PAPER TRADE`.
+6. Open or inspect `TRANSACTION HISTORY` and `LIVE PROOF`.
+7. Trigger a red-team scenario, such as leverage or oversized order, and confirm it is blocked.
+
+The successful paper trade proves the happy path. The blocked action proves the agent is constrained by a mandate.
+
+## Test and Validate
+
+Static syntax check:
+
+```bash
+npm run check
+```
+
+Smoke test against a running server:
 
 ```bash
 npm start
 ```
 
-In another:
+In another terminal:
 
 ```bash
 npm test
 ```
 
-## Kraken CLI Integration
+The smoke test resets local state, executes paper trades, checks proof/readback surfaces, verifies MCP tools, and checks red-team blocking. Use it against local or disposable demo state.
 
-Install Kraken CLI separately when ready:
-
-```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/krakenfx/kraken-cli/releases/latest/download/kraken-cli-installer.sh | sh
-```
-
-The adapter targets the documented safe commands:
+To test a different URL:
 
 ```bash
-kraken ticker BTCUSD -o json
-kraken ticker DUALUSD -o json
-kraken paper init --balance 10000 -o json
-kraken paper buy BTCUSD 0.01 -o json
-kraken paper buy DUALUSD 1000 -o json
+DEMO_BASE_URL=http://localhost:4174 npm test
 ```
 
-If the binary is missing or returns an error, the app falls back to Kraken's public ticker API for market data. It uses deterministic simulated data only if both CLI and public API are unavailable.
+## Modes
 
-## DUAL Persistence
+### Local Mode
 
-By default the demo uses local persistence. To sync lifecycle events to real DUAL objects, configure:
+Local mode is the default. It needs no credentials and is the best path for a new developer.
+
+```text
+DUAL_PERSISTENCE_MODE=local
+```
+
+### DUAL-Backed Mode
+
+DUAL-backed mode links the demo to real DUAL templates, a passport object, event-bus actions, receipt objects, and batch/readback evidence.
+
+Minimum server-side configuration:
 
 ```bash
 DUAL_PERSISTENCE_MODE=dual
@@ -69,29 +151,83 @@ DUAL_TRADE_RECEIPT_TEMPLATE_ID=...
 DUAL_AUTH_MODE=api_key
 DUAL_WRITE_MODE=event_bus
 DUAL_EVENTBUS_WRITE_PATH=/ebus/execute
-DUAL_SERVICE_ACCOUNT_TOKEN=...
-DUAL_SERVICE_ACCOUNT_REFRESH_TOKEN=...
-DUAL_BLOCKSCOUT_BASE_URL=...
 DEMO_ENABLE_EMAIL_AUTH=false
 DEMO_PUBLIC_DUAL_WRITES=true
 ```
 
-The adapter is intentionally optional. If the DUAL SDK or credentials are unavailable, the app keeps running in local simulator mode.
+The DUAL adapter is optional. If the SDK or credentials are unavailable, the app keeps running in local simulator mode.
 
-With current DUAL testnet auth, a scoped API key can link to and verify a real DUAL passport object and write event-bus actions. Set `DUAL_AUTH_MODE=api_key`, `DUAL_WRITE_MODE=event_bus`, and use the current action path `/ebus/execute`. The event-bus endpoint no longer needs a DUAL bearer token. The old `DUAL_AUTH_MODE=both` value is accepted as a legacy alias for `api_key` and does not cause the app to send a DUAL bearer header.
+### Public Deployment Mode
 
-The app uses scoped API-key auth as the default write path. The older DUAL email-code flow is not required for this demo and is hidden/disabled unless `DEMO_ENABLE_EMAIL_AUTH=true` is set for a private fallback.
+Public deployments can write paper-trade evidence to DUAL when all of these are true:
 
-The proof and health payloads include explicit DUAL links by default. Template and object cards open the DUAL Console collection view with the exact entity id in the URL, action cards open the DUAL L3 explorer (`https://explorer-testnet.dual.network/actions/{actionId}`), and batch/roll-up proof opens the DUAL L2 explorer (`https://explorer-test-v2.dual.network/tx/{transactionHash}`) when a batch transaction hash is present. Every card keeps an app-served `Data` target under `/api/dual/records/...` for verified readback. Override `DUAL_CONSOLE_ORG_URL_TEMPLATE`, `DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE`, `DUAL_CONSOLE_OBJECT_URL_TEMPLATE`, or `DUAL_CONSOLE_ACTION_URL_TEMPLATE` only when a more precise Console route has been verified. Set `DUAL_L3_EXPLORER_BASE_URL`, `DUAL_L3_ACTION_URL_TEMPLATE`, `DUAL_L2_EXPLORER_BASE_URL`, `DUAL_L2_TX_URL_TEMPLATE`, or `DUAL_L1_ROLLUP_TX_URL_TEMPLATE` if the network explorer routes change. The legacy `DUAL_BLOCKSCOUT_*` variables are still accepted as fallbacks.
+- `DUAL_PERSISTENCE_MODE=dual`
+- A scoped server-side `DUAL_API_KEY` is configured.
+- `DUAL_WRITE_MODE=event_bus`
+- `DEMO_PUBLIC_DUAL_WRITES=true`
+- The passport template/object and trade receipt template are configured.
 
-Public demo deployments write paper-trade evidence to DUAL by default when `DEMO_PUBLIC_DUAL_WRITES=true` and the server-side scoped DUAL API key is configured. There is no browser token step. If `DEMO_PUBLIC_DUAL_WRITES=false`, trades remain local paper trades and will not create DUAL action logs or receipt objects.
+There is no browser token step for the public demo. The older DUAL email-code flow is hidden unless `DEMO_ENABLE_EMAIL_AUTH=true` is explicitly set for a private fallback.
 
-Executed paper trades also create deterministic `trade_receipt` records. When `DUAL_TRADE_RECEIPT_TEMPLATE_ID` is configured, or a receipt template is created from the Proof panel during the current server run, each executed trade can be minted as its own DUAL receipt object linked to the passport, proposal, policy hash, execution digest, and audit event. Without that template the app still creates local receipts and exposes a replay queue for later minting; the DUAL Console will not show new receipt objects until the template is configured and minting succeeds.
+## DUAL Setup Checklist
+
+1. Create the DUAL passport template from [dual-agent-passport.schema.json](dual-agent-passport.schema.json).
+2. Mint one passport object for the Kraken Market Agent.
+3. Set `DUAL_AGENT_PASSPORT_TEMPLATE_ID`.
+4. Set `DUAL_AGENT_PASSPORT_OBJECT_ID`.
+5. Create the trade receipt template from [dual-trade-receipt.schema.json](dual-trade-receipt.schema.json).
+6. Set `DUAL_TRADE_RECEIPT_TEMPLATE_ID`.
+7. Set `DUAL_AUTH_MODE=api_key`.
+8. Set `DUAL_WRITE_MODE=event_bus`.
+9. Set `DUAL_EVENTBUS_WRITE_PATH=/ebus/execute`.
+10. Set `DEMO_PUBLIC_DUAL_WRITES=true` only for a deployment intended to create DUAL paper-trade evidence.
+11. Verify:
+    - `GET /api/dual/status`
+    - `GET /api/dual/write-readiness`
+    - `GET /api/proof`
+    - `GET /api/proof/verify`
+    - `GET /api/transactions/history`
+
+## Kraken CLI Integration
+
+Kraken CLI is optional. Install it only when you want local CLI-backed market or paper command paths:
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/krakenfx/kraken-cli/releases/latest/download/kraken-cli-installer.sh | sh
+```
+
+The adapter targets these safe commands:
+
+```bash
+kraken ticker BTCUSD -o json
+kraken ticker DUALUSD -o json
+kraken paper init --balance 10000 -o json
+kraken paper buy BTCUSD 0.01 -o json
+kraken paper buy DUALUSD 1000 -o json
+```
+
+If the binary is missing or returns an error, the app falls back to Kraken public ticker API for market data. It uses deterministic simulated data only if both CLI and public API are unavailable.
+
+On Vercel, the default serverless runtime will not have the `kraken` binary. Use Kraken public API plus simulator-safe paper execution there unless you package a binary, host the server on a VM, or replace CLI execution with an approved tool path.
+
+## API Quick Checks
+
+```bash
+curl http://localhost:4173/api/health
+curl http://localhost:4173/api/proof
+curl http://localhost:4173/api/proof/verify
+curl http://localhost:4173/api/transactions/history
+```
 
 Useful endpoints:
 
 ```text
 GET  /api/openapi.json
+GET  /api/health
+GET  /api/market?pair=DUALUSD
+POST /api/propose
+POST /api/execute-paper
+POST /api/red-team
 GET  /api/dual/status
 GET  /api/dual/write-readiness
 GET  /api/dual/auth/status
@@ -100,11 +236,11 @@ POST /api/dual/auth/verify-code
 GET  /api/dual/replay-queue
 POST /api/dual/replay-queue/execute
 GET  /api/dual/trade-receipts
+POST /api/dual/trade-receipts/replay
 GET  /api/dual/records/templates/{templateId}
 GET  /api/dual/records/objects/{objectId}
 GET  /api/dual/records/actions/{actionId}
 GET  /api/dual/records/batches/{batchId}
-POST /api/dual/trade-receipts/replay
 GET  /api/dual/passport
 GET  /api/dual/template-readback
 GET  /api/transactions/history
@@ -118,17 +254,41 @@ GET  /api/proof/verify
 POST /mcp
 ```
 
-Template schemas: `dual-agent-passport.schema.json` and `dual-trade-receipt.schema.json`.
+`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, trade receipt template/readiness, write-readiness, DUAL record/explorer link metadata, local audit root hash, replay queue root, trade receipt root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash.
 
-`/api/proof` returns a portable proof bundle with Kraken source status, DUAL template/passport readback, trade receipt template/readiness, write-readiness, DUAL record/explorer link metadata, local audit root hash, replay queue root, trade receipt root, latest event hashes, caveats, verification checks, latest DUAL sequencer batch status, and a stable bundle hash. `generatedAt` and presentation links are outside the hashed payload, so repeated proof reads produce the same hash until the underlying demo state changes. `/api/proof/verify` returns the verifier result and check list. `/api/transactions/history` returns executed paper trades as a presenter-ready proof ledger with summary counts, proposal id, receipt id, pair, side, quantity, price, notional, DUAL receipt object, L3 action, L2 batch, L1 roll-up, route steps, and app-served record links. If a serverless redeploy loses local receipt state, the endpoint first recovers DUAL receipt objects with their trade economics, then falls back to a latest proof row from DUAL batch/action readback instead of showing an empty ledger. `/api/dual/replay-queue` exposes the exact DUAL event-bus envelopes. `/api/dual/replay-queue/execute` executes those envelopes oldest-first once the server has scoped API-key write auth for `/ebus/execute`. `/api/dual/trade-receipts/replay` mints pending executed-trade receipts into DUAL once the trade receipt template and write readiness are active.
+`/api/transactions/history` returns executed paper trades and blocked-policy proofs as a presenter-ready proof ledger with proposal id, receipt id, pair, side, quantity, price, notional, DUAL receipt object, L3 action, L2 batch, L1 roll-up, route steps, and app-served record links.
 
-The proof bundle surfaces latest batch id, status, proof value, Merkle root, L3 action hash, L2 batch transaction hash, and L1 roll-up transaction hash when available. The UI shows this as a first-class `L3 action -> L2 batch -> L1 roll-up` rail plus compact proof rows.
+The proof bundle surfaces latest batch id, status, proof value, Merkle root, L3 action hash, L2 batch transaction hash, and L1 roll-up transaction hash when available. The UI shows this as `L3 action -> L2 batch -> L1 roll-up`.
 
-## Agent API and MCP
+## MCP Quick Start
 
-`GET /api/openapi.json` exposes the HTTP surface for clients that want a normal REST contract. The document also advertises the MCP endpoint, tool names, and the public safety policy.
+`POST /mcp` is a JSON-RPC MCP facade for agent clients. It is paper-only and does not expose live Kraken order placement.
 
-`POST /mcp` is a JSON-RPC MCP facade for agent clients. It exposes paper-only tools:
+Initialize:
+
+```bash
+curl -s http://localhost:4173/mcp \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+```
+
+List tools:
+
+```bash
+curl -s http://localhost:4173/mcp \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+```
+
+Execute a small paper trade through the same policy path as the UI:
+
+```bash
+curl -s http://localhost:4173/mcp \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"kraken_dual_propose_and_execute_paper_trade","arguments":{"pair":"DUALUSD","side":"buy","notional_usd":10}}}'
+```
+
+Available MCP tools:
 
 - `kraken_dual_get_status`
 - `kraken_dual_get_market`
@@ -144,21 +304,21 @@ The proof bundle surfaces latest batch id, status, proof value, Merkle root, L3 
 - `kraken_dual_get_transaction_history`
 - `kraken_dual_red_team`
 
-The MCP tools support `DUALUSD` alongside `BTCUSD`, `ETHUSD`, and `SOLUSD`. Trading tools only create or execute paper proposals through the same DUAL policy checks as the UI. Public MCP intentionally does not expose live Kraken order placement or standalone DUAL replay execution.
+The tools support `DUALUSD`, `BTCUSD`, `ETHUSD`, and `SOLUSD`. If DUAL write readiness is unavailable, paper trades still execute locally and return top-level warnings such as `dual_anchoring_not_available`, `dual_replay_pending`, or `dual_receipts_pending`.
 
-No MCP authentication is required. When DUAL write readiness is active, paper trade proposal/execution evidence anchors to DUAL automatically. If DUAL write readiness is not active, trade responses return top-level `warnings` such as `dual_anchoring_not_available`, `dual_replay_pending`, or `dual_receipts_pending`. `kraken_dual_get_status` accepts `compact: true` for a flat agent-friendly status with `canWriteNow` and `writeReason`. Tool metadata includes `x-dual.requiresWriteReadinessForAnchoring` so clients can distinguish paper execution from DUAL anchoring.
+For browser-based MCP hosts that send an `Origin` header from a different host, set `DEMO_MCP_ALLOWED_ORIGINS` to the comma-separated allowed origins.
 
 ## DUAL Object Model
 
-The MVP uses a DUAL-shaped object named `agent_trading_passport`:
+The demo uses a DUAL-shaped object named `agent_trading_passport`:
 
 - `mode`: paper
-- `allowedPairs`: BTCUSD, ETHUSD, SOLUSD, DUALUSD
-- `maxNotionalUsd`: 250
-- `maxDailyNotionalUsd`: 1000
-- `leverageAllowed`: false
-- `humanApprovalRequiredAbove`: 100
-- `dualObjectState`: active, awaiting approval, approved, executed, blocked
+- `allowedPairs`: `BTCUSD`, `ETHUSD`, `SOLUSD`, `DUALUSD`
+- `maxNotionalUsd`: `250`
+- `maxDailyNotionalUsd`: `1000`
+- `leverageAllowed`: `false`
+- `humanApprovalRequiredAbove`: `100`
+- `dualObjectState`: `active`, `awaiting approval`, `approved`, `executed`, `blocked`
 
 Every important action creates an audit event with a provenance hash. Every successful paper execution also creates a `trade_receipt`:
 
@@ -172,13 +332,49 @@ Every important action creates an audit event with a provenance hash. Every succ
 
 When the DUAL receipt template is configured, these receipts can be minted one-per-trade as DUAL objects.
 
+## DUAL Links and Explorer Routes
+
+The app keeps both human-facing links and app-served data links:
+
+- Console org: `https://console-testnet.dual.network/{orgId}`
+- Console template: `https://console-testnet.dual.network/{orgId}/collections/templates?templateId={templateId}`
+- Console object: `https://console-testnet.dual.network/{orgId}/collections/objects?objectId={objectId}`
+- Console action log: `https://console-testnet.dual.network/{orgId}/collections/action-logs?actionId={actionId}`
+- L3 action explorer: `https://explorer-testnet.dual.network/actions/{actionId}`
+- L2 batch transaction: `https://explorer-test-v2.dual.network/tx/{transactionHash}`
+- App data readback: `/api/dual/records/...`
+
+Override `DUAL_CONSOLE_*`, `DUAL_L3_*`, `DUAL_L2_*`, or `DUAL_L1_*` URL templates only after the target route has been verified. Legacy `DUAL_BLOCKSCOUT_*` variables are still accepted as fallbacks.
+
 ## Safety Rules
 
 - Public demo is paper-only.
 - No Kraken API keys are required.
+- No live Kraken order placement is exposed by the UI or public MCP surface.
 - No keys should be placed in browser code, DUAL objects, screenshots, logs, or commits.
-- Public demo DUAL writes are enabled when server-side DUAL API-key write readiness is active.
-- Live trading is intentionally out of scope for this repo until a separate private safety review.
+- DUAL writes are only for paper-trade evidence and only when server-side DUAL write readiness is active.
+- Live trading is out of scope until explicit approval, least-privilege keys, validation mode, and emergency cancellation controls exist.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `npm install` cannot fetch `dual-sdk` | GitHub access/network issue for `DualOrg/dual-sdk-ts`. | Confirm GitHub access and retry with network access. |
+| Port `4173` is busy | Another local server is running. | Start with `PORT=4174 npm start`. |
+| UI shows local DUAL mode | `DUAL_PERSISTENCE_MODE=local` or missing DUAL credentials. | Configure DUAL env vars only if you need live DUAL writes. |
+| DUAL writes are pending | Missing scoped API key, template, passport object, receipt template, or `DUAL_WRITE_MODE=event_bus`. | Check `/api/dual/write-readiness`. |
+| Kraken CLI unavailable | `kraken` binary is not installed or not in `PATH`. | Let the app use Kraken public API fallback, or install Kraken CLI. |
+| Vercel paper execution is simulated | Serverless runtime has no `kraken` binary. | Use public API/simulator path, package the binary, or host on a VM. |
+| MCP browser client fails CORS | Origin is not allowlisted. | Set `DEMO_MCP_ALLOWED_ORIGINS`. |
+
+## Support and Contributing
+
+This is a public demo repo under `DualOrg`.
+
+- Issues: <https://github.com/DualOrg/kraken-dual-agent-demo/issues>
+- Repository: <https://github.com/DualOrg/kraken-dual-agent-demo>
+- Contribution guidance: [CONTRIBUTING.md](CONTRIBUTING.md)
+- License status: no open-source license is declared yet. Treat the code as a DualOrg demo artifact until a `LICENSE` file is added.
 
 ## Build Roadmap
 

@@ -1995,7 +1995,7 @@ async function publicTransactionHistory(req, args = {}) {
   const receiptQueue = publicTradeReceiptQueue(req, receipts);
   const batch = proof.dualBatch?.available ? proof.dualBatch : null;
   const orgId = firstNonEmpty(proof.dualObject?.orgId, proof.status?.dualMode?.orgId, process.env.DUAL_ORG_ID);
-  const transactions = filteredReceipts.slice(0, limit).map((receipt) => transactionHistoryItem(receipt, { proof, batch, orgId }));
+  let transactions = filteredReceipts.slice(0, limit).map((receipt) => transactionHistoryItem(receipt, { proof, batch, orgId }));
   const latestBatch = batch ? {
     id: batch.id,
     status: batch.status,
@@ -2004,24 +2004,44 @@ async function publicTransactionHistory(req, args = {}) {
     transactionHash: firstNonEmpty(batch.l2TransactionHash, batch.transactionHash),
     l1TransactionHash: firstNonEmpty(batch.l1TransactionHash, batch.rollupTransactionHash)
   } : null;
+  if (!receiptId && !transactions.length) {
+    transactions = recoveredTransactionsFromProof({ proof, batch, orgId, limit });
+  }
+  const effectiveCounts = transactionHistoryCounts(transactions, receiptQueue, receipts.length);
 
   return {
     schemaVersion: "dual-kraken-transaction-history.v1",
     generatedAt: new Date().toISOString(),
-    transactionCount: receipts.length,
+    transactionCount: effectiveCounts.transactionCount,
+    receiptCount: receipts.length,
     filteredCount: filteredReceipts.length,
-    mintedCount: receiptQueue.syncedCount,
-    pendingCount: receiptQueue.pendingCount,
+    mintedCount: effectiveCounts.mintedCount,
+    pendingCount: effectiveCounts.pendingCount,
     proofHash: proof.proofHash,
     summary: transactionHistorySummary(transactions, {
-      totalCount: receipts.length,
-      mintedCount: receiptQueue.syncedCount,
-      pendingCount: receiptQueue.pendingCount,
+      totalCount: effectiveCounts.transactionCount,
+      mintedCount: effectiveCounts.mintedCount,
+      pendingCount: effectiveCounts.pendingCount,
       proofHash: proof.proofHash,
       latestBatch
     }),
     latestBatch,
     transactions
+  };
+}
+
+function transactionHistoryCounts(transactions = [], receiptQueue = {}, localReceiptCount = 0) {
+  if (localReceiptCount) {
+    return {
+      transactionCount: localReceiptCount,
+      mintedCount: receiptQueue.syncedCount || 0,
+      pendingCount: receiptQueue.pendingCount || 0
+    };
+  }
+  return {
+    transactionCount: transactions.length,
+    mintedCount: transactions.filter((tx) => tx.dual?.synced).length,
+    pendingCount: transactions.filter((tx) => !tx.dual?.synced).length
   };
 }
 
@@ -2085,6 +2105,8 @@ function transactionHistoryItem(receipt = {}, { proof = {}, batch = null, orgId 
   const actionL3Href = renderUrlTemplate(dualLinkTemplates.l3Action, { actionId, actionHash });
   const l2BatchHref = renderUrlTemplate(dualLinkTemplates.l2Transaction, { transactionHash: l2TransactionHash });
   const l1RollupHref = renderUrlTemplate(dualLinkTemplates.l1RollupTransaction, { transactionHash: l1RollupHash }) || l2BatchHref;
+  const l1RouteValue = l1RollupHash || l2TransactionHash;
+  const l1RouteHref = l1RollupHash ? l1RollupHref : l2BatchHref;
   const receiptDataHref = receipt.id ? `/api/transactions/history?receiptId=${encodeURIComponent(receipt.id)}` : null;
   const synced = Boolean(receipt.dualSync?.synced);
   const links = [
@@ -2097,7 +2119,7 @@ function transactionHistoryItem(receipt = {}, { proof = {}, batch = null, orgId 
     transactionHistoryRouteStep("receipt", "Receipt object", receiptObjectId, receiptObjectConsoleHref || receiptObjectRecordHref, receiptObjectConsoleHref ? "console" : "dual-record"),
     transactionHistoryRouteStep("l3", "L3 action", actionId, actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", { hash: actionHash }),
     transactionHistoryRouteStep("l2", "L2 batch tx", l2TransactionHash || batch?.id, l2BatchHref || batchRecordHref, l2BatchHref ? "l2-explorer" : "dual-record", { batchId: batch?.id }),
-    transactionHistoryRouteStep("l1", "L1 roll-up", l1RollupHash, l1RollupHash ? l1RollupHref : null, "l1-rollup", { batchId: batch?.id })
+    transactionHistoryRouteStep("l1", "L1 roll-up", l1RouteValue, l1RouteHref, l1RollupHash ? "l1-rollup" : "l2-explorer", { batchId: batch?.id, status: l1RollupHash ? "roll-up tx" : "via L2" })
   ].filter(Boolean);
 
   return {
@@ -2131,6 +2153,78 @@ function transactionHistoryItem(receipt = {}, { proof = {}, batch = null, orgId 
     route,
     links
   };
+}
+
+function recoveredTransactionsFromProof({ proof = {}, batch = null, orgId = null, limit = 12 } = {}) {
+  if (!batch?.id) return [];
+  const actions = [...(batch.affectedActions || [])].reverse();
+  const mintAction = actions.find((action) => String(action?.name || "").toLowerCase() === "mint");
+  const action = mintAction || actions.find((item) => item?.id) || null;
+  if (!action && !batch.id) return [];
+  const actionId = action?.id || null;
+  const actionHash = action?.hash || null;
+  const l2TransactionHash = firstNonEmpty(batch.l2TransactionHash, batch.transactionHash);
+  const l1RollupHash = firstNonEmpty(batch.l1TransactionHash, batch.rollupTransactionHash);
+  const l3Href = renderUrlTemplate(dualLinkTemplates.l3Action, { actionId, actionHash });
+  const actionConsoleHref = orgId ? renderUrlTemplate(dualLinkTemplates.consoleAction, { orgId, actionId }) : null;
+  const actionRecordHref = renderUrlTemplate(dualRecordLinkTemplates.action, { actionId });
+  const l2Href = renderUrlTemplate(dualLinkTemplates.l2Transaction, { transactionHash: l2TransactionHash });
+  const l1Href = renderUrlTemplate(dualLinkTemplates.l1RollupTransaction, { transactionHash: l1RollupHash }) || l2Href;
+  const batchRecordHref = renderUrlTemplate(dualRecordLinkTemplates.batch, { batchId: batch.id });
+  const l1RouteValue = l1RollupHash || l2TransactionHash;
+  const l1RouteHref = l1RollupHash ? l1Href : l2Href;
+  const links = [
+    transactionHistoryLink("L3 action", l3Href || actionConsoleHref || actionRecordHref, l3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", actionId),
+    transactionHistoryLink("L2 batch", l2Href || batchRecordHref, l2Href ? "l2-explorer" : "dual-record", l2TransactionHash || batch.id),
+    transactionHistoryLink("L1 roll-up", l1RouteHref, l1RollupHash ? "l1-rollup" : "l2-explorer", l1RouteValue),
+    transactionHistoryLink("Data", batchRecordHref, "dual-record", batch.id)
+  ].filter(Boolean);
+
+  return [{
+    id: `dual-batch-${batch.id}`,
+    proposalId: null,
+    pair: "DUAL proof",
+    side: "settled",
+    notionalUsd: null,
+    executionDigest: proof.proofHash || batch.hash || null,
+    receiptHash: batch.hash || proof.proofHash || null,
+    executedAt: batch.updatedAt || batch.createdAt || proof.generatedAt || null,
+    recoveredFrom: "dual-batch-readback",
+    recoveryDetail: "Recovered from DUAL batch readback because this serverless instance has no local trade receipt state.",
+    title: mintAction ? "DUAL receipt mint" : "Latest DUAL action",
+    statusValue: batch.proofValue || batch.status || "proof",
+    status: "dual_recovered",
+    statusLabel: "Recovered DUAL proof",
+    dual: {
+      synced: true,
+      envelopeHash: null,
+      receiptObjectId: null,
+      receiptTemplateId: proof.dualTradeReceiptTemplate?.id || proof.status?.dualMode?.tradeReceiptTemplateId || null,
+      actionId,
+      actionHash,
+      integrityHash: batch.integrityRoot || null,
+      stateHash: batch.actionsHash || null,
+      stateChangeId: batch.id,
+      error: null,
+      reason: null
+    },
+    settlement: {
+      batchId: batch.id,
+      status: batch.status,
+      proofValue: batch.proofValue,
+      finality: batch.finality,
+      transactionHash: l2TransactionHash,
+      l1TransactionHash: l1RollupHash,
+      actionInLatestBatch: Boolean(actionId)
+    },
+    route: [
+      transactionHistoryRouteStep("receipt", "Receipt object", null, null, "dual-record"),
+      transactionHistoryRouteStep("l3", "L3 action", actionId, l3Href || actionConsoleHref || actionRecordHref, l3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", { hash: actionHash }),
+      transactionHistoryRouteStep("l2", "L2 batch tx", l2TransactionHash || batch.id, l2Href || batchRecordHref, l2Href ? "l2-explorer" : "dual-record", { batchId: batch.id }),
+      transactionHistoryRouteStep("l1", "L1 roll-up", l1RouteValue, l1RouteHref, l1RollupHash ? "l1-rollup" : "l2-explorer", { batchId: batch.id, status: l1RollupHash ? "roll-up tx" : "via L2" })
+    ],
+    links
+  }].slice(0, limit);
 }
 
 function transactionHistoryRouteStep(layer, label, id, href, source, extra = {}) {

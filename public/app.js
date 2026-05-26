@@ -723,8 +723,8 @@ function renderTransactionFocus(tx) {
         <time>${escapeHtml(formatTradeTime(tx.executedAt))}</time>
       </div>
       <div class="tx-focus-main">
-        <strong>${escapeHtml(`${String(tx.side || "buy").toUpperCase()} ${tx.pair || "DUALUSD"}`)}</strong>
-        <b>${money.format(Number(tx.notionalUsd || 0))}</b>
+        <strong>${escapeHtml(transactionTitle(tx))}</strong>
+        <b>${escapeHtml(transactionValue(tx))}</b>
       </div>
       <div class="tx-route">
         ${renderRouteStep("Receipt", receiptRoute)}
@@ -746,8 +746,8 @@ function renderTransactionRow(tx, index = 0) {
     <article class="${classes.join(" ")}">
       <div class="tx-row-main">
         <span class="tx-row-status">${escapeHtml(index === 0 ? "Latest" : tx.statusLabel || "Receipt")}</span>
-        <strong>${escapeHtml(String(tx.side || "buy").toUpperCase())} ${escapeHtml(tx.pair || "DUALUSD")}</strong>
-        <b>${money.format(Number(tx.notionalUsd || 0))}</b>
+        <strong>${escapeHtml(transactionTitle(tx))}</strong>
+        <b>${escapeHtml(transactionValue(tx))}</b>
       </div>
       <div class="tx-meta">
         <span>${escapeHtml(tx.proposalId || "proposal pending")}</span>
@@ -760,6 +760,19 @@ function renderTransactionRow(tx, index = 0) {
       </div>
     </article>
   `;
+}
+
+function transactionTitle(tx = {}) {
+  if (tx.title) return tx.title;
+  if (tx.recoveredFrom) return "DUAL proof";
+  return `${String(tx.side || "buy").toUpperCase()} ${tx.pair || "DUALUSD"}`;
+}
+
+function transactionValue(tx = {}) {
+  if (tx.notionalUsd === null || tx.notionalUsd === undefined) {
+    return tx.statusValue || tx.settlement?.proofValue || tx.settlement?.status || "proof";
+  }
+  return money.format(Number(tx.notionalUsd || 0));
 }
 
 function transactionRouteStep(tx, layer, fallbackValue = null) {

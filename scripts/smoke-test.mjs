@@ -177,6 +177,16 @@ assert(Number(transactionHistory.transactions[0]?.trade?.priceUsd || transaction
 assert(Number(transactionHistory.transactions[0]?.trade?.quantity || transactionHistory.transactions[0]?.quantity) > 0, "transaction history includes trade quantity");
 assert(transactionHistory.transactions[0]?.route?.some((step) => step.layer === "l3"), "transaction history exposes the L3 route");
 assert(transactionHistory.transactions[0]?.links?.some((link) => ["Receipt", "Data"].includes(link.label)), "transaction history exposes receipt/data links");
+const misleadingBatchLinks = transactionHistory.transactions
+  .flatMap((tx) => tx.links || [])
+  .filter((link) => /L2\/L1 batch|L2 batch/i.test(link.label) && link.source === "dual-record");
+assert(misleadingBatchLinks.length === 0, "transaction history does not label internal batch data as an L2/L1 explorer link");
+if (transactionHistory.summary?.latestL2TransactionHash) {
+  const explorerBatchLinks = transactionHistory.transactions
+    .flatMap((tx) => tx.links || [])
+    .filter((link) => link.label === "Block explorer");
+  assert(explorerBatchLinks.some((link) => link.source === "l2-explorer" && link.href?.includes("explorer-test-v2.dual.network/tx/")), "transaction history exposes L2 batch proof as a block explorer link when an L2 tx hash exists");
+}
 
 const redTeam = await post("/api/red-team", { scenario: "leverage" });
 assert(redTeam.policy.decision === "block", "leverage red-team scenario is blocked");

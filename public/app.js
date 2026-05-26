@@ -1282,24 +1282,26 @@ function proofReceiptLinks({ receipt = {}, receiptObjectId = null, actionId = nu
       source: "dual-record"
     },
     historyLinkFromProof("L3 action", actionLink, actionId),
-    historyLinkFromProof("L2/L1 batch", batchLink, state.proof?.dualBatch?.transactionHash || state.proof?.dualBatch?.id)
+    historyLinkFromProof("Block explorer", batchLink, state.proof?.dualBatch?.l2TransactionHash || state.proof?.dualBatch?.transactionHash || state.proof?.dualBatch?.l1TransactionHash || state.proof?.dualBatch?.id)
   ];
   return links.filter((link) => link?.href);
 }
 
 function historyLinkFromProof(label, link, detail = null) {
   if (!link?.href) return null;
+  const target = preferredHistoryLinkTarget(label, link);
   return {
-    label,
-    href: link.href,
-    source: link.source,
-    detail: shortId(detail || link.detail || link.href)
+    label: normalizedTransactionLinkLabel(label, target.source),
+    href: target.href,
+    source: target.source,
+    detail: shortId(detail || target.detail || link.detail || target.href)
   };
 }
 
 function renderTransactionLinks(links = []) {
   const uniqueLinks = [...new Map(links
     .filter((link) => link?.href)
+    .map((link) => normalizedTransactionLink(link))
     .map((link) => [`${link.label}:${link.href}`, link])).values()];
   if (!uniqueLinks.length) return `<span class="tx-link muted">pending</span>`;
   return uniqueLinks.slice(0, 4).map((link) => `
@@ -1307,6 +1309,37 @@ function renderTransactionLinks(links = []) {
       ${escapeHtml(link.label)}
     </a>
   `).join("");
+}
+
+function preferredHistoryLinkTarget(label, link = {}) {
+  const targets = Array.isArray(link.targets) ? link.targets : [];
+  if (isBatchExplorerLabel(label)) {
+    return targets.find((target) => target?.source === "l2-explorer")
+      || targets.find((target) => target?.source === "l1-rollup")
+      || link;
+  }
+  return link;
+}
+
+function normalizedTransactionLink(link = {}) {
+  return {
+    ...link,
+    label: normalizedTransactionLinkLabel(link.label, link.source)
+  };
+}
+
+function normalizedTransactionLinkLabel(label, source) {
+  const raw = String(label || "Link");
+  const lower = raw.toLowerCase();
+  if (isBatchExplorerLabel(raw) && (source === "l2-explorer" || source === "l1-rollup")) return "Block explorer";
+  if (isBatchExplorerLabel(raw) && source === "dual-record") return "Batch data";
+  if (lower === "l2 batch" && source === "l2-explorer") return "L2 explorer";
+  return raw;
+}
+
+function isBatchExplorerLabel(label) {
+  const lower = String(label || "").toLowerCase();
+  return lower.includes("l2/l1") || lower.includes("l2 batch") || lower.includes("block explorer");
 }
 
 function formatTradeTime(value) {

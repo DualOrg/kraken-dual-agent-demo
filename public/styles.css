@@ -3221,21 +3221,34 @@ input, select, textarea { font: inherit; color: inherit; }
 .binding-side-panel {
   border-right: 0;
   display: grid;
-  gap: 10px;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  padding: 14px;
+  gap: 8px;
+  grid-template-rows: auto auto minmax(118px, 0.68fr) minmax(156px, 0.96fr) minmax(136px, 0.84fr);
+  padding: 12px;
 }
 
 .binding-side-panel .binding-hero {
-  padding: 14px 16px;
+  border-radius: 8px;
+  padding: 8px 12px;
 }
 
 .binding-side-panel .binding-hero strong {
-  font-size: clamp(22px, 2vw, 30px);
+  font-size: clamp(18px, 1.5vw, 24px);
+  margin-top: 5px;
+}
+
+.binding-side-panel .binding-hero p {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  font-size: 11px;
+  line-height: 1.32;
+  margin-top: 5px;
+  overflow: hidden;
 }
 
 .binding-side-panel .binding-chain {
   align-content: start;
+  gap: 6px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   overflow: auto;
   padding-right: 4px;
@@ -3243,33 +3256,30 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .binding-side-panel .binding-node {
   gap: 5px;
-  min-height: 112px;
-  padding: 10px;
+  min-height: 68px;
+  padding: 7px;
 }
 
 .binding-side-panel .node-index {
-  font-size: 8px;
+  font-size: 7.6px;
 }
 
 .binding-side-panel .node-label {
-  font-size: 7.4px;
+  font-size: 7px;
 }
 
 .binding-side-panel .node-body strong {
-  font-size: 12px;
-  margin-top: 3px;
-}
-
-.binding-side-panel .node-body p {
-  -webkit-line-clamp: 2;
-  font-size: 9.6px;
-  line-height: 1.25;
+  font-size: 10.8px;
   margin-top: 2px;
 }
 
+.binding-side-panel .node-body p {
+  display: none;
+}
+
 .binding-side-panel .node-body code {
-  font-size: 8.4px;
-  margin-top: 3px;
+  font-size: 8px;
+  margin-top: 2px;
 }
 
 .binding-side-panel .node-links {
@@ -3279,6 +3289,131 @@ input, select, textarea { font: inherit; color: inherit; }
 .binding-side-panel .binding-target {
   font-size: 7.2px;
   padding: 3px 5px;
+}
+
+.rail-section {
+  background: rgba(7, 21, 20, 0.62);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rail-section-head {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  justify-content: space-between;
+  letter-spacing: 0.12em;
+  min-height: 25px;
+  padding: 6px 10px;
+  text-transform: uppercase;
+}
+
+.rail-section-head strong {
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.rail-section-head b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.binding-right-history .transaction-summary,
+.binding-right-history .policy-blocks,
+.binding-right-history .transaction-focus {
+  display: none;
+}
+
+.binding-right-history .transaction-history {
+  gap: 5px;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 10px 8px;
+}
+
+.binding-right-history .tx-row {
+  gap: 4px;
+  padding: 6px 7px;
+}
+
+.binding-right-history .tx-row-main {
+  gap: 5px;
+}
+
+.binding-right-history .tx-row-main strong {
+  font-size: 10.5px;
+}
+
+.binding-right-history .tx-row-main b,
+.binding-right-history .tx-meta,
+.binding-right-history .tx-link {
+  font-size: 7.8px;
+}
+
+.binding-right-history .tx-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.binding-right-history .tx-links {
+  gap: 3px;
+  max-height: 20px;
+  overflow: hidden;
+}
+
+.binding-right-history .history-empty {
+  font-size: 9px;
+  padding: 10px;
+}
+
+.binding-right-trace {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.binding-right-trace .trace-red-team {
+  border-bottom: 1px solid var(--line);
+  padding: 5px 10px;
+}
+
+.binding-right-trace .command-content {
+  border-right: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 6px 10px 8px;
+}
+
+.binding-right-trace .term-log {
+  font-size: 10px;
+  line-height: 1.42;
+  min-height: 0;
+  overflow: auto;
+}
+
+.binding-right-trace .term-line {
+  min-height: 22px;
+}
+
+.binding-right-trace .term-line .ts {
+  flex-basis: 58px;
+  font-size: 9px;
+}
+
+.binding-right-trace .term-line .src {
+  flex-basis: 68px;
+  font-size: 9px;
+}
+
+.binding-right-trace .term-line .msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .binding-event-trace {

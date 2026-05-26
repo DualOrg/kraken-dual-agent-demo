@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DUAL x Kraken Agent Passport</title>
-    <link rel="stylesheet" href="/styles.css?v=right-binding-20260526">
+    <link rel="stylesheet" href="/styles.css?v=right-rail-proof-20260526">
   </head>
   <body>
     <div class="app" data-brand="co">
@@ -180,11 +180,23 @@
             <div class="binding-chain" id="bindingChain">
               <div class="binding-empty">Loading DUAL binding proof...</div>
             </div>
-            <details class="event-trace-drawer binding-event-trace">
-              <summary>
+            <section class="rail-section binding-right-history" aria-label="Transaction history">
+              <div class="rail-section-head">
+                <span>Transaction history</span>
+                <strong><span id="transactionCountLabel">Trades</span> <b id="transactionCount">0</b></strong>
+              </div>
+              <div class="transaction-summary" id="transactionSummary" aria-label="Transaction proof summary"></div>
+              <div class="policy-blocks" id="policyBlocks" aria-label="Policy block proof"></div>
+              <div class="transaction-focus" id="transactionFocus" aria-label="Latest DUAL receipt"></div>
+              <div class="transaction-history" id="transactionHistory">
+                <div class="history-empty">No executed trades yet.</div>
+              </div>
+            </section>
+            <section class="rail-section binding-right-trace" aria-label="Event trace">
+              <div class="rail-section-head">
                 <span>Event trace</span>
                 <strong id="eventCount">0 events</strong>
-              </summary>
+              </div>
               <div class="red-team-row trace-red-team">
                 <span class="rt-label">Red team</span>
                 <button class="rt-btn" data-scenario="oversized" type="button">Oversized</button>
@@ -195,12 +207,12 @@
               <div class="command-content">
                 <ol class="term-log" id="timeline"></ol>
               </div>
-            </details>
+            </section>
           </article>
         </div>
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=right-binding-20260526"></script>
+    <script type="module" src="/app.js?v=right-rail-proof-20260526"></script>
   </body>
 </html>

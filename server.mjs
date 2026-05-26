@@ -2181,20 +2181,24 @@ async function recoveredReceiptTransactionsFromDual({ proof = {}, batch = null, 
 
   const actions = [...(batch?.affectedActions || [])].reverse();
   const mintAction = actions.find((action) => String(action?.name || "").toLowerCase() === "mint") || null;
+  const proofAction = actions.find((action) => action?.id) || null;
   return readback.objects
-    .map((object) => dualReceiptObjectTransaction(object, { proof, batch, orgId, action: mintAction }))
+    .map((object) => dualReceiptObjectTransaction(object, { proof, batch, orgId, action: mintAction, proofAction }))
     .filter(Boolean)
     .sort((left, right) => new Date(right.executedAt || 0) - new Date(left.executedAt || 0))
     .slice(0, limit);
 }
 
-function dualReceiptObjectTransaction(object = {}, { proof = {}, batch = null, orgId = null, action = null } = {}) {
+function dualReceiptObjectTransaction(object = {}, { proof = {}, batch = null, orgId = null, action = null, proofAction = null } = {}) {
   const custom = object.custom || {};
   const receiptObjectId = object.id || null;
   const receiptTemplateId = object.templateId || proof.dualTradeReceiptTemplate?.id || proof.status?.dualMode?.tradeReceiptTemplateId || null;
   const receiptId = firstNonEmpty(custom.receipt_id, custom.receiptId, receiptObjectId ? `dual-object-${receiptObjectId}` : null);
-  const actionId = action?.id || null;
-  const actionHash = action?.hash || null;
+  const directAction = action?.id ? action : null;
+  const batchProofAction = directAction ? null : proofAction;
+  const actionId = directAction?.id || batchProofAction?.id || null;
+  const actionHash = directAction?.hash || batchProofAction?.hash || null;
+  const actionScope = directAction ? "receipt" : batchProofAction ? "batch_proof" : null;
   const l2TransactionHash = firstNonEmpty(batch?.l2TransactionHash, batch?.transactionHash);
   const l1RollupHash = firstNonEmpty(batch?.l1TransactionHash, batch?.rollupTransactionHash);
   const receiptObjectRecordHref = renderUrlTemplate(dualRecordLinkTemplates.object, { objectId: receiptObjectId });
@@ -2230,7 +2234,7 @@ function dualReceiptObjectTransaction(object = {}, { proof = {}, batch = null, o
   const links = [
     transactionHistoryLink("Receipt", receiptObjectConsoleHref || receiptObjectRecordHref, receiptObjectConsoleHref ? "console" : "dual-record", receiptObjectId),
     transactionHistoryLink("Data", receiptObjectRecordHref, "dual-record", receiptObjectId),
-    transactionHistoryLink("L3 action", actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", actionId),
+    transactionHistoryLink(actionScope === "batch_proof" ? "L3 proof action" : "L3 action", actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", actionId),
     transactionHistoryLink("L2/L1 batch", l2BatchHref || l1RollupHref || batchRecordHref, l2BatchHref ? "l2-explorer" : l1RollupHref ? "l1-rollup" : "dual-record", l2TransactionHash || l1RollupHash || batch?.id)
   ].filter(Boolean);
 
@@ -2248,6 +2252,7 @@ function dualReceiptObjectTransaction(object = {}, { proof = {}, batch = null, o
       receiptTemplateId,
       actionId,
       actionHash,
+      actionScope,
       integrityHash: object.integrityHash || null,
       stateHash: object.stateHash || null,
       stateChangeId: batch?.id || null,
@@ -2261,7 +2266,8 @@ function dualReceiptObjectTransaction(object = {}, { proof = {}, batch = null, o
       finality: batch.finality,
       transactionHash: l2TransactionHash,
       l1TransactionHash: l1RollupHash,
-      actionInLatestBatch: Boolean(actionId)
+      actionInLatestBatch: Boolean(actionId),
+      actionScope
     } : null,
     route: [
       transactionHistoryRouteStep("receipt", "Receipt object", receiptObjectId, receiptObjectConsoleHref || receiptObjectRecordHref, receiptObjectConsoleHref ? "console" : "dual-record"),

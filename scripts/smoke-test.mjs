@@ -167,7 +167,10 @@ assert(tradeReceipts.latest[0]?.id?.startsWith("tr-"), "trade receipt queue expo
 
 const transactionHistory = await get("/api/transactions/history?limit=5");
 assert(transactionHistory.transactionCount >= 2, "transaction history includes executed paper trades");
+assert(transactionHistory.summary?.status, "transaction history includes a proof summary");
+assert(typeof transactionHistory.summary?.l3ActionCount === "number", "transaction history summarizes L3 actions");
 assert(transactionHistory.transactions[0]?.proposalId?.startsWith("prop-"), "transaction history includes proposal ids");
+assert(transactionHistory.transactions[0]?.route?.some((step) => step.layer === "l3"), "transaction history exposes the L3 route");
 assert(transactionHistory.transactions[0]?.links?.some((link) => ["Receipt", "Data"].includes(link.label)), "transaction history exposes receipt/data links");
 
 const redTeam = await post("/api/red-team", { scenario: "leverage" });
@@ -217,6 +220,7 @@ const mcpTransactionHistory = mcpJson(await mcp("tools/call", {
   arguments: { limit: 5 }
 }));
 assert(mcpTransactionHistory.transactionHistory.transactionCount >= 3, "MCP transaction history returns executed trades");
+assert(mcpTransactionHistory.transactionHistory.summary?.status, "MCP transaction history returns the proof summary");
 assert(mcpTransactionHistory.transactionHistory.transactions[0]?.links?.length >= 1, "MCP transaction history includes proof links");
 
 const mcpVerify = mcpJson(await mcp("tools/call", {

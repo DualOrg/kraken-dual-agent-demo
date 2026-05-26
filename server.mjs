@@ -1996,6 +1996,14 @@ async function publicTransactionHistory(req, args = {}) {
   const batch = proof.dualBatch?.available ? proof.dualBatch : null;
   const orgId = firstNonEmpty(proof.dualObject?.orgId, proof.status?.dualMode?.orgId, process.env.DUAL_ORG_ID);
   const transactions = filteredReceipts.slice(0, limit).map((receipt) => transactionHistoryItem(receipt, { proof, batch, orgId }));
+  const latestBatch = batch ? {
+    id: batch.id,
+    status: batch.status,
+    proofValue: batch.proofValue,
+    finality: batch.finality,
+    transactionHash: firstNonEmpty(batch.l2TransactionHash, batch.transactionHash),
+    l1TransactionHash: firstNonEmpty(batch.l1TransactionHash, batch.rollupTransactionHash)
+  } : null;
 
   return {
     schemaVersion: "dual-kraken-transaction-history.v1",
@@ -2005,15 +2013,54 @@ async function publicTransactionHistory(req, args = {}) {
     mintedCount: receiptQueue.syncedCount,
     pendingCount: receiptQueue.pendingCount,
     proofHash: proof.proofHash,
-    latestBatch: batch ? {
-      id: batch.id,
-      status: batch.status,
-      proofValue: batch.proofValue,
-      finality: batch.finality,
-      transactionHash: firstNonEmpty(batch.l2TransactionHash, batch.transactionHash),
-      l1TransactionHash: firstNonEmpty(batch.l1TransactionHash, batch.rollupTransactionHash)
-    } : null,
+    summary: transactionHistorySummary(transactions, {
+      totalCount: receipts.length,
+      mintedCount: receiptQueue.syncedCount,
+      pendingCount: receiptQueue.pendingCount,
+      proofHash: proof.proofHash,
+      latestBatch
+    }),
+    latestBatch,
     transactions
+  };
+}
+
+function transactionHistorySummary(transactions = [], {
+  totalCount = 0,
+  mintedCount = 0,
+  pendingCount = 0,
+  proofHash = null,
+  latestBatch = null
+} = {}) {
+  const latest = transactions[0] || null;
+  const totalNotionalUsd = transactions.reduce((sum, tx) => sum + Number(tx.notionalUsd || 0), 0);
+  const l3ActionCount = transactions.filter((tx) => tx.dual?.actionId).length;
+  const receiptObjectCount = transactions.filter((tx) => tx.dual?.receiptObjectId).length;
+  return {
+    status: totalCount === 0
+      ? "empty"
+      : pendingCount > 0
+        ? "pending_dual_mints"
+        : "all_dual_minted",
+    statusLabel: totalCount === 0
+      ? "No trades"
+      : pendingCount > 0
+        ? `${pendingCount} pending DUAL mint`
+        : "All trades minted to DUAL",
+    totalCount,
+    mintedCount,
+    pendingCount,
+    totalNotionalUsd,
+    l3ActionCount,
+    receiptObjectCount,
+    latestReceiptId: latest?.id || null,
+    latestProposalId: latest?.proposalId || null,
+    latestReceiptObjectId: latest?.dual?.receiptObjectId || null,
+    latestActionId: latest?.dual?.actionId || null,
+    latestBatchId: latest?.settlement?.batchId || latestBatch?.id || null,
+    latestL2TransactionHash: latest?.settlement?.transactionHash || latestBatch?.transactionHash || null,
+    latestL1TransactionHash: latest?.settlement?.l1TransactionHash || latestBatch?.l1TransactionHash || null,
+    proofHash
   };
 }
 
@@ -2046,6 +2093,12 @@ function transactionHistoryItem(receipt = {}, { proof = {}, batch = null, orgId 
     transactionHistoryLink("L3 action", actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", actionId),
     transactionHistoryLink("L2/L1 batch", l2BatchHref || l1RollupHref || batchRecordHref, l2BatchHref ? "l2-explorer" : l1RollupHref ? "l1-rollup" : "dual-record", l2TransactionHash || l1RollupHash || batch?.id)
   ].filter(Boolean);
+  const route = [
+    transactionHistoryRouteStep("receipt", "Receipt object", receiptObjectId, receiptObjectConsoleHref || receiptObjectRecordHref, receiptObjectConsoleHref ? "console" : "dual-record"),
+    transactionHistoryRouteStep("l3", "L3 action", actionId, actionL3Href || actionConsoleHref || actionRecordHref, actionL3Href ? "l3-explorer" : actionConsoleHref ? "console" : "dual-record", { hash: actionHash }),
+    transactionHistoryRouteStep("l2", "L2 batch tx", l2TransactionHash || batch?.id, l2BatchHref || batchRecordHref, l2BatchHref ? "l2-explorer" : "dual-record", { batchId: batch?.id }),
+    transactionHistoryRouteStep("l1", "L1 roll-up", l1RollupHash, l1RollupHash ? l1RollupHref : null, "l1-rollup", { batchId: batch?.id })
+  ].filter(Boolean);
 
   return {
     ...summary,
@@ -2075,7 +2128,21 @@ function transactionHistoryItem(receipt = {}, { proof = {}, batch = null, orgId 
       l1TransactionHash: l1RollupHash,
       actionInLatestBatch: Boolean(batchAction)
     } : null,
+    route,
     links
+  };
+}
+
+function transactionHistoryRouteStep(layer, label, id, href, source, extra = {}) {
+  return {
+    layer,
+    label,
+    id: id || null,
+    href: href || null,
+    source: source || null,
+    ready: Boolean(id || href),
+    detail: shortIdForLink(id || href),
+    ...extra
   };
 }
 

@@ -29,6 +29,8 @@ const els = {
   timeline: document.querySelector("#timeline"),
   eventCount: document.querySelector("#eventCount"),
   transactionHistory: document.querySelector("#transactionHistory"),
+  transactionSummary: document.querySelector("#transactionSummary"),
+  transactionFocus: document.querySelector("#transactionFocus"),
   transactionCount: document.querySelector("#transactionCount"),
   proposalCard: document.querySelector("#proposalCard"),
   approveButton: document.querySelector("#approveButton"),
@@ -669,17 +671,81 @@ function renderTransactionHistory() {
   const history = resolvedTransactionHistory();
   const transactions = history.transactions || [];
   els.transactionCount.textContent = `${history.transactionCount ?? transactions.length}`;
+  if (els.transactionSummary) els.transactionSummary.innerHTML = renderTransactionSummary(history, transactions);
   if (!transactions.length) {
+    if (els.transactionFocus) els.transactionFocus.innerHTML = "";
     els.transactionHistory.innerHTML = `<div class="history-empty">No executed trades yet.</div>`;
     return;
   }
-  els.transactionHistory.innerHTML = transactions.map((tx) => `
-    <article class="tx-row ${tx.dual?.synced ? "minted" : "pending"}">
-      <div class="tx-head">
-        <span>${escapeHtml(tx.statusLabel || "Trade receipt")}</span>
+  if (els.transactionFocus) els.transactionFocus.innerHTML = renderTransactionFocus(transactions[0]);
+  els.transactionHistory.innerHTML = transactions.map((tx, index) => renderTransactionRow(tx, index)).join("");
+}
+
+function renderTransactionSummary(history = {}, transactions = []) {
+  const summary = history.summary || {};
+  const minted = summary.mintedCount ?? history.mintedCount ?? transactions.filter((tx) => tx.dual?.synced).length;
+  const pending = summary.pendingCount ?? history.pendingCount ?? transactions.filter((tx) => !tx.dual?.synced).length;
+  const actionCount = summary.l3ActionCount ?? transactions.filter((tx) => tx.dual?.actionId).length;
+  const latestBatch = history.latestBatch || transactions.find((tx) => tx.settlement?.batchId)?.settlement || null;
+  const receiptCount = summary.receiptObjectCount ?? transactions.filter((tx) => tx.dual?.receiptObjectId).length;
+  const batchLabel = latestBatch?.proofValue
+    ? `${latestBatch.proofValue}${latestBatch.finality ? ` / ${latestBatch.finality}` : ""}`
+    : latestBatch?.status || "pending";
+  return `
+    <div class="tx-summary-cell">
+      <span>DUAL receipts</span>
+      <strong>${escapeHtml(String(minted))}</strong>
+      <small>${escapeHtml(pending ? `${pending} pending` : `${receiptCount} objects`)}</small>
+    </div>
+    <div class="tx-summary-cell">
+      <span>L3 actions</span>
+      <strong>${escapeHtml(String(actionCount))}</strong>
+      <small>${escapeHtml(transactions[0]?.dual?.actionId ? shortId(transactions[0].dual.actionId) : "waiting")}</small>
+    </div>
+    <div class="tx-summary-cell">
+      <span>Batch proof</span>
+      <strong>${escapeHtml(shortProofStatus(batchLabel))}</strong>
+      <small>${escapeHtml(latestBatch?.id ? shortId(latestBatch.id) : "no batch")}</small>
+    </div>
+  `;
+}
+
+function renderTransactionFocus(tx) {
+  if (!tx) return "";
+  const receiptRoute = transactionRouteStep(tx, "receipt", tx.dual?.receiptObjectId || tx.id);
+  const l3Route = transactionRouteStep(tx, "l3", tx.dual?.actionId);
+  const l2Route = transactionRouteStep(tx, "l2", tx.settlement?.transactionHash || tx.settlement?.batchId);
+  const l1Route = transactionRouteStep(tx, "l1", tx.settlement?.l1TransactionHash);
+  return `
+    <article class="tx-focus-card ${tx.dual?.synced ? "minted" : "pending"}">
+      <div class="tx-focus-top">
+        <span>${escapeHtml(tx.statusLabel || "Latest receipt")}</span>
         <time>${escapeHtml(formatTradeTime(tx.executedAt))}</time>
       </div>
-      <div class="tx-main">
+      <div class="tx-focus-main">
+        <strong>${escapeHtml(`${String(tx.side || "buy").toUpperCase()} ${tx.pair || "DUALUSD"}`)}</strong>
+        <b>${money.format(Number(tx.notionalUsd || 0))}</b>
+      </div>
+      <div class="tx-route">
+        ${renderRouteStep("Receipt", receiptRoute)}
+        ${renderRouteStep("L3 action", l3Route)}
+        ${renderRouteStep("L2 batch", l2Route)}
+        ${renderRouteStep("L1 roll-up", l1Route)}
+      </div>
+      <div class="tx-links tx-links-featured">
+        ${renderTransactionLinks(tx.links || [])}
+      </div>
+    </article>
+  `;
+}
+
+function renderTransactionRow(tx, index = 0) {
+  const classes = ["tx-row", tx.dual?.synced ? "minted" : "pending"];
+  if (index === 0) classes.push("latest");
+  return `
+    <article class="${classes.join(" ")}">
+      <div class="tx-row-main">
+        <span class="tx-row-status">${escapeHtml(index === 0 ? "Latest" : tx.statusLabel || "Receipt")}</span>
         <strong>${escapeHtml(String(tx.side || "buy").toUpperCase())} ${escapeHtml(tx.pair || "DUALUSD")}</strong>
         <b>${money.format(Number(tx.notionalUsd || 0))}</b>
       </div>
@@ -693,7 +759,36 @@ function renderTransactionHistory() {
         ${renderTransactionLinks(tx.links || [])}
       </div>
     </article>
-  `).join("");
+  `;
+}
+
+function transactionRouteStep(tx, layer, fallbackValue = null) {
+  const step = (tx.route || []).find((item) => item?.layer === layer) || {};
+  return {
+    value: step.id || fallbackValue || null,
+    href: step.href || null,
+    source: step.source || null
+  };
+}
+
+function renderRouteStep(label, step = {}) {
+  const value = step?.value || null;
+  const tag = step?.href ? "a" : "span";
+  const href = step?.href ? ` href="${escapeHtml(step.href)}" target="_blank" rel="noreferrer"` : "";
+  return `
+    <${tag} class="tx-route-step ${value ? "ready" : "pending"} ${dualLinkSourceClass(step?.source)}"${href}>
+      <i>${escapeHtml(label)}</i>
+      <b>${escapeHtml(value ? shortId(value) : "pending")}</b>
+    </${tag}>
+  `;
+}
+
+function shortProofStatus(value) {
+  const status = String(value || "pending");
+  if (status.toLowerCase().includes("success")) return "SUCCESS";
+  if (status.toLowerCase().includes("finalized")) return "FINAL";
+  if (status.toLowerCase().includes("settling")) return "SETTLING";
+  return status.slice(0, 10).toUpperCase();
 }
 
 function resolvedTransactionHistory() {

@@ -18,11 +18,11 @@ export async function getMarket(pair, fallbackMarket = {}) {
   const cli = await runKraken(["ticker", normalizedPair, "-o", "json"]);
 
   if (cli.ok) {
-    const normalized = normalizeTicker(normalizedPair, cli.json);
+    const normalized = normalizeTicker(normalizedPair, cli.json, fallbackMarket[normalizedPair]);
     if (normalized) return { ...normalized, source: CLI_SOURCE, raw: cli.json };
   }
 
-  const api = await getKrakenPublicTicker(normalizedPair);
+  const api = await getKrakenPublicTicker(normalizedPair, { seed: fallbackMarket[normalizedPair] });
   if (api.ok) {
     return { ...api.market, source: API_SOURCE, cliFallbackReason: cli.error?.message || null, raw: api.raw };
   }
@@ -95,7 +95,7 @@ async function getKrakenPublicTicker(pair, options = {}) {
       };
     }
 
-    const normalized = normalizeTicker(pair, json.result);
+    const normalized = normalizeTicker(pair, json.result, options.seed);
     if (!normalized) {
       return { ok: false, error: { message: "Kraken public API returned an unrecognized ticker payload.", code: "bad_payload" } };
     }
@@ -173,26 +173,48 @@ function parseJson(text) {
   }
 }
 
-function normalizeTicker(pair, json) {
+function normalizeTicker(pair, json, seed = {}) {
   const payload = json?.[pair] || Object.values(json || {})[0];
   if (!payload) return null;
 
-  const last = Number(payload.c?.[0] || payload.last || payload.price);
-  const ask = Number(payload.a?.[0] || payload.ask || last);
-  const bid = Number(payload.b?.[0] || payload.bid || last);
-  const volume = Number(payload.v?.[1] || payload.volume || 0);
+  const last = firstNumber(payload.c, payload.last, payload.price);
+  const ask = firstNumber(payload.a, payload.ask, last);
+  const bid = firstNumber(payload.b, payload.bid, last);
+  const volume = firstNumber(payload.v?.[1], payload.volume, 0);
 
   if (!Number.isFinite(last) || last <= 0) return null;
+
+  const open = firstNumber(payload.o, payload.open, payload.openPrice);
+  const previous = Number(seed?.price || 0);
+  const changePct = marketChangePct({ last, open, previous, fallback: seed?.changePct });
 
   return {
     pair,
     price: round(last),
     ask: round(ask),
     bid: round(bid),
-    changePct: 0,
+    open: Number.isFinite(open) && open > 0 ? round(open) : null,
+    change: Number.isFinite(open) && open > 0 ? round(last - open) : previous > 0 ? round(last - previous) : 0,
+    changePct,
     volume: round(volume),
     timestamp: new Date().toISOString()
   };
+}
+
+function firstNumber(...values) {
+  for (const value of values) {
+    const candidate = Array.isArray(value) ? value[0] : value;
+    const number = Number(candidate);
+    if (Number.isFinite(number)) return number;
+  }
+  return NaN;
+}
+
+function marketChangePct({ last, open, previous, fallback } = {}) {
+  const basis = Number.isFinite(open) && open > 0 ? open : Number.isFinite(previous) && previous > 0 ? previous : null;
+  if (basis) return round(((last - basis) / basis) * 100);
+  const fallbackNumber = Number(fallback);
+  return Number.isFinite(fallbackNumber) ? round(fallbackNumber) : 0;
 }
 
 function simulatedMarket(pair, seed = {}, error = null) {

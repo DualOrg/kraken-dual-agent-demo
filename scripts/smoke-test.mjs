@@ -141,10 +141,12 @@ assert(policy.policy.allowedPairs.includes("DUALUSD"), "policy endpoint keeps DU
 const market = await get("/api/market?pair=BTCUSD");
 assert(market.pair === "BTCUSD", "market endpoint returns BTCUSD");
 assert(Number(market.price) > 0, "market endpoint returns a price");
+assert(Number.isFinite(Number(market.changePct)), "market endpoint returns a numeric change percentage");
 
 const dualMarket = await get("/api/market?pair=DUALUSD");
 assert(dualMarket.pair === "DUALUSD", "market endpoint returns DUALUSD");
 assert(Number(dualMarket.price) > 0, "DUALUSD market endpoint returns a price");
+assert([market.changePct, dualMarket.changePct].some((value) => Number(value) !== 0), "market endpoint does not force all change percentages to 0");
 
 const proposed = await post("/api/propose", { pair: "BTCUSD", side: "buy", notional: 75 });
 assert(proposed.proposal.policy.decision === "allow", "small BTC proposal is allowed");

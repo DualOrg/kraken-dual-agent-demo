@@ -3043,7 +3043,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .evidence-stage {
   border-top: 1px solid var(--line-strong);
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-height: 0;
   overflow: hidden;
 }
@@ -3056,6 +3056,10 @@ input, select, textarea { font: inherit; color: inherit; }
 .evidence-stage > .proof-card,
 .evidence-stage > .command-dock {
   border-right: 0;
+}
+
+.evidence-stage > .proof-card {
+  border-right: 1px solid var(--line);
 }
 
 .evidence-stage .binding-proof {
@@ -3210,6 +3214,69 @@ input, select, textarea { font: inherit; color: inherit; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.evidence-stage .proof-binding-panel {
+  background:
+    linear-gradient(180deg, rgba(32, 148, 162, 0.1), transparent 36%),
+    rgba(6, 16, 15, 0.32);
+  display: grid;
+  gap: 6px;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px 12px;
+}
+
+.evidence-stage .proof-binding-panel .binding-score {
+  font-size: 8px;
+  padding: 4px 7px;
+}
+
+.evidence-stage .proof-binding-panel .binding-chain {
+  align-content: start;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.evidence-stage .proof-binding-panel .binding-node {
+  gap: 4px;
+  min-height: 64px;
+  padding: 6px;
+}
+
+.evidence-stage .proof-binding-panel .node-index {
+  font-size: 7.2px;
+}
+
+.evidence-stage .proof-binding-panel .node-label {
+  font-size: 6.8px;
+}
+
+.evidence-stage .proof-binding-panel .node-body strong {
+  font-size: 10.2px;
+  margin-top: 2px;
+}
+
+.evidence-stage .proof-binding-panel .node-body p {
+  display: none;
+}
+
+.evidence-stage .proof-binding-panel .node-body code {
+  font-size: 7.8px;
+  margin-top: 2px;
+}
+
+.evidence-stage .proof-binding-panel .node-links {
+  gap: 3px;
+}
+
+.evidence-stage .proof-binding-panel .binding-target {
+  font-size: 6.8px;
+  padding: 3px 5px;
 }
 
 .trace-red-team {

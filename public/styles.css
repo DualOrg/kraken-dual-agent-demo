@@ -2950,7 +2950,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .evidence-stage {
   border-top: 1px solid var(--line-strong);
   display: grid;
-  grid-template-columns: minmax(760px, 2fr) minmax(300px, 0.65fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-height: 0;
   overflow: hidden;
 }
@@ -3194,7 +3194,7 @@ input, select, textarea { font: inherit; color: inherit; }
   }
 
   .evidence-stage {
-    grid-template-columns: minmax(690px, 1.8fr) minmax(260px, 0.65fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

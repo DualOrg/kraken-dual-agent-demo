@@ -693,7 +693,9 @@ function renderTransactionSummary(history = {}, transactions = []) {
   const latestBatch = history.latestBatch || transactions.find((tx) => tx.settlement?.batchId)?.settlement || null;
   const receiptCount = summary.receiptObjectCount ?? transactions.filter((tx) => tx.dual?.receiptObjectId).length;
   const recoveredCount = summary.recoveredCount ?? transactions.filter((tx) => tx.recoveredFrom).length;
-  const proofLabel = recoveredCount ? "DUAL proofs" : "DUAL receipts";
+  const recoveredProofCount = summary.recoveredProofCount ?? transactions.filter((tx) => tx.recoveredFrom === "dual-batch-readback").length;
+  const recoveredTradeCount = summary.recoveredTradeCount ?? transactions.filter((tx) => tx.recoveredFrom === "dual-receipt-object-readback").length;
+  const proofLabel = recoveredProofCount ? "DUAL proofs" : "DUAL receipts";
   const batchLabel = latestBatch?.proofValue
     ? `${latestBatch.proofValue}${latestBatch.finality ? ` / ${latestBatch.finality}` : ""}`
     : latestBatch?.status || "pending";
@@ -701,7 +703,7 @@ function renderTransactionSummary(history = {}, transactions = []) {
     <div class="tx-summary-cell">
       <span>${escapeHtml(proofLabel)}</span>
       <strong>${escapeHtml(String(minted))}</strong>
-      <small>${escapeHtml(pending ? `${pending} pending` : recoveredCount ? `${recoveredCount} recovered` : `${receiptCount} objects`)}</small>
+      <small>${escapeHtml(pending ? `${pending} pending` : recoveredProofCount ? `${recoveredCount} recovered` : recoveredTradeCount ? `${recoveredTradeCount} recovered` : `${receiptCount} objects`)}</small>
     </div>
     <div class="tx-summary-cell">
       <span>L3 actions</span>
@@ -732,6 +734,7 @@ function renderTransactionFocus(tx) {
         <strong>${escapeHtml(transactionTitle(tx))}</strong>
         <b>${escapeHtml(transactionValue(tx))}</b>
       </div>
+      ${renderTradeDetails(tx)}
       <div class="tx-route">
         ${renderRouteStep("Receipt", receiptRoute)}
         ${renderRouteStep("L3 action", l3Route)}
@@ -761,6 +764,7 @@ function renderTransactionRow(tx, index = 0) {
         <span>${escapeHtml(tx.dual?.actionId ? `L3 ${shortId(tx.dual.actionId)}` : tx.dual?.reason || "L3 pending")}</span>
         <span>${escapeHtml(tx.settlement?.batchId ? `Batch ${shortId(tx.settlement.batchId)}` : "Batch pending")}</span>
       </div>
+      ${renderTradeDetails(tx, { compact: true })}
       <div class="tx-links">
         ${renderTransactionLinks(tx.links || [])}
       </div>
@@ -779,6 +783,88 @@ function transactionValue(tx = {}) {
     return tx.statusValue || tx.settlement?.proofValue || tx.settlement?.status || "proof";
   }
   return money.format(Number(tx.notionalUsd || 0));
+}
+
+function renderTradeDetails(tx = {}, { compact = false } = {}) {
+  const trade = transactionEconomics(tx);
+  if (!trade.available) {
+    return `
+      <div class="tx-economics unavailable">
+        <span><i>Trade details</i><b>${escapeHtml(tx.tradeDetailReason || "Unavailable in recovered proof")}</b></span>
+      </div>
+    `;
+  }
+  const items = compact
+    ? [
+        ["Qty", trade.quantity],
+        ["Price", trade.price],
+        ["Notional", trade.notional]
+      ]
+    : [
+        ["Pair", trade.pair],
+        ["Side", trade.side],
+        ["Qty", trade.quantity],
+        ["Price", trade.price],
+        ["Notional", trade.notional],
+        ["Source", trade.source]
+      ];
+  return `
+    <div class="tx-economics ${compact ? "compact" : ""}">
+      ${items.map(([label, value]) => `
+        <span>
+          <i>${escapeHtml(label)}</i>
+          <b>${escapeHtml(value)}</b>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function transactionEconomics(tx = {}) {
+  const trade = tx.trade || {};
+  const pair = trade.pair || tx.pair || null;
+  const side = trade.side || tx.side || null;
+  const quantity = trade.quantity ?? tx.quantity;
+  const priceUsd = trade.priceUsd ?? tx.priceUsd;
+  const notionalUsd = trade.notionalUsd ?? tx.notionalUsd;
+  const source = trade.executionSource || tx.executionSource || tx.executionMode || trade.executionMode || (tx.recoveredFrom ? "DUAL readback" : "paper");
+  const available = Boolean(pair && !tx.recoveredFrom?.includes("batch") && (
+    side ||
+    (quantity !== null && quantity !== undefined) ||
+    (priceUsd !== null && priceUsd !== undefined) ||
+    (notionalUsd !== null && notionalUsd !== undefined)
+  ));
+  const asset = trade.baseAsset || (pair ? String(pair).replace(/USD$/i, "") : "");
+  return {
+    available,
+    pair: pair || "n/a",
+    side: side ? String(side).toUpperCase() : "n/a",
+    quantity: quantity !== null && quantity !== undefined ? `${formatQuantity(quantity)}${asset ? ` ${asset}` : ""}` : "n/a",
+    price: priceUsd !== null && priceUsd !== undefined ? formatUsdPrecise(priceUsd) : "n/a",
+    notional: notionalUsd !== null && notionalUsd !== undefined ? money.format(Number(notionalUsd || 0)) : "n/a",
+    source: source || "n/a"
+  };
+}
+
+function formatQuantity(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "n/a";
+  const decimals = Math.abs(number) < 1 ? 8 : Math.abs(number) < 100 ? 6 : 3;
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: 0
+  }).format(number);
+}
+
+function formatUsdPrecise(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "n/a";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: number < 1 ? 6 : 2,
+    maximumFractionDigits: number < 1 ? 6 : 2
+  }).format(number);
 }
 
 function transactionRouteStep(tx, layer, fallbackValue = null) {
@@ -813,13 +899,30 @@ function shortProofStatus(value) {
 function resolvedTransactionHistory() {
   const history = state.transactionHistory || {};
   if (history.transactions?.length) return history;
-  const receipts = state.proof?.tradeReceipts?.latest || [];
+  const receipts = state.proof?.tradeReceipts?.latest?.length
+    ? state.proof.tradeReceipts.latest
+    : state.data?.tradeReceipts || [];
   if (!receipts.length) return history;
+  const mintedCount = receipts.filter((receipt) => receipt.dualSync?.synced).length;
+  const pendingCount = receipts.filter((receipt) => !receipt.dualSync?.synced).length;
   return {
     schemaVersion: "dual-kraken-transaction-history.v1",
     transactionCount: receipts.length,
-    mintedCount: receipts.filter((receipt) => receipt.dualSync?.synced).length,
-    pendingCount: receipts.filter((receipt) => !receipt.dualSync?.synced).length,
+    mintedCount,
+    pendingCount,
+    summary: {
+      status: pendingCount ? "pending_dual_mints" : "all_dual_minted",
+      statusLabel: pendingCount ? `${pendingCount} pending DUAL mint` : "All trades minted to DUAL",
+      totalCount: receipts.length,
+      mintedCount,
+      pendingCount,
+      totalNotionalUsd: receipts.reduce((sum, receipt) => sum + Number(receipt.notionalUsd || 0), 0),
+      l3ActionCount: receipts.filter((receipt) => receipt.dualSync?.result?.actionId).length,
+      receiptObjectCount: receipts.filter((receipt) => receipt.dualSync?.result?.id || receipt.dualSync?.result?.affectedObject?.id).length,
+      latestReceiptId: receipts[0]?.id || null,
+      latestProposalId: receipts[0]?.proposalId || null,
+      proofHash: state.proof?.proofHash || null
+    },
     proofHash: state.proof?.proofHash,
     transactions: receipts.map((receipt) => proofReceiptTransaction(receipt))
   };
@@ -835,6 +938,7 @@ function proofReceiptTransaction(receipt = {}) {
     ...receipt,
     quantity: receipt.quantity ?? null,
     priceUsd: receipt.priceUsd ?? null,
+    trade: transactionEconomicsFromReceipt(receipt),
     status: receipt.dualSync?.synced ? "dual_minted" : "pending_dual_mint",
     statusLabel: receipt.dualSync?.synced ? "Minted to DUAL" : "Pending DUAL mint",
     dual: {
@@ -859,6 +963,23 @@ function proofReceiptTransaction(receipt = {}) {
       l1TransactionHash: batch.l1TransactionHash || batch.rollupTransactionHash || null
     } : null,
     links: proofReceiptLinks({ receipt, receiptObjectId, actionId })
+  };
+}
+
+function transactionEconomicsFromReceipt(receipt = {}) {
+  return {
+    available: Boolean(receipt.pair || receipt.side || receipt.quantity != null || receipt.priceUsd != null || receipt.notionalUsd != null),
+    pair: receipt.pair || null,
+    baseAsset: receipt.pair ? String(receipt.pair).replace(/USD$/i, "") : null,
+    side: receipt.side || null,
+    quantity: receipt.quantity ?? null,
+    priceUsd: receipt.priceUsd ?? null,
+    notionalUsd: receipt.notionalUsd ?? null,
+    executionSource: receipt.executionSource || null,
+    executionMode: receipt.executionMode || null,
+    policyDecision: receipt.policyDecision || null,
+    policyVersion: receipt.policyVersion ?? null,
+    policyHash: receipt.policyHash || null
   };
 }
 

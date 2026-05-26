@@ -1971,6 +1971,57 @@ input, select, textarea { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 
+.tx-economics {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.tx-economics span {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  min-width: 0;
+  padding: 4px 5px;
+}
+
+.tx-economics i,
+.tx-economics b {
+  display: block;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tx-economics i {
+  color: var(--ink-4);
+  font-size: 6.8px;
+  font-style: normal;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.tx-economics b {
+  color: var(--ink-2);
+  font-size: 8.2px;
+  font-weight: 650;
+  letter-spacing: 0;
+  margin-top: 1px;
+}
+
+.tx-economics.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tx-economics.compact span {
+  padding: 3px 5px;
+}
+
+.tx-economics.unavailable {
+  grid-template-columns: 1fr;
+}
+
 .tx-route {
   display: grid;
   gap: 5px;

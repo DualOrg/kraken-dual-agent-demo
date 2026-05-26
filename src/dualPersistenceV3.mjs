@@ -417,6 +417,24 @@ export async function createDualPersistence() {
       return { available: true, ...summarizeTemplate(await read.sdk.templates.get(tradeReceiptTemplateId)) };
     },
 
+    async readTradeReceiptObjects(options = {}) {
+      const read = activeReadClient();
+      const limit = Math.max(1, Math.min(50, Number(options.limit) || 10));
+      if (!read || !tradeReceiptTemplateId) {
+        return {
+          available: false,
+          reason: tradeReceiptTemplateId ? this.status().detail : "Set DUAL_TRADE_RECEIPT_TEMPLATE_ID."
+        };
+      }
+      const objects = await listObjectsForTemplate(read.sdk, tradeReceiptTemplateId, limit);
+      return {
+        available: true,
+        templateId: tradeReceiptTemplateId,
+        objectCount: objects.length,
+        objects: objects.map(summarizeObject)
+      };
+    },
+
     async readLatestBatchProof() {
       const read = activeReadClient();
       if (!read?.sdk?.sequencer?.listBatches) return { available: false, reason: "DUAL sequencer batch API is unavailable in this SDK/runtime." };
@@ -797,16 +815,32 @@ function extractAffectedObjects(action) {
 }
 
 async function searchObjects(sdk, templateId) {
+  return (await listObjectsForTemplate(sdk, templateId, 1))[0] || null;
+}
+
+async function listObjectsForTemplate(sdk, templateId, limit = 10) {
+  const seen = new Set();
+  const found = [];
   for (const method of ["search", "list"]) {
-    try {
-      const result = await sdk.objects[method]({ template_id: templateId, limit: 10 });
-      const items = extractItems(result);
-      if (items.length) return items[0];
-    } catch {
-      // Gateways differ on search/list support.
+    for (const params of [
+      { template_id: templateId, limit },
+      { templateId, limit }
+    ]) {
+      try {
+        const result = await sdk.objects[method](params);
+        for (const item of extractItems(result)) {
+          const id = item?.id || item?.object_id || item?.objectId || JSON.stringify(item);
+          if (seen.has(id)) continue;
+          seen.add(id);
+          found.push(item);
+          if (found.length >= limit) return found;
+        }
+      } catch {
+        // Gateways differ on search/list support and parameter names.
+      }
     }
   }
-  return null;
+  return found;
 }
 
 function summarizeBatch(batch) {

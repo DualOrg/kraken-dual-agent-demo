@@ -170,6 +170,8 @@ assert(transactionHistory.transactionCount >= 2, "transaction history includes e
 assert(transactionHistory.summary?.status, "transaction history includes a proof summary");
 assert(typeof transactionHistory.summary?.l3ActionCount === "number", "transaction history summarizes L3 actions");
 assert(transactionHistory.transactions[0]?.proposalId?.startsWith("prop-"), "transaction history includes proposal ids");
+assert(Number(transactionHistory.transactions[0]?.trade?.priceUsd || transactionHistory.transactions[0]?.priceUsd) > 0, "transaction history includes trade price");
+assert(Number(transactionHistory.transactions[0]?.trade?.quantity || transactionHistory.transactions[0]?.quantity) > 0, "transaction history includes trade quantity");
 assert(transactionHistory.transactions[0]?.route?.some((step) => step.layer === "l3"), "transaction history exposes the L3 route");
 assert(transactionHistory.transactions[0]?.links?.some((link) => ["Receipt", "Data"].includes(link.label)), "transaction history exposes receipt/data links");
 
@@ -221,6 +223,7 @@ const mcpTransactionHistory = mcpJson(await mcp("tools/call", {
 }));
 assert(mcpTransactionHistory.transactionHistory.transactionCount >= 3, "MCP transaction history returns executed trades");
 assert(mcpTransactionHistory.transactionHistory.summary?.status, "MCP transaction history returns the proof summary");
+assert(Number(mcpTransactionHistory.transactionHistory.transactions[0]?.trade?.notionalUsd || mcpTransactionHistory.transactionHistory.transactions[0]?.notionalUsd) > 0, "MCP transaction history includes trade economics");
 assert(mcpTransactionHistory.transactionHistory.transactions[0]?.links?.length >= 1, "MCP transaction history includes proof links");
 
 const mcpVerify = mcpJson(await mcp("tools/call", {

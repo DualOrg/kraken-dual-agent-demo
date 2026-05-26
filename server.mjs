@@ -2056,13 +2056,18 @@ function transactionHistorySummary(transactions = [], {
   const totalNotionalUsd = transactions.reduce((sum, tx) => sum + Number(tx.notionalUsd || 0), 0);
   const l3ActionCount = transactions.filter((tx) => tx.dual?.actionId).length;
   const receiptObjectCount = transactions.filter((tx) => tx.dual?.receiptObjectId).length;
+  const recoveredCount = transactions.filter((tx) => tx.recoveredFrom).length;
   return {
-    status: totalCount === 0
+    status: recoveredCount && recoveredCount === totalCount
+      ? "recovered_dual_proof"
+      : totalCount === 0
       ? "empty"
       : pendingCount > 0
         ? "pending_dual_mints"
         : "all_dual_minted",
-    statusLabel: totalCount === 0
+    statusLabel: recoveredCount && recoveredCount === totalCount
+      ? "Recovered from DUAL proof"
+      : totalCount === 0
       ? "No trades"
       : pendingCount > 0
         ? `${pendingCount} pending DUAL mint`
@@ -2070,6 +2075,7 @@ function transactionHistorySummary(transactions = [], {
     totalCount,
     mintedCount,
     pendingCount,
+    recoveredCount,
     totalNotionalUsd,
     l3ActionCount,
     receiptObjectCount,

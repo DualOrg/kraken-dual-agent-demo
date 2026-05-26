@@ -688,6 +688,7 @@ function renderTransactionSummary(history = {}, transactions = []) {
   const actionCount = summary.l3ActionCount ?? transactions.filter((tx) => tx.dual?.actionId).length;
   const latestBatch = history.latestBatch || transactions.find((tx) => tx.settlement?.batchId)?.settlement || null;
   const receiptCount = summary.receiptObjectCount ?? transactions.filter((tx) => tx.dual?.receiptObjectId).length;
+  const recoveredCount = summary.recoveredCount ?? transactions.filter((tx) => tx.recoveredFrom).length;
   const batchLabel = latestBatch?.proofValue
     ? `${latestBatch.proofValue}${latestBatch.finality ? ` / ${latestBatch.finality}` : ""}`
     : latestBatch?.status || "pending";
@@ -695,7 +696,7 @@ function renderTransactionSummary(history = {}, transactions = []) {
     <div class="tx-summary-cell">
       <span>DUAL receipts</span>
       <strong>${escapeHtml(String(minted))}</strong>
-      <small>${escapeHtml(pending ? `${pending} pending` : `${receiptCount} objects`)}</small>
+      <small>${escapeHtml(pending ? `${pending} pending` : recoveredCount ? `${recoveredCount} recovered` : `${receiptCount} objects`)}</small>
     </div>
     <div class="tx-summary-cell">
       <span>L3 actions</span>

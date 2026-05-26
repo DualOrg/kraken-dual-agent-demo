@@ -9,7 +9,8 @@ const state = {
   replayExecution: null,
   actionPassportSetup: null,
   tradeReceiptTemplateSetup: null,
-  tradeReceiptReplay: null
+  tradeReceiptReplay: null,
+  activeTransactionKey: null
 };
 
 const pairs = ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"];
@@ -256,6 +257,20 @@ function bindEvents() {
       render();
       await loadProof();
     });
+  });
+
+  els.timeline?.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-tx-target]");
+    if (!trigger) return;
+    focusTransactionCard(trigger.dataset.txTarget);
+  });
+
+  els.timeline?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const trigger = event.target.closest("[data-tx-target]");
+    if (!trigger) return;
+    event.preventDefault();
+    focusTransactionCard(trigger.dataset.txTarget);
   });
 
   els.tradeForm.elements.pair?.addEventListener("change", renderMarkets);
@@ -542,13 +557,24 @@ function renderTimeline() {
     `;
     return;
   }
-  els.timeline.innerHTML = audit.slice(0, 8).map((event) => `
-    <li class="term-line fade-in">
-      <span class="ts">${new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+  els.timeline.innerHTML = audit.slice(0, 8).map(renderTimelineEvent).join("");
+}
+
+function renderTimelineEvent(event) {
+  const target = timelineTransactionTarget(event);
+  const targetAttrs = target
+    ? ` data-tx-target="${escapeHtml(target.key)}" role="button" tabindex="0" aria-label="Highlight linked transaction ${escapeHtml(target.label)}"`
+    : "";
+  const time = new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const hash = event.provenanceHash ? event.provenanceHash.slice(0, 12) : event.id;
+  return `
+    <li class="term-line fade-in ${target ? "linked" : ""}"${targetAttrs}>
+      <span class="ts">${time}</span>
       <span class="src ${timelineSourceClass(event)}">${timelineSourceLabel(event)}</span>
-      <span class="msg"><b>${event.title}</b> · ${event.detail} · <span class="hash">${event.provenanceHash ? event.provenanceHash.slice(0, 12) : event.id}</span></span>
+      <span class="msg"><b>${escapeHtml(event.title)}</b> · ${escapeHtml(event.detail)} · <span class="hash">${escapeHtml(hash)}</span></span>
+      ${target ? `<button class="event-link-chip" type="button" data-tx-target="${escapeHtml(target.key)}" title="Highlight matching transaction card">TX card</button>` : ""}
     </li>
-  `).join("");
+  `;
 }
 
 function timelineEvents() {
@@ -565,6 +591,91 @@ function timelineEvents() {
     dualSync: block.dual?.synced ? { synced: true, result: { actionId: block.dual.actionId } } : null,
     timestamp: block.timestamp
   }));
+}
+
+function timelineTransactionTarget(event = {}) {
+  const transactions = resolvedTransactionHistory().transactions || [];
+  if (!transactions.length) return null;
+  const exactTokens = timelineEventTokens(event);
+  let match = transactions.find((tx) => transactionTokens(tx).some((token) => exactTokens.has(token)));
+  if (!match) {
+    const pair = event.payload?.pair || event.payload?.trade?.pair;
+    if (pair) {
+      match = transactions.find((tx) => String(tx.pair || tx.trade?.pair || "").toUpperCase() === String(pair).toUpperCase());
+    }
+  }
+  if (!match) return null;
+  const key = transactionDomKey(match);
+  if (!key) return null;
+  return {
+    key,
+    label: `${transactionTitle(match)} ${transactionValue(match)}`
+  };
+}
+
+function timelineEventTokens(event = {}) {
+  const result = event.dualSync?.result || {};
+  return compactTokens([
+    event.id,
+    event.provenanceHash,
+    event.payload?.proposalId,
+    event.payload?.eventId,
+    event.payload?.receiptId,
+    event.payload?.receiptHash,
+    event.payload?.resultDigest,
+    event.payload?.result?.digest,
+    result.id,
+    result.actionId,
+    result.action_id,
+    result.hash,
+    result.integrityHash,
+    result.integrity_hash
+  ]);
+}
+
+function transactionTokens(tx = {}) {
+  return Array.from(compactTokens([
+    tx.id,
+    tx.proposalId,
+    tx.eventId,
+    tx.eventHash,
+    tx.receiptHash,
+    tx.executionDigest,
+    tx.dual?.receiptObjectId,
+    tx.dual?.actionId,
+    tx.dual?.actionHash,
+    tx.dual?.integrityHash,
+    tx.settlement?.batchId,
+    tx.settlement?.transactionHash
+  ]));
+}
+
+function compactTokens(values = []) {
+  return new Set(values
+    .filter((value) => value !== null && value !== undefined && String(value).trim())
+    .map((value) => String(value).trim()));
+}
+
+function transactionDomKey(tx = {}) {
+  return String(tx.id || tx.dual?.receiptObjectId || tx.proposalId || tx.eventId || tx.dual?.actionId || tx.receiptHash || "").trim();
+}
+
+function focusTransactionCard(key) {
+  if (!key || !els.transactionHistory) return;
+  state.activeTransactionKey = key;
+  let target = null;
+  els.transactionHistory.querySelectorAll("[data-tx-key]").forEach((row) => {
+    const active = row.dataset.txKey === key;
+    row.classList.toggle("linked-from-event", active);
+    row.toggleAttribute("aria-current", active);
+    if (active) target = row;
+  });
+  els.timeline?.querySelectorAll("[data-tx-target]").forEach((row) => {
+    row.classList.toggle("active-link", row.dataset.txTarget === key);
+  });
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 }
 
 function timelineSourceClass(event) {
@@ -596,6 +707,7 @@ async function loadProof() {
   state.transactionHistory = transactionHistory;
   renderProof();
   renderTransactionHistory();
+  renderTimeline();
   return state.proof;
 }
 
@@ -712,6 +824,7 @@ function renderTransactionHistory() {
   }
   if (els.transactionFocus) els.transactionFocus.innerHTML = renderTransactionFocus(transactions[0]);
   els.transactionHistory.innerHTML = transactions.map((tx, index) => renderTransactionRow(tx, index)).join("");
+  if (state.activeTransactionKey) focusTransactionCard(state.activeTransactionKey);
 }
 
 function renderPolicyBlocks(history = {}) {
@@ -844,10 +957,12 @@ function renderTransactionFocus(tx) {
 }
 
 function renderTransactionRow(tx, index = 0) {
+  const key = transactionDomKey(tx);
   const classes = ["tx-row", tx.dual?.synced ? "minted" : "pending"];
   if (index === 0) classes.push("latest");
+  if (key && key === state.activeTransactionKey) classes.push("linked-from-event");
   return `
-    <article class="${classes.join(" ")}">
+    <article class="${classes.join(" ")}" data-tx-key="${escapeHtml(key)}" ${key && key === state.activeTransactionKey ? "aria-current=\"true\"" : ""}>
       <div class="tx-row-main">
         <span class="tx-row-status">${escapeHtml(index === 0 ? "Latest" : tx.statusLabel || "Receipt")}</span>
         <strong>${escapeHtml(transactionTitle(tx))}</strong>

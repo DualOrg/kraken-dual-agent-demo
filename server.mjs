@@ -2179,6 +2179,8 @@ function transactionHistoryItem(receipt = {}, { proof = {}, batch = null, orgId 
 
   return {
     ...summary,
+    eventId: receipt.eventId || null,
+    eventHash: receipt.eventHash || null,
     quantity: receipt.quantity ?? null,
     priceUsd: receipt.priceUsd ?? null,
     trade: transactionTradeDetails(receipt),

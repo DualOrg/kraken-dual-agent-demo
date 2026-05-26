@@ -387,6 +387,19 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .term-line { display: flex; gap: 10px; }
+.term-line.linked {
+  border-radius: 6px;
+  cursor: pointer;
+  margin-inline: -4px;
+  padding-inline: 4px;
+}
+
+.term-line.linked:hover,
+.term-line.linked:focus-within,
+.term-line.active-link {
+  background: rgba(20, 194, 198, 0.08);
+}
+
 .term-line .ts {
   color: var(--ink-4);
   flex: 0 0 64px;
@@ -409,6 +422,28 @@ input, select, textarea { font: inherit; color: inherit; }
 .term-line .msg { color: var(--ink-2); flex: 1; min-width: 0; word-break: break-word; }
 .term-line .msg .hash { color: var(--ink-3); }
 .term-line .msg b { color: var(--ink); font-weight: 600; }
+
+.event-link-chip {
+  align-self: flex-start;
+  background: rgba(20, 194, 198, 0.08);
+  border: 1px solid rgba(20, 194, 198, 0.26);
+  border-radius: 999px;
+  color: var(--accent);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  padding: 4px 6px;
+  text-transform: uppercase;
+}
+
+.event-link-chip:hover,
+.event-link-chip:focus-visible {
+  background: rgba(20, 194, 198, 0.16);
+  outline: 0;
+}
 
 /* ----- Active proposal card ----------------------------------- */
 
@@ -2198,6 +2233,11 @@ input, select, textarea { font: inherit; color: inherit; }
   border-color: rgba(240, 180, 41, 0.26);
 }
 
+.tx-row.linked-from-event {
+  border-color: rgba(20, 194, 198, 0.76);
+  box-shadow: 0 0 0 1px rgba(20, 194, 198, 0.18), 0 0 22px rgba(20, 194, 198, 0.12);
+}
+
 .tx-row-main,
 .tx-meta,
 .tx-links {
@@ -3418,6 +3458,11 @@ input, select, textarea { font: inherit; color: inherit; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.binding-right-trace .event-link-chip {
+  font-size: 7.5px;
+  padding: 4px 5px;
 }
 
 .binding-event-trace {

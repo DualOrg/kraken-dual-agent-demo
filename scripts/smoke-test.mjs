@@ -170,6 +170,7 @@ assert(transactionHistory.transactionCount >= 2, "transaction history includes e
 assert(transactionHistory.summary?.status, "transaction history includes a proof summary");
 assert(typeof transactionHistory.summary?.l3ActionCount === "number", "transaction history summarizes L3 actions");
 assert(transactionHistory.transactions[0]?.proposalId?.startsWith("prop-"), "transaction history includes proposal ids");
+assert(transactionHistory.transactions[0]?.eventId?.startsWith("evt-"), "transaction history exposes audit event ids for UI trace links");
 assert(Number(transactionHistory.transactions[0]?.trade?.priceUsd || transactionHistory.transactions[0]?.priceUsd) > 0, "transaction history includes trade price");
 assert(Number(transactionHistory.transactions[0]?.trade?.quantity || transactionHistory.transactions[0]?.quantity) > 0, "transaction history includes trade quantity");
 assert(transactionHistory.transactions[0]?.route?.some((step) => step.layer === "l3"), "transaction history exposes the L3 route");

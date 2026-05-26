@@ -2026,7 +2026,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .narrative-main {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: minmax(418px, 0.64fr) minmax(246px, 0.36fr);
+  grid-template-rows: minmax(360px, 0.56fr) minmax(300px, 0.44fr);
   overflow: hidden;
 }
 
@@ -2548,7 +2548,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .evidence-stage {
   border-top: 1px solid var(--line-strong);
   display: grid;
-  grid-template-columns: minmax(680px, 1.6fr) minmax(360px, 0.8fr);
+  grid-template-columns: minmax(760px, 2fr) minmax(300px, 0.65fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -2566,7 +2566,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .evidence-stage .binding-proof {
   display: grid;
   gap: 6px;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   overflow: hidden;
   padding: 10px 12px;
 }
@@ -2577,8 +2577,9 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .evidence-stage .binding-proof .dual-links {
   display: grid;
-  gap: 3px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  grid-auto-rows: minmax(48px, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   max-height: none;
   overflow: hidden;
 }
@@ -2607,14 +2608,14 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .evidence-stage .binding-proof .proof-grid {
   align-self: stretch;
-  grid-auto-rows: minmax(27px, 1fr);
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 32px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   min-height: 0;
 }
 
 .evidence-stage .proof-cell {
   min-height: 0;
-  padding: 5px 8px;
+  padding: 4px 8px;
 }
 
 .evidence-stage .proof-cell .k {
@@ -2622,8 +2623,8 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .evidence-stage .proof-cell .v {
-  font-size: 8.8px;
-  margin-top: 2px;
+  font-size: 8.6px;
+  margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2788,7 +2789,7 @@ input, select, textarea { font: inherit; color: inherit; }
   }
 
   .evidence-stage {
-    grid-template-columns: minmax(620px, 1.55fr) minmax(330px, 0.85fr);
+    grid-template-columns: minmax(690px, 1.8fr) minmax(260px, 0.65fr);
   }
 }
 

@@ -792,7 +792,9 @@ function renderDualLinks(links) {
     els.dualLinks.innerHTML = `<div class="link-empty">DUAL record links appear when proof readback data is available.</div>`;
     return;
   }
-  els.dualLinks.innerHTML = compactDualLinks(uniqueLinks).map((link) => `
+  const visibleLinks = compactDualLinks(uniqueLinks);
+  const linksToRender = visibleLinks.length ? visibleLinks : uniqueLinks.slice(0, 6);
+  els.dualLinks.innerHTML = linksToRender.map((link) => `
     <div class="dual-link ${dualLinkSourceClass(link.source)}">
       <a class="dual-link-main" href="${escapeHtml(link.href)}" target="_blank" rel="noreferrer">
         <span>${escapeHtml(link.label || "DUAL data")}</span>
@@ -832,14 +834,9 @@ function renderSettlementRoute(settlement) {
 function compactProofRows(rows) {
   const byLabel = new Map(rows);
   const labels = [
-    "Kraken market",
-    "Paper execution",
-    "DUAL mode",
     "L3 action",
     "L2 batch",
     "L1 roll-up",
-    "DUAL object",
-    "DUAL actions",
     "Batch proof"
   ];
   return labels

@@ -32,6 +32,7 @@ const els = {
   transactionSummary: document.querySelector("#transactionSummary"),
   transactionFocus: document.querySelector("#transactionFocus"),
   transactionCount: document.querySelector("#transactionCount"),
+  transactionCountLabel: document.querySelector("#transactionCountLabel"),
   proposalCard: document.querySelector("#proposalCard"),
   approveButton: document.querySelector("#approveButton"),
   executeButton: document.querySelector("#executeButton"),
@@ -671,6 +672,9 @@ function renderTransactionHistory() {
   const history = resolvedTransactionHistory();
   const transactions = history.transactions || [];
   els.transactionCount.textContent = `${history.transactionCount ?? transactions.length}`;
+  if (els.transactionCountLabel) {
+    els.transactionCountLabel.textContent = history.summary?.status === "recovered_dual_proof" ? "Proofs" : "Trades";
+  }
   if (els.transactionSummary) els.transactionSummary.innerHTML = renderTransactionSummary(history, transactions);
   if (!transactions.length) {
     if (els.transactionFocus) els.transactionFocus.innerHTML = "";
@@ -689,12 +693,13 @@ function renderTransactionSummary(history = {}, transactions = []) {
   const latestBatch = history.latestBatch || transactions.find((tx) => tx.settlement?.batchId)?.settlement || null;
   const receiptCount = summary.receiptObjectCount ?? transactions.filter((tx) => tx.dual?.receiptObjectId).length;
   const recoveredCount = summary.recoveredCount ?? transactions.filter((tx) => tx.recoveredFrom).length;
+  const proofLabel = recoveredCount ? "DUAL proofs" : "DUAL receipts";
   const batchLabel = latestBatch?.proofValue
     ? `${latestBatch.proofValue}${latestBatch.finality ? ` / ${latestBatch.finality}` : ""}`
     : latestBatch?.status || "pending";
   return `
     <div class="tx-summary-cell">
-      <span>DUAL receipts</span>
+      <span>${escapeHtml(proofLabel)}</span>
       <strong>${escapeHtml(String(minted))}</strong>
       <small>${escapeHtml(pending ? `${pending} pending` : recoveredCount ? `${recoveredCount} recovered` : `${receiptCount} objects`)}</small>
     </div>

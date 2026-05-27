@@ -5,6 +5,9 @@ export function createTradeReceipt(passport, proposal, event, result) {
   const policy = proposal.policy || {};
   const agentMandate = policy.agentMandate || {};
   const agentMandateProof = agentMandate.proof || {};
+  const autoChain = policy.autoChain || {};
+  const autoChainProof = autoChain.proof || {};
+  const autoChainClaim = autoChain.claim || {};
   const executedAt = proposal.executedAt || event.timestamp || new Date().toISOString();
   const receiptBase = {
     passportId: passport.id,
@@ -25,6 +28,15 @@ export function createTradeReceipt(passport, proposal, event, result) {
     agentMandateDecisionHash: agentMandateProof.decisionHash || null,
     agentMandatePolicyHash: agentMandateProof.policyHash || null,
     agentMandateHash: agentMandateProof.mandateHash || null,
+    autoChainResult: autoChain.result || null,
+    autoChainCode: autoChain.code || null,
+    autoChainReason: autoChain.reason || null,
+    autoChainClaimId: autoChainClaim.claimId || null,
+    autoChainClaimState: autoChainClaim.state || null,
+    autoChainNextGate: autoChainClaim.nextGate || null,
+    autoChainObjectId: autoChainProof.objectId || autoChain.objectId || null,
+    autoChainDecisionHash: autoChainProof.decisionHash || null,
+    autoChainStateHash: autoChainProof.stateHash || null,
     executionDigest: result.digest || null,
     executionSource: result.source || null,
     executionMode: "paper",
@@ -111,6 +123,17 @@ export function summarizeTradeReceipt(receipt = {}) {
       decisionHash: receipt.agentMandateDecisionHash || null,
       policyHash: receipt.agentMandatePolicyHash || null,
       mandateHash: receipt.agentMandateHash || null
+    },
+    autoChain: {
+      result: receipt.autoChainResult || null,
+      code: receipt.autoChainCode || null,
+      reason: receipt.autoChainReason || null,
+      claimId: receipt.autoChainClaimId || null,
+      claimState: receipt.autoChainClaimState || null,
+      nextGate: receipt.autoChainNextGate || null,
+      objectId: receipt.autoChainObjectId || null,
+      decisionHash: receipt.autoChainDecisionHash || null,
+      stateHash: receipt.autoChainStateHash || null
     },
     executionSource: receipt.executionSource || null,
     executionMode: receipt.executionMode || null,

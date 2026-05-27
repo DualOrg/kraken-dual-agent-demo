@@ -42,6 +42,9 @@ const agentMandatesAgentWallet = String(process.env.AGENT_MANDATES_AGENT_WALLET 
 const agentMandatesJurisdiction = String(process.env.AGENT_MANDATES_JURISDICTION || "AU-NSW").trim();
 const agentMandatesAuthorityScope = String(process.env.AGENT_MANDATES_AUTHORITY_SCOPE || "buyer-agent-commerce").trim();
 const agentMandatesTimeoutMs = clampInteger(process.env.AGENT_MANDATES_TIMEOUT_MS, 500, 15000, 5000);
+const autoChainMcpUrl = normalizeExternalBaseUrl(process.env.AUTOCHAIN_MCP_URL || "https://autochain-eight.vercel.app/mcp");
+const autoChainGateMode = normalizeAutoChainGateMode(process.env.AUTOCHAIN_GATE_MODE || "observe");
+const autoChainTimeoutMs = clampInteger(process.env.AUTOCHAIN_TIMEOUT_MS, 500, 15000, 4000);
 const dualLinkTemplates = {
   consoleOrg: process.env.DUAL_CONSOLE_ORG_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}` : ""),
   consoleTemplate: process.env.DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/templates?templateId={templateId}` : ""),
@@ -612,7 +615,8 @@ async function buildHealth(req) {
     features: publicFeatureStatus(),
     adapter,
     dual,
-    agentMandates: publicAgentMandatesStatus()
+    agentMandates: publicAgentMandatesStatus(),
+    autoChain: publicAutoChainStatus()
   };
 }
 
@@ -645,20 +649,35 @@ async function evaluateGovernedTrade(passport, trade) {
   const policy = evaluateTrade(passport, trade);
   if (policy.decision === "block") {
     policy.agentMandate = skippedAgentMandateDecision("local_policy_blocked", "Local DUAL policy blocked the trade before the external mandate gate was called.");
+    policy.autoChain = skippedAutoChainDecision("local_policy_blocked", "Local DUAL policy blocked the trade before the AutoChain MCP gate was called.");
     return policy;
   }
 
   const agentMandate = await evaluateAgentMandate(trade, policy);
   policy.agentMandate = agentMandate;
-  if (!agentMandate.required || agentMandate.allowed) return policy;
+  if (agentMandate.required && !agentMandate.allowed) {
+    const reason = agentMandate.reason || "External Agent Mandates authority did not approve this paper trade.";
+    policy.autoChain = skippedAutoChainDecision("agent_mandates_blocked", "Agent Mandates blocked the trade before the AutoChain MCP gate was called.");
+    return {
+      ...policy,
+      decision: "block",
+      violations: [...(policy.violations || []), reason],
+      warnings: policy.warnings || [],
+      agentMandate
+    };
+  }
 
-  const reason = agentMandate.reason || "External Agent Mandates authority did not approve this paper trade.";
+  const autoChain = await evaluateAutoChainClaimGate(trade, policy);
+  policy.autoChain = autoChain;
+  if (!autoChain.required || autoChain.allowed) return policy;
+
+  const reason = autoChain.reason || "AutoChain MCP claim gate did not approve this upstream paper action.";
   return {
     ...policy,
     decision: "block",
     violations: [...(policy.violations || []), reason],
     warnings: policy.warnings || [],
-    agentMandate
+    autoChain
   };
 }
 
@@ -783,6 +802,119 @@ function skippedAgentMandateDecision(code, reason) {
     proof: {
       objectId: status.objectId || null,
       templateId: null,
+      decisionHash: null
+    },
+    writable: false,
+    publicWrites: false,
+    checkedAt: new Date().toISOString()
+  };
+}
+
+async function evaluateAutoChainClaimGate(trade, policy) {
+  const status = publicAutoChainStatus();
+  if (!status.configured || status.mode === "off") {
+    return {
+      ...status,
+      available: false,
+      required: false,
+      allowed: true,
+      wouldAllow: true,
+      result: "Skipped",
+      code: "gate_disabled",
+      reason: "AutoChain MCP gate is disabled for this runtime.",
+      source: "local_config",
+      claim: null,
+      proof: { objectId: status.objectId || null, decisionHash: null },
+      publicWrites: false,
+      checkedAt: new Date().toISOString()
+    };
+  }
+
+  try {
+    const current = await callAutoChainMcpTool("autochain_dual_get_claim", {});
+    const claim = current.current?.properties || {};
+    const nextGate = current.current?.nextGate || null;
+    const response = await callAutoChainMcpTool("autochain_dual_evaluate_gate", {
+      claim,
+      gate: nextGate || undefined
+    });
+    const evaluation = response.evaluation || {};
+    const proof = evaluation.proof || {};
+    const wouldAllow = Boolean(evaluation.allowed && (evaluation.result === "Approved" || evaluation.result === "Approved with review"));
+    return {
+      ...status,
+      available: true,
+      required: status.required,
+      allowed: status.mode === "observe" ? true : wouldAllow,
+      wouldAllow,
+      result: evaluation.result || (wouldAllow ? "Approved" : "Blocked"),
+      code: wouldAllow ? "approved" : "not_approved",
+      reason: evaluation.reason || (wouldAllow ? "AutoChain approved the current claim gate." : "AutoChain did not approve the current claim gate."),
+      source: "autochain_mcp",
+      trade: {
+        pair: trade.pair,
+        side: trade.side,
+        notional: Number(policy.notional || 0)
+      },
+      claim: {
+        claimId: claim.claim_id || null,
+        state: claim.state || null,
+        nextGate: nextGate?.id || evaluation.gate?.id || null,
+        lastGateId: claim.last_gate_id || null,
+        decisionResult: claim.last_decision_result || null
+      },
+      proof: {
+        objectId: current.current?.object?.id || status.objectId || null,
+        templateId: current.current?.object?.templateId || null,
+        policyHash: proof.policy_hash || claim.policy_hash || null,
+        decisionHash: proof.decision_hash || claim.decision_hash || null,
+        stateHash: proof.state_hash || claim.state_hash || null,
+        integrityHash: proof.integrity_hash || claim.integrity_hash || null,
+        evaluatedAt: evaluation.evaluated_at || null
+      },
+      writable: false,
+      publicWrites: response.publicWrites === true || evaluation.publicWrites === true,
+      checkedAt: evaluation.evaluated_at || new Date().toISOString()
+    };
+  } catch (error) {
+    const required = status.mode === "required";
+    return {
+      ...status,
+      available: false,
+      required,
+      allowed: !required,
+      wouldAllow: false,
+      result: required ? "Unavailable" : "Warning",
+      code: "autochain_unavailable",
+      reason: `AutoChain MCP evaluator unavailable: ${error.message}`,
+      source: "autochain_mcp",
+      claim: null,
+      proof: {
+        objectId: status.objectId || null,
+        decisionHash: null
+      },
+      writable: false,
+      publicWrites: false,
+      checkedAt: new Date().toISOString()
+    };
+  }
+}
+
+function skippedAutoChainDecision(code, reason) {
+  const status = publicAutoChainStatus();
+  return {
+    ...status,
+    available: false,
+    required: status.required,
+    allowed: true,
+    wouldAllow: true,
+    result: "Skipped",
+    code,
+    reason,
+    source: "local_policy",
+    claim: null,
+    proof: {
+      objectId: status.objectId || null,
       decisionHash: null
     },
     writable: false,
@@ -1011,6 +1143,7 @@ async function buildAgentStatus(req, args = {}) {
       dualMode: writeReadiness.mode,
       dualObjectId: publicDualStatus(req).objectId || null,
       agentMandatesGate: publicAgentMandatesStatus(),
+      autoChainGate: publicAutoChainStatus(),
       tradeReceiptTemplateId: publicDualStatus(req).tradeReceiptTemplateId || null,
       proposals: (state.proposals || []).length,
       tradeReceipts: (state.tradeReceipts || []).length,
@@ -1036,6 +1169,7 @@ async function buildAgentStatus(req, args = {}) {
     adapter,
     dual: publicDualStatus(req),
     agentMandates: publicAgentMandatesStatus(),
+    autoChain: publicAutoChainStatus(),
     writeReadiness,
     warnings,
     summary: summarizeStateForAgent(state)
@@ -1092,6 +1226,7 @@ function summarizeStateForAgent(state, limit = 5) {
     notional: proposal.policy?.notional,
     decision: proposal.policy?.decision,
     agentMandate: summarizeAgentMandateDecision(proposal.policy?.agentMandate),
+    autoChain: summarizeAutoChainDecision(proposal.policy?.autoChain),
     approved: proposal.approved,
     executedAt: proposal.executedAt,
     resultDigest: proposal.result?.digest || null,
@@ -1136,6 +1271,8 @@ function safetySummary() {
     dualWrites: publicDualWrites ? "public_enabled_by_env" : "disabled_by_env",
     agentMandatesGate: agentMandatesGateMode,
     agentMandatesWrites: false,
+    autoChainGate: autoChainGateMode,
+    autoChainWrites: false,
     exposedMcpDualWriteTools: false,
     supportedPairs
   };
@@ -1983,6 +2120,11 @@ function normalizeAgentMandatesGateMode(value) {
   return ["required", "warn", "off"].includes(mode) ? mode : "required";
 }
 
+function normalizeAutoChainGateMode(value) {
+  const mode = String(value || "").trim().toLowerCase();
+  return ["observe", "required", "off"].includes(mode) ? mode : "observe";
+}
+
 function normalizeExternalBaseUrl(value) {
   const text = String(value || "").trim().replace(/\/+$/, "");
   if (!text) return "";
@@ -2037,6 +2179,27 @@ async function callAgentMandatesMcp(action, status) {
   if (result.structuredContent) return result.structuredContent;
   const text = result.content?.find((item) => item.type === "text")?.text;
   if (!text) throw new Error("Agent Mandates MCP did not return structured evaluation content.");
+  return JSON.parse(text);
+}
+
+async function callAutoChainMcpTool(name, args) {
+  const status = publicAutoChainStatus();
+  const payload = await postJsonWithTimeout(status.mcpUrl, {
+    jsonrpc: "2.0",
+    id: `kraken-autochain-${Date.now()}`,
+    method: "tools/call",
+    params: {
+      name,
+      arguments: args || {}
+    }
+  }, autoChainTimeoutMs);
+  if (payload.error) {
+    throw new Error(payload.error.message || "AutoChain MCP returned an error.");
+  }
+  const result = payload.result || {};
+  if (result.structuredContent) return result.structuredContent;
+  const text = result.content?.find((item) => item.type === "text")?.text;
+  if (!text) throw new Error("AutoChain MCP did not return structured content.");
   return JSON.parse(text);
 }
 
@@ -2135,6 +2298,9 @@ function publicFeatureStatus() {
     agentMandatesGateConfigured: Boolean(agentMandatesBaseUrl || agentMandatesMcpUrl),
     agentMandatesGateMode,
     agentMandatesTransport,
+    autoChainGateConfigured: Boolean(autoChainMcpUrl),
+    autoChainGateMode,
+    autoChainTransport: "mcp",
     dualConsoleLinksConfigured: Boolean(dualLinkTemplates.consoleTemplate || dualLinkTemplates.consoleObject || dualLinkTemplates.consoleAction),
     dualRecordLinksConfigured: true,
     dualL3ExplorerLinksConfigured: Boolean(dualLinkTemplates.l3Action),
@@ -2170,6 +2336,25 @@ function publicAgentMandatesStatus() {
   };
 }
 
+function publicAutoChainStatus() {
+  return {
+    configured: Boolean(autoChainMcpUrl),
+    mode: autoChainGateMode,
+    required: autoChainGateMode === "required",
+    transport: "mcp",
+    mcpUrl: autoChainMcpUrl || null,
+    objectId: "6a16d6a84754b22af1f6cdb2",
+    timeoutMs: autoChainTimeoutMs,
+    readOnly: true,
+    publicWrites: false,
+    detail: autoChainGateMode === "off"
+      ? "AutoChain MCP gate is disabled by configuration."
+      : autoChainGateMode === "required"
+        ? "Kraken paper execution requires the read-only AutoChain MCP claim gate to approve."
+        : "Kraken paper execution observes the read-only AutoChain MCP claim gate without invoking AutoChain write tools."
+  };
+}
+
 function summarizeAgentMandateDecision(agentMandate = null) {
   if (!agentMandate) return null;
   return {
@@ -2189,6 +2374,28 @@ function summarizeAgentMandateDecision(agentMandate = null) {
   };
 }
 
+function summarizeAutoChainDecision(autoChain = null) {
+  if (!autoChain) return null;
+  return {
+    required: Boolean(autoChain.required),
+    available: Boolean(autoChain.available),
+    allowed: Boolean(autoChain.allowed),
+    wouldAllow: Boolean(autoChain.wouldAllow),
+    result: autoChain.result || null,
+    code: autoChain.code || null,
+    reason: autoChain.reason || null,
+    source: autoChain.source || null,
+    claimId: autoChain.claim?.claimId || null,
+    claimState: autoChain.claim?.state || null,
+    nextGate: autoChain.claim?.nextGate || null,
+    objectId: autoChain.proof?.objectId || autoChain.objectId || null,
+    decisionHash: autoChain.proof?.decisionHash || null,
+    stateHash: autoChain.proof?.stateHash || null,
+    checkedAt: autoChain.checkedAt || autoChain.proof?.evaluatedAt || null,
+    publicWrites: autoChain.publicWrites === true
+  };
+}
+
 function latestAgentMandateDecisionFromState(state = {}) {
   const proposalDecision = (state.proposals || [])
     .map((proposal) => summarizeAgentMandateDecision(proposal.policy?.agentMandate))
@@ -2205,6 +2412,12 @@ function latestAgentMandateDecisionFromState(state = {}) {
       mandateHash: receipt.agentMandateHash || null
     })
     .find((decision) => decision?.result || decision?.decisionHash) || null;
+}
+
+function latestAutoChainDecisionFromState(state = {}) {
+  return (state.proposals || [])
+    .map((proposal) => summarizeAutoChainDecision(proposal.policy?.autoChain))
+    .find(Boolean) || null;
 }
 
 function publicWriteReadiness(req) {
@@ -3282,6 +3495,8 @@ async function buildProofBundle(req) {
   const dualStatus = publicDualStatus(req);
   const agentMandatesStatus = publicAgentMandatesStatus();
   const latestAgentMandateDecision = latestAgentMandateDecisionFromState(state);
+  const autoChainStatus = publicAutoChainStatus();
+  const latestAutoChainDecision = latestAutoChainDecisionFromState(state);
   const proofDualStatus = stripLinks(dualStatus);
   const writeReadiness = publicWriteReadiness(req);
   const templateFields = dualTemplate?.custom || {};
@@ -3355,6 +3570,13 @@ async function buildProofBundle(req) {
         : `External Agent Mandates read gate is configured for ${agentMandatesStatus.objectId || "the canonical mandate object"}.`
     },
     {
+      id: "autochain-mcp-read-gate",
+      ok: Boolean(autoChainStatus.mode === "off" || autoChainStatus.configured),
+      detail: autoChainStatus.mode === "off"
+        ? "AutoChain MCP read gate is disabled by configuration."
+        : "AutoChain MCP read gate is configured for the canonical warranty claim."
+    },
+    {
       id: "dual-mandate-template",
       ok: templateHasMandateSchema,
       detail: dualTemplate?.available ? "DUAL template exposes the Kraken agent mandate schema." : "DUAL template is not readable."
@@ -3419,11 +3641,16 @@ async function buildProofBundle(req) {
       krakenPaperExecution: adapter.krakenCliAvailable ? "kraken-cli-paper" : "simulated-paper",
       dualMode: proofDualStatus,
       agentMandates: agentMandatesStatus,
+      autoChain: autoChainStatus,
       writeReadiness
     },
     agentMandates: {
       ...agentMandatesStatus,
       latestDecision: latestAgentMandateDecision
+    },
+    autoChain: {
+      ...autoChainStatus,
+      latestDecision: latestAutoChainDecision
     },
     dualTemplate,
     dualObject,

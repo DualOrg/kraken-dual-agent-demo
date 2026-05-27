@@ -10,6 +10,10 @@ assert(health.agentMandates?.configured === true, "health exposes configured Age
 assert(health.agentMandates?.readOnly === true, "Agent Mandates gate is read-only from Kraken");
 assert(health.agentMandates?.mode === "required", "Agent Mandates gate is required by default");
 assert(["http", "mcp"].includes(health.agentMandates?.transport), "Agent Mandates gate reports its transport");
+assert(health.autoChain?.configured === true, "health exposes configured AutoChain MCP gate");
+assert(health.autoChain?.readOnly === true, "AutoChain gate is read-only from Kraken");
+assert(health.autoChain?.transport === "mcp", "AutoChain gate uses MCP transport");
+assert(["observe", "required", "off"].includes(health.autoChain?.mode), "AutoChain gate reports a valid mode");
 if (process.env.AGENT_MANDATES_MCP_URL) {
   assert(health.agentMandates.transport === "mcp", "Agent Mandates gate can use MCP transport");
   assert(health.agentMandates.mcpUrl === process.env.AGENT_MANDATES_MCP_URL, "Agent Mandates MCP URL is reflected in health");
@@ -83,6 +87,7 @@ assert(proof.tradeReceipts.rootHash, "proof includes trade receipt root");
 assert(typeof proof.tradeReceipts.pendingCount === "number", "proof includes pending trade receipt count");
 assert(proof.policy.hash, "proof includes policy hash");
 assert(proof.status.agentMandates?.readOnly === true, "proof includes read-only Agent Mandates gate status");
+assert(proof.status.autoChain?.readOnly === true, "proof includes read-only AutoChain gate status");
 assert(proof.dualBatch && typeof proof.dualBatch.available === "boolean", "proof includes DUAL batch status");
 assert(proof.settlement?.layers?.length === 3, "proof includes L3/L2/L1 settlement route");
 assert(Array.isArray(proof.verification), "proof includes verification checks");
@@ -186,12 +191,17 @@ assert(proposed.proposal.policy.decision === "allow", "small BTC proposal is all
 assert(proposed.proposal.policy.agentMandate?.result === "Approved", "small BTC proposal is approved by Agent Mandates");
 assert(proposed.proposal.policy.agentMandate?.publicWrites === false, "Agent Mandates evaluation does not write from Kraken");
 assert(proposed.proposal.policy.agentMandate?.proof?.objectId, "Agent Mandates evaluation returns DUAL object proof");
+assert(proposed.proposal.policy.autoChain?.source === "autochain_mcp", "small BTC proposal observes AutoChain MCP gate");
+assert(proposed.proposal.policy.autoChain?.publicWrites === false, "AutoChain observation does not write from Kraken");
+assert(proposed.proposal.policy.autoChain?.proof?.decisionHash, "AutoChain observation returns a decision hash");
 
 const executed = await post("/api/execute-paper", { id: proposed.proposal.id });
 assert(executed.proposal.state === "executed", "allowed paper proposal executes");
 assert(executed.proposal.policy.agentMandate?.result === "Approved", "paper execution rechecks Agent Mandates before fill");
+assert(executed.proposal.policy.autoChain?.source === "autochain_mcp", "paper execution rechecks AutoChain before fill");
 assert(executed.tradeReceipt?.id?.startsWith("tr-"), "paper execution creates a deterministic trade receipt");
 assert(executed.tradeReceipt?.agentMandate?.decisionHash, "paper execution receipt includes Agent Mandates decision hash");
+assert(executed.tradeReceipt?.autoChain?.decisionHash, "paper execution receipt includes AutoChain decision hash");
 
 const dualProposal = await post("/api/propose", { pair: "DUALUSD", side: "buy", notional: 10 });
 assert(dualProposal.proposal.policy.decision === "allow", "small DUAL proposal is allowed");
@@ -252,6 +262,8 @@ const mcpTrade = mcpJson(await mcp("tools/call", {
 assert(mcpTrade.status === "executed", "MCP paper trade tool executes allowed DUALUSD trade");
 assert(mcpTrade.proposal.trade.pair === "DUALUSD", "MCP trade uses DUALUSD pair");
 assert(mcpTrade.proposal.policy.agentMandate?.result === "Approved", "MCP trade is approved by Agent Mandates gate");
+assert(mcpTrade.proposal.policy.autoChain?.source === "autochain_mcp", "MCP trade observes AutoChain MCP gate");
+assert(mcpTrade.proposal.policy.autoChain?.publicWrites === false, "MCP trade AutoChain gate remains read-only");
 assert(mcpTrade.result.digest, "MCP paper trade returns execution digest");
 assert(mcpTrade.result.executionPath, "MCP paper trade returns execution path");
 assert(!Object.hasOwn(mcpTrade.result, "fallbackReason"), "MCP paper trade does not expose simulator path as fallback error");

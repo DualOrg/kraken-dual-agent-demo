@@ -175,6 +175,17 @@ AGENT_MANDATES_AUTHORITY_SCOPE=buyer-agent-commerce
 
 Use `AGENT_MANDATES_GATE_MODE=off` only for isolated local development. Production should keep the gate `required`.
 
+### AutoChain MCP Gate
+
+The Kraken demo also observes AutoChain over MCP before paper execution. By default it calls the public read-only AutoChain MCP, reads the canonical warranty claim, evaluates its next gate, and attaches that decision to the trade proposal. It never calls AutoChain write tools and never uses an AutoChain operator token.
+
+```bash
+AUTOCHAIN_MCP_URL=https://autochain-eight.vercel.app/mcp
+AUTOCHAIN_GATE_MODE=observe
+```
+
+Use `AUTOCHAIN_GATE_MODE=required` only when a Kraken paper action should be blocked if AutoChain cannot approve the current claim gate. Use `AUTOCHAIN_GATE_MODE=off` to disable the integration.
+
 ### Public Deployment Mode
 
 Public deployments can write paper-trade evidence to DUAL when all of these are true:

@@ -34,6 +34,8 @@ const dualL1ExplorerBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_L1_EXPLO
 const agentMandatesBaseUrl = normalizeExternalBaseUrl(
   process.env.AGENT_MANDATES_URL || process.env.AGENT_MANDATES_BASE_URL || "https://agent-mandates-dual-demo.vercel.app"
 );
+const agentMandatesMcpUrl = normalizeExternalBaseUrl(process.env.AGENT_MANDATES_MCP_URL || "");
+const agentMandatesTransport = agentMandatesMcpUrl ? "mcp" : "http";
 const agentMandatesGateMode = normalizeAgentMandatesGateMode(process.env.AGENT_MANDATES_GATE_MODE || "required");
 const agentMandatesObjectId = String(process.env.AGENT_MANDATES_OBJECT_ID || "6a165a5a0b0bf21f33c111cc").trim();
 const agentMandatesAgentWallet = String(process.env.AGENT_MANDATES_AGENT_WALLET || "agent-mandates-demo-agent-wallet-001").trim();
@@ -679,7 +681,9 @@ async function evaluateAgentMandate(trade, policy) {
 
   const action = agentMandateActionForTrade(trade, policy);
   try {
-    const response = await postJsonWithTimeout(status.evaluateUrl, { action }, agentMandatesTimeoutMs);
+    const response = agentMandatesTransport === "mcp"
+      ? await callAgentMandatesMcp(action, status)
+      : await postJsonWithTimeout(status.evaluateUrl, { action }, agentMandatesTimeoutMs);
     const evaluation = response.evaluation || {};
     const proof = evaluation.proof || {};
     const allowed = Boolean(evaluation.allowed && evaluation.result === "Approved");
@@ -692,7 +696,7 @@ async function evaluateAgentMandate(trade, policy) {
       result: evaluation.result || (allowed ? "Approved" : "Blocked"),
       code: evaluation.code || (allowed ? "approved" : "not_approved"),
       reason: evaluation.reason || (allowed ? "Agent Mandates approved the request." : "Agent Mandates did not approve the request."),
-      source: evaluation.source || "agent_mandates",
+      source: evaluation.source || (agentMandatesTransport === "mcp" ? "agent_mandates_mcp" : "agent_mandates"),
       action: evaluation.action || action,
       mandate: evaluation.mandate || null,
       proof: {
@@ -2016,6 +2020,26 @@ async function postJsonWithTimeout(url, body, timeoutMs) {
   }
 }
 
+async function callAgentMandatesMcp(action, status) {
+  const payload = await postJsonWithTimeout(status.mcpUrl, {
+    jsonrpc: "2.0",
+    id: `kraken-${Date.now()}`,
+    method: "tools/call",
+    params: {
+      name: "agent_mandates_evaluate_action",
+      arguments: { action }
+    }
+  }, agentMandatesTimeoutMs);
+  if (payload.error) {
+    throw new Error(payload.error.message || "Agent Mandates MCP returned an error.");
+  }
+  const result = payload.result || {};
+  if (result.structuredContent) return result.structuredContent;
+  const text = result.content?.find((item) => item.type === "text")?.text;
+  if (!text) throw new Error("Agent Mandates MCP did not return structured evaluation content.");
+  return JSON.parse(text);
+}
+
 function policySnapshot(passport) {
   return {
     allowedPairs: passport.allowedPairs,
@@ -2108,8 +2132,9 @@ function publicFeatureStatus() {
   return {
     emailCodeAuthEnabled,
     emailCodeRequired: false,
-    agentMandatesGateConfigured: Boolean(agentMandatesBaseUrl),
+    agentMandatesGateConfigured: Boolean(agentMandatesBaseUrl || agentMandatesMcpUrl),
     agentMandatesGateMode,
+    agentMandatesTransport,
     dualConsoleLinksConfigured: Boolean(dualLinkTemplates.consoleTemplate || dualLinkTemplates.consoleObject || dualLinkTemplates.consoleAction),
     dualRecordLinksConfigured: true,
     dualL3ExplorerLinksConfigured: Boolean(dualLinkTemplates.l3Action),
@@ -2121,12 +2146,15 @@ function publicFeatureStatus() {
 
 function publicAgentMandatesStatus() {
   const evaluateUrl = agentMandatesBaseUrl ? `${agentMandatesBaseUrl}/api/mandates/evaluate` : "";
+  const configured = agentMandatesTransport === "mcp" ? Boolean(agentMandatesMcpUrl) : Boolean(agentMandatesBaseUrl);
   return {
-    configured: Boolean(agentMandatesBaseUrl),
+    configured,
     mode: agentMandatesGateMode,
     required: agentMandatesGateMode === "required",
+    transport: agentMandatesTransport,
     baseUrl: agentMandatesBaseUrl,
     evaluateUrl,
+    mcpUrl: agentMandatesMcpUrl || null,
     objectId: agentMandatesObjectId || null,
     authorityScope: agentMandatesAuthorityScope || null,
     jurisdiction: agentMandatesJurisdiction || null,
@@ -2136,7 +2164,9 @@ function publicAgentMandatesStatus() {
     publicWrites: false,
     detail: agentMandatesGateMode === "off"
       ? "Agent Mandates evaluator is disabled by configuration."
-      : "Kraken paper execution is checked against the public read-only Agent Mandates evaluator before a paper fill."
+      : agentMandatesTransport === "mcp"
+        ? "Kraken paper execution is checked through the read-only Agent Mandates MCP before a paper fill."
+        : "Kraken paper execution is checked against the public read-only Agent Mandates evaluator before a paper fill."
   };
 }
 

@@ -9,6 +9,11 @@ assert(Array.isArray(health.dual.links), "health exposes DUAL data links");
 assert(health.agentMandates?.configured === true, "health exposes configured Agent Mandates gate");
 assert(health.agentMandates?.readOnly === true, "Agent Mandates gate is read-only from Kraken");
 assert(health.agentMandates?.mode === "required", "Agent Mandates gate is required by default");
+assert(["http", "mcp"].includes(health.agentMandates?.transport), "Agent Mandates gate reports its transport");
+if (process.env.AGENT_MANDATES_MCP_URL) {
+  assert(health.agentMandates.transport === "mcp", "Agent Mandates gate can use MCP transport");
+  assert(health.agentMandates.mcpUrl === process.env.AGENT_MANDATES_MCP_URL, "Agent Mandates MCP URL is reflected in health");
+}
 
 const openapi = await get("/api/openapi.json");
 assert(openapi.openapi === "3.1.0", "OpenAPI endpoint returns a 3.1 document");

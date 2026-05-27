@@ -160,10 +160,12 @@ The DUAL adapter is optional. If the SDK or credentials are unavailable, the app
 
 ### Agent Mandates Gate
 
-The Kraken demo also calls the public Agent Mandates evaluator before paper execution. This is a read-only check against the canonical DUAL-backed mandate object; it does not require or expose the Agent Mandates operator token.
+The Kraken demo also calls Agent Mandates before paper execution. By default it uses the direct HTTP evaluator. If `AGENT_MANDATES_MCP_URL` is set, it calls the read-only MCP tool `agent_mandates_evaluate_action` instead. Neither path requires or exposes the Agent Mandates operator token.
 
 ```bash
 AGENT_MANDATES_URL=https://agent-mandates-dual-demo.vercel.app
+# Optional MCP transport:
+# AGENT_MANDATES_MCP_URL=https://agent-mandates-dual-demo.vercel.app/mcp
 AGENT_MANDATES_GATE_MODE=required
 AGENT_MANDATES_OBJECT_ID=6a165a5a0b0bf21f33c111cc
 AGENT_MANDATES_AGENT_WALLET=agent-mandates-demo-agent-wallet-001

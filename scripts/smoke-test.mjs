@@ -6,6 +6,9 @@ assert(["local", "dual"].includes(health.dual.mode), "DUAL persistence reports a
 assert(health.app.mcp === "/mcp", "health advertises MCP endpoint");
 assert(health.features.emailCodeRequired === false, "email-code auth is not required for demo writes");
 assert(Array.isArray(health.dual.links), "health exposes DUAL data links");
+assert(health.agentMandates?.configured === true, "health exposes configured Agent Mandates gate");
+assert(health.agentMandates?.readOnly === true, "Agent Mandates gate is read-only from Kraken");
+assert(health.agentMandates?.mode === "required", "Agent Mandates gate is required by default");
 
 const openapi = await get("/api/openapi.json");
 assert(openapi.openapi === "3.1.0", "OpenAPI endpoint returns a 3.1 document");
@@ -68,6 +71,7 @@ assert(typeof proof.replayQueue.pendingCount === "number", "proof includes pendi
 assert(proof.tradeReceipts.rootHash, "proof includes trade receipt root");
 assert(typeof proof.tradeReceipts.pendingCount === "number", "proof includes pending trade receipt count");
 assert(proof.policy.hash, "proof includes policy hash");
+assert(proof.status.agentMandates?.readOnly === true, "proof includes read-only Agent Mandates gate status");
 assert(proof.dualBatch && typeof proof.dualBatch.available === "boolean", "proof includes DUAL batch status");
 assert(proof.settlement?.layers?.length === 3, "proof includes L3/L2/L1 settlement route");
 assert(Array.isArray(proof.verification), "proof includes verification checks");
@@ -138,6 +142,24 @@ assert(policy.policy.maxNotionalUsd === 250, "policy endpoint updates max trade"
 assert(policy.policy.allowedPairs.includes("BTCUSD"), "policy endpoint keeps BTCUSD allowed");
 assert(policy.policy.allowedPairs.includes("DUALUSD"), "policy endpoint keeps DUALUSD allowed");
 
+await post("/api/policy", {
+  allowedPairs: ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"],
+  maxNotionalUsd: 1000,
+  maxDailyNotionalUsd: 2000,
+  humanApprovalRequiredAbove: 2000,
+  leverageAllowed: false
+});
+const mandateBlocked = await post("/api/propose", { pair: "BTCUSD", side: "buy", notional: 300 });
+assert(mandateBlocked.proposal.policy.decision === "block", "Agent Mandates blocks trades above the canonical mandate limit");
+assert(mandateBlocked.proposal.policy.agentMandate?.code === "spend_limit_exceeded", "Agent Mandates reports the spend-limit reason");
+await post("/api/policy", {
+  allowedPairs: ["BTCUSD", "ETHUSD", "SOLUSD", "DUALUSD"],
+  maxNotionalUsd: 250,
+  maxDailyNotionalUsd: 1000,
+  humanApprovalRequiredAbove: 100,
+  leverageAllowed: false
+});
+
 const market = await get("/api/market?pair=BTCUSD");
 assert(market.pair === "BTCUSD", "market endpoint returns BTCUSD");
 assert(Number(market.price) > 0, "market endpoint returns a price");
@@ -150,10 +172,15 @@ assert([market.changePct, dualMarket.changePct].some((value) => Number(value) !=
 
 const proposed = await post("/api/propose", { pair: "BTCUSD", side: "buy", notional: 75 });
 assert(proposed.proposal.policy.decision === "allow", "small BTC proposal is allowed");
+assert(proposed.proposal.policy.agentMandate?.result === "Approved", "small BTC proposal is approved by Agent Mandates");
+assert(proposed.proposal.policy.agentMandate?.publicWrites === false, "Agent Mandates evaluation does not write from Kraken");
+assert(proposed.proposal.policy.agentMandate?.proof?.objectId, "Agent Mandates evaluation returns DUAL object proof");
 
 const executed = await post("/api/execute-paper", { id: proposed.proposal.id });
 assert(executed.proposal.state === "executed", "allowed paper proposal executes");
+assert(executed.proposal.policy.agentMandate?.result === "Approved", "paper execution rechecks Agent Mandates before fill");
 assert(executed.tradeReceipt?.id?.startsWith("tr-"), "paper execution creates a deterministic trade receipt");
+assert(executed.tradeReceipt?.agentMandate?.decisionHash, "paper execution receipt includes Agent Mandates decision hash");
 
 const dualProposal = await post("/api/propose", { pair: "DUALUSD", side: "buy", notional: 10 });
 assert(dualProposal.proposal.policy.decision === "allow", "small DUAL proposal is allowed");
@@ -194,6 +221,7 @@ if (transactionHistory.summary?.latestL2TransactionHash) {
 
 const redTeam = await post("/api/red-team", { scenario: "leverage" });
 assert(redTeam.policy.decision === "block", "leverage red-team scenario is blocked");
+assert(redTeam.policy.agentMandate?.code === "local_policy_blocked", "local policy blocks red-team before external mandate call");
 const historyWithBlock = await get("/api/transactions/history?limit=5");
 assert(historyWithBlock.policyBlockCount >= 1, "transaction history exposes blocked policy proofs");
 assert(historyWithBlock.policyBlocks[0]?.title?.includes("tested"), "blocked policy proof includes a visible event title");
@@ -212,6 +240,7 @@ const mcpTrade = mcpJson(await mcp("tools/call", {
 }));
 assert(mcpTrade.status === "executed", "MCP paper trade tool executes allowed DUALUSD trade");
 assert(mcpTrade.proposal.trade.pair === "DUALUSD", "MCP trade uses DUALUSD pair");
+assert(mcpTrade.proposal.policy.agentMandate?.result === "Approved", "MCP trade is approved by Agent Mandates gate");
 assert(mcpTrade.result.digest, "MCP paper trade returns execution digest");
 assert(mcpTrade.result.executionPath, "MCP paper trade returns execution path");
 assert(!Object.hasOwn(mcpTrade.result, "fallbackReason"), "MCP paper trade does not expose simulator path as fallback error");

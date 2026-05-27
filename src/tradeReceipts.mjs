@@ -3,6 +3,8 @@ import crypto from "node:crypto";
 export function createTradeReceipt(passport, proposal, event, result) {
   const trade = proposal.trade || {};
   const policy = proposal.policy || {};
+  const agentMandate = policy.agentMandate || {};
+  const agentMandateProof = agentMandate.proof || {};
   const executedAt = proposal.executedAt || event.timestamp || new Date().toISOString();
   const receiptBase = {
     passportId: passport.id,
@@ -16,6 +18,13 @@ export function createTradeReceipt(passport, proposal, event, result) {
     policyDecision: policy.decision || "allow",
     policyVersion: Number(passport.policyVersion || 1),
     policyHash: passport.policyHash || hashJson(policySnapshot(passport)),
+    agentMandateResult: agentMandate.result || null,
+    agentMandateCode: agentMandate.code || null,
+    agentMandateReason: agentMandate.reason || null,
+    agentMandateObjectId: agentMandateProof.objectId || agentMandate.objectId || null,
+    agentMandateDecisionHash: agentMandateProof.decisionHash || null,
+    agentMandatePolicyHash: agentMandateProof.policyHash || null,
+    agentMandateHash: agentMandateProof.mandateHash || null,
     executionDigest: result.digest || null,
     executionSource: result.source || null,
     executionMode: "paper",
@@ -53,6 +62,13 @@ export function tradeReceiptProperties(receipt = {}) {
     policy_decision: receipt.policyDecision || "allow",
     policy_version: String(receipt.policyVersion || 1),
     policy_hash: receipt.policyHash || "",
+    agent_mandate_result: receipt.agentMandateResult || "",
+    agent_mandate_code: receipt.agentMandateCode || "",
+    agent_mandate_reason: receipt.agentMandateReason || "",
+    agent_mandate_object_id: receipt.agentMandateObjectId || "",
+    agent_mandate_decision_hash: receipt.agentMandateDecisionHash || "",
+    agent_mandate_policy_hash: receipt.agentMandatePolicyHash || "",
+    agent_mandate_hash: receipt.agentMandateHash || "",
     execution_mode: receipt.executionMode || "paper",
     execution_source: receipt.executionSource || "",
     execution_digest: receipt.executionDigest || "",
@@ -85,6 +101,17 @@ export function summarizeTradeReceipt(receipt = {}) {
     quantity: receipt.quantity ?? null,
     priceUsd: receipt.priceUsd ?? null,
     notionalUsd: receipt.notionalUsd ?? null,
+    policyDecision: receipt.policyDecision || null,
+    policyHash: receipt.policyHash || null,
+    agentMandate: {
+      result: receipt.agentMandateResult || null,
+      code: receipt.agentMandateCode || null,
+      reason: receipt.agentMandateReason || null,
+      objectId: receipt.agentMandateObjectId || null,
+      decisionHash: receipt.agentMandateDecisionHash || null,
+      policyHash: receipt.agentMandatePolicyHash || null,
+      mandateHash: receipt.agentMandateHash || null
+    },
     executionSource: receipt.executionSource || null,
     executionMode: receipt.executionMode || null,
     executionDigest: receipt.executionDigest || null,

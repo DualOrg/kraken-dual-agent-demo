@@ -524,7 +524,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* State flow rail */
 .flow {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1px;
   background: var(--line);
 }
@@ -3633,6 +3633,7 @@ input, select, textarea { font: inherit; color: inherit; }
   }
 
   .story-flow,
+  .flow,
   .trade-hero-form,
   .evidence-stage .binding-proof .proof-grid {
     grid-template-columns: 1fr;

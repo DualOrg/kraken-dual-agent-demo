@@ -446,6 +446,7 @@ function renderPassport() {
     ["Daily cap", `${money.format(passport.dailyNotionalUsed)} / ${money.format(passport.maxDailyNotionalUsd)}${renderDailyBar(passport)}`],
     ["Leverage", passport.leverageAllowed ? "Allowed" : "Blocked"],
     ["Approval threshold", money.format(passport.humanApprovalRequiredAbove)],
+    ["Agent Mandate", renderAgentMandatePassport()],
     ["Policy", passport.approvalPolicy.replaceAll("_", " ")]
   ];
 
@@ -491,8 +492,10 @@ function renderProposal() {
   const quantity = proposal.trade.quantity || (marketPrice ? policy.notional / marketPrice : 0);
   const policyHash = state.data.passport.policyHash || "";
   const policyVersion = state.data.passport.policyVersion || "1";
+  const agentMandate = policy.agentMandate || null;
   const statusClass = policy.decision === "block" ? "blocked" : policy.decision === "needs_approval" ? "pending" : "allowed";
   const message = policy.violations[0] || policy.warnings[0] || "Ready for paper execution.";
+  const safeMessage = escapeHtml(message);
   els.proposalCard.className = `proposal ${statusClass === "blocked" ? "state-blocked" : ""}`;
   els.proposalCard.innerHTML = `
     <div class="prop-head">
@@ -512,8 +515,9 @@ function renderProposal() {
     <div class="flow">
       ${renderProposalStep("proposed", "Proposed", `<b>${proposal.trade.side.toUpperCase()} ${proposal.trade.pair}</b><br>${money.format(policy.notional)} · ${Number(quantity || 0).toFixed(6)} ${proposal.trade.pair.replace("USD", "")}`, "done")}
       ${renderProposalStep("policy", "Policy check", policy.decision === "block"
-        ? `decision: <b class="negative">BLOCK</b><br>${message}`
+        ? `decision: <b class="negative">BLOCK</b><br>${safeMessage}`
         : `decision: <b class="positive">${policy.decision === "needs_approval" ? "NEEDS APPROVAL" : "ALLOW"}</b><br>v${policyVersion} · <span class="hash-mono">${shortId(policyHash)}</span>`, policy.decision === "block" ? "blocked" : "done")}
+      ${renderAgentMandateStep(agentMandate)}
       ${renderProposalStep("approval", "Human gate", policy.decision === "needs_approval"
         ? proposal.state === "approved" || proposal.state === "executed"
           ? "approved · operator"
@@ -526,12 +530,51 @@ function renderProposal() {
           : "pending", proposal.state === "executed" ? "done" : proposal.state === "approved" ? "active" : "pending")}
     </div>
     <div class="prop-actions">
-      <span>${proposal.tradeReceipt ? `receipt <span class="hash-mono">${shortId(proposal.tradeReceipt.id)}</span> · ${tradeReceiptSyncLabel(proposal.tradeReceipt)}` : message}</span>
+      <span>${proposal.tradeReceipt ? `receipt <span class="hash-mono">${shortId(proposal.tradeReceipt.id)}</span> · ${tradeReceiptSyncLabel(proposal.tradeReceipt)}` : safeMessage}</span>
       <strong>${proposal.state.replaceAll("_", " ")}</strong>
     </div>
   `;
   els.approveButton.disabled = proposal.state !== "awaiting_approval";
   els.executeButton.disabled = proposal.state !== "approved";
+}
+
+function renderAgentMandatePassport() {
+  const status = state.health?.agentMandates || state.proof?.agentMandates || {};
+  const latest = latestProposalAgentMandate() || state.proof?.agentMandates?.latestDecision || null;
+  if (latest?.result) {
+    const result = latest.result === "Approved" ? "Approved" : latest.result;
+    const object = latest.objectId ? ` · ${shortId(latest.objectId)}` : "";
+    return `<span class="${latest.allowed === false ? "warn" : "pos"}">${escapeHtml(result)}${object}</span>`;
+  }
+  if (status.mode === "off") return `<span class="muted">Disabled</span>`;
+  return status.configured
+    ? `<span class="pos">Read gate ready${status.objectId ? ` · ${shortId(status.objectId)}` : ""}</span>`
+    : `<span class="warn">Not configured</span>`;
+}
+
+function latestProposalAgentMandate() {
+  return (state.data?.proposals || [])
+    .map((proposal) => proposal.policy?.agentMandate)
+    .find(Boolean) || null;
+}
+
+function renderAgentMandateStep(agentMandate) {
+  if (!agentMandate) {
+    return renderProposalStep("mandate", "Mandate gate", "waiting for Agent Mandates", "pending");
+  }
+  const proof = agentMandate.proof || {};
+  const result = agentMandate.result || (agentMandate.allowed ? "Approved" : "Blocked");
+  const cls = agentMandate.result === "Skipped"
+    ? "pending"
+    : agentMandate.allowed
+      ? "done"
+      : "blocked";
+  const hash = proof.decisionHash || proof.policyHash || proof.mandateHash || "";
+  const source = agentMandate.source === "dual_readback" ? "DUAL readback" : agentMandate.source || "Agent Mandates";
+  const detail = agentMandate.result === "Skipped"
+    ? `${escapeHtml(agentMandate.reason || "Skipped")}<br>${proof.objectId ? `object <span class="hash-mono">${shortId(proof.objectId)}</span>` : "not called"}`
+    : `<b class="${agentMandate.allowed ? "positive" : "negative"}">${escapeHtml(result.toUpperCase())}</b> · ${escapeHtml(source)}<br>${hash ? `decision <span class="hash-mono">${shortId(hash)}</span>` : escapeHtml(agentMandate.reason || "No decision hash")}`;
+  return renderProposalStep("mandate", "Mandate gate", detail, cls);
 }
 
 function renderProposalStep(key, label, detail, cls) {

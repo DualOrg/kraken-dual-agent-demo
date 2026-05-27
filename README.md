@@ -18,6 +18,7 @@ What to look for:
 
 - `MODE PAPER`: no real Kraken order is placed.
 - `KRAKEN PUBLIC API LIVE`: market data is coming from Kraken public data when available.
+- `AGENT MANDATE`: the paper execution request is checked against the DUAL-backed Agent Mandates demo before a fill.
 - `DUAL WRITE-SYNC LIVE` or local DUAL status: shows whether paper-trade evidence is being written to DUAL or simulated locally.
 - `TRANSACTION HISTORY`: executed paper trades and blocked-policy proofs.
 - `LIVE PROOF`: proof hash, verifier status, DUAL readback, and settlement route.
@@ -89,7 +90,7 @@ After the app opens:
 1. Confirm the status chips show `PAPER` and either Kraken public data or simulator fallback.
 2. Use the default safe proposal, or choose `DUALUSD`, `buy`, and a small notional such as `$10` or `$75`.
 3. Click `CHECK POLICY`.
-4. Confirm the policy decision is `ALLOW`.
+4. Confirm the local policy decision is `ALLOW` and the Agent Mandates gate is `APPROVED`.
 5. Click `EXECUTE PAPER TRADE`.
 6. Open or inspect `TRANSACTION HISTORY` and `LIVE PROOF`.
 7. Trigger a red-team scenario, such as leverage or oversized order, and confirm it is blocked.
@@ -156,6 +157,21 @@ DEMO_PUBLIC_DUAL_WRITES=true
 ```
 
 The DUAL adapter is optional. If the SDK or credentials are unavailable, the app keeps running in local simulator mode.
+
+### Agent Mandates Gate
+
+The Kraken demo also calls the public Agent Mandates evaluator before paper execution. This is a read-only check against the canonical DUAL-backed mandate object; it does not require or expose the Agent Mandates operator token.
+
+```bash
+AGENT_MANDATES_URL=https://agent-mandates-dual-demo.vercel.app
+AGENT_MANDATES_GATE_MODE=required
+AGENT_MANDATES_OBJECT_ID=6a165a5a0b0bf21f33c111cc
+AGENT_MANDATES_AGENT_WALLET=agent-mandates-demo-agent-wallet-001
+AGENT_MANDATES_JURISDICTION=AU-NSW
+AGENT_MANDATES_AUTHORITY_SCOPE=buyer-agent-commerce
+```
+
+Use `AGENT_MANDATES_GATE_MODE=off` only for isolated local development. Production should keep the gate `required`.
 
 ### Public Deployment Mode
 

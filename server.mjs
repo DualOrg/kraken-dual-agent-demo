@@ -31,6 +31,15 @@ const dualL2ExplorerBaseUrl = normalizeExternalBaseUrl(
   process.env.DUAL_L2_EXPLORER_BASE_URL || process.env.DUAL_BLOCKSCOUT_BASE_URL || "https://explorer-test-v2.dual.network"
 );
 const dualL1ExplorerBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_L1_EXPLORER_BASE_URL || "");
+const agentMandatesBaseUrl = normalizeExternalBaseUrl(
+  process.env.AGENT_MANDATES_URL || process.env.AGENT_MANDATES_BASE_URL || "https://agent-mandates-dual-demo.vercel.app"
+);
+const agentMandatesGateMode = normalizeAgentMandatesGateMode(process.env.AGENT_MANDATES_GATE_MODE || "required");
+const agentMandatesObjectId = String(process.env.AGENT_MANDATES_OBJECT_ID || "6a165a5a0b0bf21f33c111cc").trim();
+const agentMandatesAgentWallet = String(process.env.AGENT_MANDATES_AGENT_WALLET || "agent-mandates-demo-agent-wallet-001").trim();
+const agentMandatesJurisdiction = String(process.env.AGENT_MANDATES_JURISDICTION || "AU-NSW").trim();
+const agentMandatesAuthorityScope = String(process.env.AGENT_MANDATES_AUTHORITY_SCOPE || "buyer-agent-commerce").trim();
+const agentMandatesTimeoutMs = clampInteger(process.env.AGENT_MANDATES_TIMEOUT_MS, 500, 15000, 5000);
 const dualLinkTemplates = {
   consoleOrg: process.env.DUAL_CONSOLE_ORG_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}` : ""),
   consoleTemplate: process.env.DUAL_CONSOLE_TEMPLATE_URL_TEMPLATE || (dualConsoleBaseUrl ? `${dualConsoleBaseUrl}/{orgId}/collections/templates?templateId={templateId}` : ""),
@@ -600,7 +609,8 @@ async function buildHealth(req) {
     safety: safetySummary(),
     features: publicFeatureStatus(),
     adapter,
-    dual
+    dual,
+    agentMandates: publicAgentMandatesStatus()
   };
 }
 
@@ -629,6 +639,154 @@ async function readMarketSnapshot(req, pair, { recordAudit = false } = {}) {
   return { state, market, event };
 }
 
+async function evaluateGovernedTrade(passport, trade) {
+  const policy = evaluateTrade(passport, trade);
+  if (policy.decision === "block") {
+    policy.agentMandate = skippedAgentMandateDecision("local_policy_blocked", "Local DUAL policy blocked the trade before the external mandate gate was called.");
+    return policy;
+  }
+
+  const agentMandate = await evaluateAgentMandate(trade, policy);
+  policy.agentMandate = agentMandate;
+  if (!agentMandate.required || agentMandate.allowed) return policy;
+
+  const reason = agentMandate.reason || "External Agent Mandates authority did not approve this paper trade.";
+  return {
+    ...policy,
+    decision: "block",
+    violations: [...(policy.violations || []), reason],
+    warnings: policy.warnings || [],
+    agentMandate
+  };
+}
+
+async function evaluateAgentMandate(trade, policy) {
+  const status = publicAgentMandatesStatus();
+  if (!status.configured || status.mode === "off") {
+    return {
+      ...status,
+      available: false,
+      required: false,
+      allowed: true,
+      result: "Skipped",
+      code: "gate_disabled",
+      reason: "Agent Mandates gate is disabled for this runtime.",
+      source: "local_config",
+      publicWrites: false,
+      checkedAt: new Date().toISOString()
+    };
+  }
+
+  const action = agentMandateActionForTrade(trade, policy);
+  try {
+    const response = await postJsonWithTimeout(status.evaluateUrl, { action }, agentMandatesTimeoutMs);
+    const evaluation = response.evaluation || {};
+    const proof = evaluation.proof || {};
+    const allowed = Boolean(evaluation.allowed && evaluation.result === "Approved");
+    return {
+      ...status,
+      available: Boolean(response.evaluated),
+      required: status.required,
+      allowed: status.mode === "warn" ? true : allowed,
+      wouldAllow: allowed,
+      result: evaluation.result || (allowed ? "Approved" : "Blocked"),
+      code: evaluation.code || (allowed ? "approved" : "not_approved"),
+      reason: evaluation.reason || (allowed ? "Agent Mandates approved the request." : "Agent Mandates did not approve the request."),
+      source: evaluation.source || "agent_mandates",
+      action: evaluation.action || action,
+      mandate: evaluation.mandate || null,
+      proof: {
+        objectId: proof.object_id || status.objectId || null,
+        templateId: proof.template_id || null,
+        stateHash: proof.state_hash || null,
+        integrityHash: proof.integrity_hash || null,
+        policyHash: proof.policy_hash || null,
+        mandateHash: proof.mandate_hash || null,
+        lastEventHash: proof.last_event_hash || null,
+        decisionHash: proof.decision_hash || null,
+        evaluatedAt: proof.evaluated_at || null
+      },
+      writable: Boolean(response.writable),
+      publicWrites: response.publicWrites === true,
+      checkedAt: proof.evaluated_at || new Date().toISOString()
+    };
+  } catch (error) {
+    const required = status.mode === "required";
+    return {
+      ...status,
+      available: false,
+      required,
+      allowed: !required,
+      wouldAllow: false,
+      result: required ? "Unavailable" : "Warning",
+      code: "agent_mandates_unavailable",
+      reason: `Agent Mandates evaluator unavailable: ${error.message}`,
+      source: "agent_mandates",
+      action,
+      mandate: null,
+      proof: {
+        objectId: status.objectId || null,
+        templateId: null,
+        decisionHash: null
+      },
+      writable: false,
+      publicWrites: false,
+      checkedAt: new Date().toISOString()
+    };
+  }
+}
+
+function agentMandateActionForTrade(trade, policy) {
+  const pair = String(trade.pair || "").toUpperCase();
+  const side = String(trade.side || "buy").toLowerCase();
+  const actionType = side === "sell" ? "transfer" : "purchase";
+  return {
+    action_type: actionType,
+    label: `Kraken paper ${side.toUpperCase()} ${pair}`,
+    amount_usd: Number(policy.notional || 0),
+    counterparty: `kraken-paper:${pair}`,
+    agent_wallet: agentMandatesAgentWallet,
+    jurisdiction: agentMandatesJurisdiction,
+    authority_scope: agentMandatesAuthorityScope,
+    metadata: {
+      source: "kraken-dual-agent-demo",
+      execution_mode: "paper",
+      pair,
+      side,
+      quantity: Number(trade.quantity || 0),
+      price_usd: Number(trade.price || 0),
+      leverage: Number(trade.leverage || 1),
+      local_policy_decision: policy.decision,
+      local_policy_checked_at: policy.checkedAt
+    }
+  };
+}
+
+function skippedAgentMandateDecision(code, reason) {
+  const status = publicAgentMandatesStatus();
+  return {
+    ...status,
+    available: false,
+    required: status.required,
+    allowed: true,
+    wouldAllow: true,
+    result: "Skipped",
+    code,
+    reason,
+    source: "local_policy",
+    action: null,
+    mandate: null,
+    proof: {
+      objectId: status.objectId || null,
+      templateId: null,
+      decisionHash: null
+    },
+    writable: false,
+    publicWrites: false,
+    checkedAt: new Date().toISOString()
+  };
+}
+
 async function proposeTrade(req, input) {
   const state = await loadState();
   applyDualRuntimeConfig(state);
@@ -647,7 +805,7 @@ async function proposeTrade(req, input) {
     notional: input.notional ?? input.notional_usd ?? input.notionalUsd,
     price: market.price
   });
-  const policy = evaluateTrade(state.passport, trade);
+  const policy = await evaluateGovernedTrade(state.passport, trade);
   const proposal = createProposal(trade, policy);
   state.proposals.unshift(proposal);
   state.passport.dualObjectState = proposal.state;
@@ -669,17 +827,19 @@ async function approveTrade(req, input) {
   const proposal = (state.proposals || []).find((item) => item.id === id);
   if (!proposal) throw httpError("Proposal not found.", 404, "proposal_not_found");
 
-  proposal.approved = true;
-  proposal.state = "approved";
   proposal.trade.approved = true;
-  proposal.policy = evaluateTrade(state.passport, proposal.trade);
-  state.passport.dualObjectState = "approved";
+  proposal.policy = await evaluateGovernedTrade(state.passport, proposal.trade);
+  proposal.approved = proposal.policy.decision !== "block";
+  proposal.state = proposal.policy.decision === "block" ? "blocked" : "approved";
+  state.passport.dualObjectState = proposal.policy.decision === "block" ? "blocked" : "approved";
   const event = await addAudit(req, state,
     "human_approved",
-    "ok",
-    "Human approval recorded",
-    `${proposal.trade.side.toUpperCase()} ${proposal.trade.quantity} ${proposal.trade.pair} approved under DUAL mandate.`,
-    { proposalId: proposal.id }
+    proposal.policy.decision === "block" ? "blocked" : "ok",
+    proposal.policy.decision === "block" ? "Approval blocked by Agent Mandates" : "Human approval recorded",
+    proposal.policy.decision === "block"
+      ? describePolicy(proposal.trade, proposal.policy)
+      : `${proposal.trade.side.toUpperCase()} ${proposal.trade.quantity} ${proposal.trade.pair} approved under DUAL mandate.`,
+    { proposalId: proposal.id, policy: proposal.policy }
   );
   await saveState(state);
   return { state, proposal, event };
@@ -692,7 +852,7 @@ async function executePaperTradeProposal(req, input) {
   const proposal = (state.proposals || []).find((item) => item.id === id);
   if (!proposal) throw httpError("Proposal not found.", 404, "proposal_not_found");
 
-  const policy = evaluateTrade(state.passport, { ...proposal.trade, approved: proposal.approved });
+  const policy = await evaluateGovernedTrade(state.passport, { ...proposal.trade, approved: proposal.approved });
   proposal.policy = policy;
 
   if (policy.decision !== "allow") {
@@ -771,9 +931,11 @@ async function proposeAndExecutePaperTrade(req, args) {
   const executed = await executePaperTradeProposal(req, { id: proposed.proposal.id });
   return {
     ok: true,
-    status: "executed",
+    executed: executed.executed,
+    status: executed.blocked ? "blocked" : "executed",
     proposal: executed.proposal,
-    result: executed.result,
+    policy: executed.policy || executed.proposal.policy,
+    result: executed.result || null,
     tradeReceipt: executed.tradeReceipt,
     writeState: publicWriteReadiness(req),
     warnings: agentWarnings(req, executed.state),
@@ -786,7 +948,7 @@ async function runRedTeam(req, input) {
   applyDualRuntimeConfig(state);
   state.market = state.market || {};
   const trade = redTeamTrade(input.scenario, state.passport, state.market);
-  const policy = evaluateTrade(state.passport, trade);
+  const policy = await evaluateGovernedTrade(state.passport, trade);
   const event = await addAudit(req, state,
     "red_team_check",
     policy.decision === "block" ? "blocked" : "warning",
@@ -844,6 +1006,7 @@ async function buildAgentStatus(req, args = {}) {
       demoWritesEnabled: writeReadiness.writeGate?.allowed === true,
       dualMode: writeReadiness.mode,
       dualObjectId: publicDualStatus(req).objectId || null,
+      agentMandatesGate: publicAgentMandatesStatus(),
       tradeReceiptTemplateId: publicDualStatus(req).tradeReceiptTemplateId || null,
       proposals: (state.proposals || []).length,
       tradeReceipts: (state.tradeReceipts || []).length,
@@ -868,6 +1031,7 @@ async function buildAgentStatus(req, args = {}) {
     safety: safetySummary(),
     adapter,
     dual: publicDualStatus(req),
+    agentMandates: publicAgentMandatesStatus(),
     writeReadiness,
     warnings,
     summary: summarizeStateForAgent(state)
@@ -923,6 +1087,7 @@ function summarizeStateForAgent(state, limit = 5) {
     price: proposal.trade?.price,
     notional: proposal.policy?.notional,
     decision: proposal.policy?.decision,
+    agentMandate: summarizeAgentMandateDecision(proposal.policy?.agentMandate),
     approved: proposal.approved,
     executedAt: proposal.executedAt,
     resultDigest: proposal.result?.digest || null,
@@ -965,6 +1130,8 @@ function safetySummary() {
     liveKrakenTradingExposed: false,
     krakenApiKeysRequired: false,
     dualWrites: publicDualWrites ? "public_enabled_by_env" : "disabled_by_env",
+    agentMandatesGate: agentMandatesGateMode,
+    agentMandatesWrites: false,
     exposedMcpDualWriteTools: false,
     supportedPairs
   };
@@ -1807,6 +1974,11 @@ function parseBoolean(value) {
   return value === true || value === "true" || value === "on" || value === "1";
 }
 
+function normalizeAgentMandatesGateMode(value) {
+  const mode = String(value || "").trim().toLowerCase();
+  return ["required", "warn", "off"].includes(mode) ? mode : "required";
+}
+
 function normalizeExternalBaseUrl(value) {
   const text = String(value || "").trim().replace(/\/+$/, "");
   if (!text) return "";
@@ -1815,6 +1987,32 @@ function normalizeExternalBaseUrl(value) {
     return url.protocol === "http:" || url.protocol === "https:" ? url.href.replace(/\/+$/, "") : "";
   } catch {
     return "";
+  }
+}
+
+async function postJsonWithTimeout(url, body, timeoutMs) {
+  if (!url) throw new Error("Agent Mandates evaluator URL is not configured.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : {};
+    if (!response.ok) {
+      const message = data?.error?.message || data?.message || `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+    return data;
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error(`request timed out after ${timeoutMs}ms`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -1910,6 +2108,8 @@ function publicFeatureStatus() {
   return {
     emailCodeAuthEnabled,
     emailCodeRequired: false,
+    agentMandatesGateConfigured: Boolean(agentMandatesBaseUrl),
+    agentMandatesGateMode,
     dualConsoleLinksConfigured: Boolean(dualLinkTemplates.consoleTemplate || dualLinkTemplates.consoleObject || dualLinkTemplates.consoleAction),
     dualRecordLinksConfigured: true,
     dualL3ExplorerLinksConfigured: Boolean(dualLinkTemplates.l3Action),
@@ -1917,6 +2117,64 @@ function publicFeatureStatus() {
     dualL1RollupLinksConfigured: Boolean(dualLinkTemplates.l1RollupTransaction),
     dualBlockscoutLinksConfigured: Boolean(dualLinkTemplates.l2Transaction || dualLinkTemplates.l3Action)
   };
+}
+
+function publicAgentMandatesStatus() {
+  const evaluateUrl = agentMandatesBaseUrl ? `${agentMandatesBaseUrl}/api/mandates/evaluate` : "";
+  return {
+    configured: Boolean(agentMandatesBaseUrl),
+    mode: agentMandatesGateMode,
+    required: agentMandatesGateMode === "required",
+    baseUrl: agentMandatesBaseUrl,
+    evaluateUrl,
+    objectId: agentMandatesObjectId || null,
+    authorityScope: agentMandatesAuthorityScope || null,
+    jurisdiction: agentMandatesJurisdiction || null,
+    agentWallet: agentMandatesAgentWallet || null,
+    timeoutMs: agentMandatesTimeoutMs,
+    readOnly: true,
+    publicWrites: false,
+    detail: agentMandatesGateMode === "off"
+      ? "Agent Mandates evaluator is disabled by configuration."
+      : "Kraken paper execution is checked against the public read-only Agent Mandates evaluator before a paper fill."
+  };
+}
+
+function summarizeAgentMandateDecision(agentMandate = null) {
+  if (!agentMandate) return null;
+  return {
+    required: Boolean(agentMandate.required),
+    available: Boolean(agentMandate.available),
+    allowed: Boolean(agentMandate.allowed),
+    result: agentMandate.result || null,
+    code: agentMandate.code || null,
+    reason: agentMandate.reason || null,
+    source: agentMandate.source || null,
+    objectId: agentMandate.proof?.objectId || agentMandate.objectId || null,
+    decisionHash: agentMandate.proof?.decisionHash || null,
+    policyHash: agentMandate.proof?.policyHash || null,
+    mandateHash: agentMandate.proof?.mandateHash || null,
+    checkedAt: agentMandate.checkedAt || agentMandate.proof?.evaluatedAt || null,
+    publicWrites: agentMandate.publicWrites === true
+  };
+}
+
+function latestAgentMandateDecisionFromState(state = {}) {
+  const proposalDecision = (state.proposals || [])
+    .map((proposal) => summarizeAgentMandateDecision(proposal.policy?.agentMandate))
+    .find(Boolean);
+  if (proposalDecision) return proposalDecision;
+  return (state.tradeReceipts || [])
+    .map((receipt) => receipt.agentMandate || {
+      result: receipt.agentMandateResult || null,
+      code: receipt.agentMandateCode || null,
+      reason: receipt.agentMandateReason || null,
+      objectId: receipt.agentMandateObjectId || null,
+      decisionHash: receipt.agentMandateDecisionHash || null,
+      policyHash: receipt.agentMandatePolicyHash || null,
+      mandateHash: receipt.agentMandateHash || null
+    })
+    .find((decision) => decision?.result || decision?.decisionHash) || null;
 }
 
 function publicWriteReadiness(req) {
@@ -2268,6 +2526,15 @@ function dualReceiptObjectTransaction(object = {}, { proof = {}, batch = null, o
     policyDecision: firstNonEmpty(custom.policy_decision, custom.policyDecision),
     policyVersion: numberOrNull(firstNonEmpty(custom.policy_version, custom.policyVersion)),
     policyHash: firstNonEmpty(custom.policy_hash, custom.policyHash),
+    agentMandate: {
+      result: firstNonEmpty(custom.agent_mandate_result, custom.agentMandateResult),
+      code: firstNonEmpty(custom.agent_mandate_code, custom.agentMandateCode),
+      reason: firstNonEmpty(custom.agent_mandate_reason, custom.agentMandateReason),
+      objectId: firstNonEmpty(custom.agent_mandate_object_id, custom.agentMandateObjectId),
+      decisionHash: firstNonEmpty(custom.agent_mandate_decision_hash, custom.agentMandateDecisionHash),
+      policyHash: firstNonEmpty(custom.agent_mandate_policy_hash, custom.agentMandatePolicyHash),
+      mandateHash: firstNonEmpty(custom.agent_mandate_hash, custom.agentMandateHash)
+    },
     executionMode: firstNonEmpty(custom.execution_mode, custom.executionMode),
     executionSource: firstNonEmpty(custom.execution_source, custom.executionSource),
     executionDigest: firstNonEmpty(custom.execution_digest, custom.executionDigest),
@@ -2425,7 +2692,16 @@ function transactionTradeDetails(receipt = {}) {
     executionMode: receipt.executionMode || null,
     policyDecision: receipt.policyDecision || null,
     policyVersion: receipt.policyVersion ?? null,
-    policyHash: receipt.policyHash || null
+    policyHash: receipt.policyHash || null,
+    agentMandate: receipt.agentMandate || {
+      result: receipt.agentMandateResult || null,
+      code: receipt.agentMandateCode || null,
+      reason: receipt.agentMandateReason || null,
+      objectId: receipt.agentMandateObjectId || null,
+      decisionHash: receipt.agentMandateDecisionHash || null,
+      policyHash: receipt.agentMandatePolicyHash || null,
+      mandateHash: receipt.agentMandateHash || null
+    }
   };
 }
 
@@ -2974,6 +3250,8 @@ async function buildProofBundle(req) {
   const replayQueue = publicReplayQueue(req, state.passport, audit, dualObject);
   const tradeReceiptQueue = publicTradeReceiptQueue(req, tradeReceipts);
   const dualStatus = publicDualStatus(req);
+  const agentMandatesStatus = publicAgentMandatesStatus();
+  const latestAgentMandateDecision = latestAgentMandateDecisionFromState(state);
   const proofDualStatus = stripLinks(dualStatus);
   const writeReadiness = publicWriteReadiness(req);
   const templateFields = dualTemplate?.custom || {};
@@ -3040,6 +3318,13 @@ async function buildProofBundle(req) {
       detail: dualObject?.available ? `DUAL object ${dualObject.id} is readable.` : "DUAL object is not readable."
     },
     {
+      id: "agent-mandates-read-gate",
+      ok: Boolean(agentMandatesStatus.mode === "off" || agentMandatesStatus.configured),
+      detail: agentMandatesStatus.mode === "off"
+        ? "External Agent Mandates read gate is disabled by configuration."
+        : `External Agent Mandates read gate is configured for ${agentMandatesStatus.objectId || "the canonical mandate object"}.`
+    },
+    {
       id: "dual-mandate-template",
       ok: templateHasMandateSchema,
       detail: dualTemplate?.available ? "DUAL template exposes the Kraken agent mandate schema." : "DUAL template is not readable."
@@ -3103,7 +3388,12 @@ async function buildProofBundle(req) {
       krakenMarketData: adapter.source,
       krakenPaperExecution: adapter.krakenCliAvailable ? "kraken-cli-paper" : "simulated-paper",
       dualMode: proofDualStatus,
+      agentMandates: agentMandatesStatus,
       writeReadiness
+    },
+    agentMandates: {
+      ...agentMandatesStatus,
+      latestDecision: latestAgentMandateDecision
     },
     dualTemplate,
     dualObject,

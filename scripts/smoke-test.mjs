@@ -57,7 +57,13 @@ const initialTradeReceipts = await get("/api/dual/trade-receipts");
 assert(initialTradeReceipts.rootHash, "trade receipt queue returns a root hash");
 assert(initialTradeReceipts.receiptCount === 0, "reset state starts with no trade receipts");
 const initialHistory = await get("/api/transactions/history");
-assert(initialHistory.transactionCount === 0, "reset state starts with empty transaction history");
+const initialHistoryRecoveredFromDual = Array.isArray(initialHistory.transactions)
+  && initialHistory.transactions.length > 0
+  && initialHistory.transactions.every((tx) => tx.recoveredFrom);
+assert(
+  initialHistory.transactionCount === 0 || initialHistoryRecoveredFromDual,
+  "reset state starts with empty local transaction history or recovered DUAL proof history"
+);
 
 const replayExecution = await post("/api/dual/replay-queue/execute", {});
 assert(typeof replayExecution.executed === "boolean", "replay execution reports whether writes ran");

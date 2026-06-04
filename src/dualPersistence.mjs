@@ -1,11 +1,14 @@
 import crypto from "node:crypto";
+import { dualNetworkConfig, networkMigrationPreflight } from "./dualPersistenceV3.mjs";
 
 export async function createDualPersistence() {
   const mode = process.env.DUAL_PERSISTENCE_MODE || "local";
   const orgId = process.env.DUAL_ORG_ID || "";
   const templateId = process.env.DUAL_AGENT_PASSPORT_TEMPLATE_ID || "";
   const objectId = process.env.DUAL_AGENT_PASSPORT_OBJECT_ID || "";
-  const baseUrl = process.env.DUAL_API_URL || "https://api-testnet.dual.network";
+  const networkConfig = dualNetworkConfig();
+  const networkPreflight = networkMigrationPreflight(networkConfig);
+  const baseUrl = networkConfig.apiUrl;
   const apiKey = process.env.DUAL_API_KEY || "";
   const authMode = normalizeAuthMode(process.env.DUAL_AUTH_MODE || "api_key");
   const writeMode = process.env.DUAL_WRITE_MODE || "read_only";
@@ -54,12 +57,24 @@ export async function createDualPersistence() {
     status() {
       const read = activeReadClient();
       const write = activeWriteClient();
-      if (mode !== "dual") return { mode: "local", configured: false, available: true, writable: false, detail: "Using local DUAL passport simulator." };
+      if (mode !== "dual") {
+        return {
+          mode: "local",
+          configured: false,
+          available: true,
+          writable: false,
+          targetNetwork: networkPreflight.target_network,
+          network: networkPreflight,
+          detail: "Using local DUAL passport simulator."
+        };
+      }
       return {
         mode: "dual",
-        configured: Boolean((apiKey || serviceToken || serviceRefreshToken || sessionClient) && orgId && templateId),
+        configured: Boolean(networkPreflight.read_allowed && (apiKey || serviceToken || serviceRefreshToken || sessionClient) && orgId && templateId),
         available: Boolean(read),
         writable: Boolean(write),
+        targetNetwork: networkPreflight.target_network,
+        network: networkPreflight,
         orgId: orgId || null,
         templateId: templateId || null,
         objectId: objectId || null,
@@ -85,6 +100,8 @@ export async function createDualPersistence() {
           ? write
             ? "DUAL persistence adapter is ready for direct event-bus writes."
             : "DUAL passport is linked for read verification. Event-bus writes need DUAL_WRITE_MODE=event_bus."
+          : !networkPreflight.read_allowed
+            ? networkPreflight.note
           : sdkError
             ? `DUAL SDK unavailable: ${sdkError.message}`
             : "Set DUAL_API_KEY, DUAL_ORG_ID, and DUAL_AGENT_PASSPORT_TEMPLATE_ID."
@@ -104,6 +121,7 @@ export async function createDualPersistence() {
         requiredWriteMode: "event_bus",
         current: status,
         missing: ready ? [] : [
+          ...networkPreflight.missing,
           ...(status.available || DualClient ? [] : ["DUAL SDK/client availability"]),
           ...(activeReadClient() ? [] : ["DUAL_API_KEY with event-bus action create permission"]),
           ...(writeMode === "event_bus" ? [] : ["DUAL_WRITE_MODE=event_bus"]),
@@ -111,6 +129,8 @@ export async function createDualPersistence() {
         ],
         detail: ready
           ? "DUAL event-bus write sync is enabled via direct server-side POST."
+          : !networkPreflight.write_allowed
+            ? networkPreflight.note
           : "DUAL read-link is active; event-bus write sync needs DUAL_WRITE_MODE=event_bus plus a scoped DUAL_API_KEY."
       };
     },
@@ -138,6 +158,8 @@ export async function createDualPersistence() {
         authenticatedAt: session?.authenticatedAt || serviceSession?.refreshedAt || null,
         detail: write
           ? "Scoped API-key auth is active for direct DUAL event-bus writes."
+          : !networkPreflight.write_allowed
+            ? networkPreflight.note
           : "Use DUAL_WRITE_MODE=event_bus with a scoped DUAL_API_KEY. Email-code auth remains available for private browser sessions."
       };
     },
@@ -304,10 +326,12 @@ export async function createDualPersistence() {
   }
 
   function activeReadClient() {
+    if (!networkPreflight.read_allowed) return null;
     return sessionClient || client || serviceClient;
   }
 
   function activeWriteClient() {
+    if (!networkPreflight.write_allowed) return null;
     if (writeMode !== "event_bus") return null;
     return sessionClient || serviceClient || client;
   }

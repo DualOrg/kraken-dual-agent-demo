@@ -20,7 +20,8 @@
     "start": "node server.mjs",
     "dev": "node server.mjs",
     "test": "node scripts/smoke-test.mjs",
-    "check": "node --check server.mjs && node --check src/krakenAdapter.mjs && node --check src/dualStore.mjs && node --check src/dualPersistence.mjs && node --check src/dualPersistenceV3.mjs && node --check src/policy.mjs && node --check src/tradeReceipts.mjs && node --check scripts/smoke-test.mjs"
+    "check": "node --check server.mjs && node --check src/krakenAdapter.mjs && node --check src/dualStore.mjs && node --check src/dualPersistence.mjs && node --check src/dualPersistenceV3.mjs && node --check src/policy.mjs && node --check src/tradeReceipts.mjs && node --check scripts/smoke-test.mjs && node --check scripts/mainnet-migration-preflight.mjs",
+    "migrate:mainnet:preflight": "node scripts/mainnet-migration-preflight.mjs"
   },
   "engines": {
     "node": ">=20"

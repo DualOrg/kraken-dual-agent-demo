@@ -7,7 +7,7 @@ import { dirname } from "node:path";
 import { loadState, resetState, saveState, createAuditEvent, createProposal } from "./src/dualStore.mjs";
 import { evaluateTrade, redTeamTrade, roundMoney, roundQty } from "./src/policy.mjs";
 import { executePaperTrade, getAdapterStatus, getMarket } from "./src/krakenAdapter.mjs";
-import { createDualPersistence } from "./src/dualPersistenceV3.mjs";
+import { createDualPersistence, dualNetworkConfig } from "./src/dualPersistenceV3.mjs";
 import {
   createTradeReceipt,
   summarizeTradeReceipt
@@ -19,18 +19,17 @@ const publicDir = join(root, "public");
 await loadDotEnv();
 const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "127.0.0.1";
+const dualNetwork = dualNetworkConfig();
 const dualPersistence = await createDualPersistence();
 const dualSessionCookieName = "__Host-dual_kraken_session";
 const publicDualWrites = process.env.DEMO_PUBLIC_DUAL_WRITES === undefined
   ? true
   : parseBoolean(process.env.DEMO_PUBLIC_DUAL_WRITES);
 const emailCodeAuthEnabled = parseBoolean(process.env.DEMO_ENABLE_EMAIL_AUTH || "false");
-const dualConsoleBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_CONSOLE_BASE_URL || "https://console-testnet.dual.network");
-const dualL3ExplorerBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_L3_EXPLORER_BASE_URL || "https://explorer-testnet.dual.network");
-const dualL2ExplorerBaseUrl = normalizeExternalBaseUrl(
-  process.env.DUAL_L2_EXPLORER_BASE_URL || process.env.DUAL_BLOCKSCOUT_BASE_URL || "https://explorer-test-v2.dual.network"
-);
-const dualL1ExplorerBaseUrl = normalizeExternalBaseUrl(process.env.DUAL_L1_EXPLORER_BASE_URL || "");
+const dualConsoleBaseUrl = normalizeExternalBaseUrl(dualNetwork.consoleBaseUrl);
+const dualL3ExplorerBaseUrl = normalizeExternalBaseUrl(dualNetwork.l3ExplorerBaseUrl);
+const dualL2ExplorerBaseUrl = normalizeExternalBaseUrl(dualNetwork.l2ExplorerBaseUrl);
+const dualL1ExplorerBaseUrl = normalizeExternalBaseUrl(dualNetwork.l1ExplorerBaseUrl);
 const agentMandatesBaseUrl = normalizeExternalBaseUrl(
   process.env.AGENT_MANDATES_URL || process.env.AGENT_MANDATES_BASE_URL || "https://agent-mandates-dual-demo.vercel.app"
 );
